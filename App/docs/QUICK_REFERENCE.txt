@@ -1,0 +1,80 @@
+╔══════════════════════════════════════════════════════════════╗
+║          🎯 QUICK DEPLOYMENT REFERENCE CARD                  ║
+╚══════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────┐
+│  📋 AVAILABLE WORKSPACES                                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🏢 FIELD-ENG (Field Engineering)                           │
+│     URL: https://glucostream-dashboard-984752964297111...    │
+│     Status: ✅ Running                                       │
+│                                                              │
+│  🏢 BUILDATHON (Buildathon)                                 │
+│     URL: https://glucostream-dashboard-237438879023004...    │
+│     Status: ✅ Running                                       │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  🚀 DEPLOYMENT COMMANDS                                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Deploy to Field Engineering:                               │
+│  $ python3 deploy.py field-eng                              │
+│                                                              │
+│  Deploy to Buildathon:                                      │
+│  $ python3 deploy.py buildathon                             │
+│                                                              │
+│  Show all workspaces:                                       │
+│  $ python3 deploy.py                                        │
+│                                                              │
+│  Deploy to both:                                            │
+│  $ npm run build                                            │
+│  $ python3 deploy.py field-eng                              │
+│  $ python3 deploy.py buildathon                             │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  💬 HOW TO INSTRUCT ME                                       │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Just say:                                                  │
+│  • "Deploy to field-eng"                                    │
+│  • "Deploy to buildathon"                                   │
+│  • "Deploy to both workspaces"                              │
+│  • "Show workspaces"                                        │
+│                                                              │
+│  I'll run the right command automatically!                  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  📂 KEY FILES                                                │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  deploy.py                    ⭐ Multi-workspace switcher   │
+│  databricks_deploy.py         🔧 Core deployment logic      │
+│  databricks_config_*.json     🏢 Workspace configs          │
+│                                                              │
+│  MULTI_WORKSPACE_GUIDE.md     📖 Full documentation         │
+│  WORKSPACES_STATUS.md         📊 Current status             │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│  ⚡ TYPICAL WORKFLOW                                         │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. Make changes to src/                                    │
+│  2. npm run build                                           │
+│  3. python3 deploy.py <workspace-name>                      │
+│  4. Visit the app URL                                       │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════╗
+║  ✅ BOTH WORKSPACES ARE LIVE AND READY!                     ║
+╚══════════════════════════════════════════════════════════════╝
+

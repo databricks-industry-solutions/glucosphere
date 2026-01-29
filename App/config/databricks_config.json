@@ -1,0 +1,11 @@
+{
+  "workspace_name": "buildathon",
+  "databricks_host": "https://fe-vm-industry-solutions-buildathon.cloud.databricks.com",
+  "databricks_token": "${DATABRICKS_TOKEN}",
+  "app_name": "glucostream-dashboard",
+  "app_description": "GlucoStream Intelligence Dashboard - Continuous Glucose Monitoring Platform",
+  "username": "justin.ward@databricks.com",
+  "workspace_path": "/Workspace/Users/justin.ward@databricks.com/.bundle/glucostream-dashboard/files",
+  "build_dir": "dist"
+}
+

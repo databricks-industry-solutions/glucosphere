@@ -1,0 +1,10 @@
+{
+  "databricks_host": "https://adb-984752964297111.11.azuredatabricks.net",
+  "databricks_token": "YOUR_TOKEN_HERE",
+  "app_name": "your-app-name",
+  "app_description": "Your application description",
+  "username": "your.email@company.com",
+  "workspace_path": "/Workspace/Users/your.email@company.com/.bundle/your-app-name/files",
+  "build_dir": "dist"
+}
+
