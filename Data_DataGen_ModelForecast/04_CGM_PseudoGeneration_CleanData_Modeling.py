@@ -8,7 +8,7 @@ print("   • psutil: CPU and memory metrics")
 print("   • nvidia-ml-py3: GPU metrics (g5.12xlarge with A10G GPUs)")
 print("   • alembic: Optuna SQLite storage support\n")
 
-%pip install psutil nvidia-ml-py3 alembic --quiet
+%pip install psutil alembic pyyaml xgboost "optuna-integration[xgboost]" optuna scipy matplotlib seaborn scikit-learn "mlflow[databricks]" databricks-sdk --quiet
 
 print("\n✓ Dependencies installed. Restarting Python...")
 
@@ -196,6 +196,8 @@ SCHEMA_NAME = cfg.schema_name
 BASELINE_TBL = cfg.baseline_tbl
 INCLUDE_INCIDENT = cfg.include_incident
 NUM_PSEUDO = cfg.num_pseudo
+ENV = env
+CONFIG_FILE = config_file
 
 # Computed values used across multiple cells
 ROWS_PER_DAY = int((24*60)//cfg.cadence_min)

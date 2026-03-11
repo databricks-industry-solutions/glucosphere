@@ -10,7 +10,7 @@ AS SELECT
   birth_year,
   device_model
 FROM read_files(
-  '/Volumes/hls_glucosphere/cgm/landing_zone/raw_patient_registry/',
+  '/Volumes/${catalog}/${schema}/landing_zone/raw_patient_registry/',
   format => 'parquet'
 );
 
@@ -26,7 +26,7 @@ AS SELECT
   end_time,
   firmware_version
 FROM read_files(
-  '/Volumes/hls_glucosphere/cgm/landing_zone/raw_device_telemetry_stream/',
+  '/Volumes/${catalog}/${schema}/landing_zone/raw_device_telemetry_stream/',
   format => 'parquet'
 );
 
@@ -49,7 +49,7 @@ AS SELECT
   basal_present,
   bolus_event,
   carb_event
-FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105;
+FROM ${catalog}.${schema}.pseudo_incident_7d_labeled;
 
 
 

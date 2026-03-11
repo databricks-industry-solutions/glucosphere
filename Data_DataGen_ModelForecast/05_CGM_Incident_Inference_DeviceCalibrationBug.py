@@ -78,7 +78,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Install XGBoost and restart Python
-# MAGIC %pip install xgboost --quiet
+# MAGIC %pip install xgboost pyyaml scipy matplotlib seaborn scikit-learn "mlflow[databricks]" databricks-sdk --quiet
 # MAGIC
 # MAGIC dbutils.library.restartPython()
 
@@ -1235,7 +1235,7 @@ print("Glucose Distribution Comparison")
 print("="*80)
 
 # Get baseline distribution
-baseline_df = spark.table("hls_glucosphere.cgm.diabetes_data")
+baseline_df = spark.table(f"{CATALOG_NAME}.{SCHEMA_NAME}.diabetes_data")
 baseline_sample = baseline_df.sample(False, 0.1, seed=cfg.seed).toPandas()
 baseline_glucose = baseline_sample['glucose'].dropna().values
 

@@ -73,10 +73,10 @@ export default function MetricsExplained() {
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT patient_id) as active_patients
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 WHERE time >= (
   SELECT MAX(time) - INTERVAL 24 HOUR 
-  FROM hls_glucosphere.cgm.gold_patient_device_readings
+  FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 )`}
                 </pre>
               </div>
@@ -92,7 +92,7 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -120,10 +120,10 @@ WHERE time >= (
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT device_id) as devices_online
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 WHERE time >= (
   SELECT MAX(time) - INTERVAL 1 DAY
-  FROM hls_glucosphere.cgm.gold_patient_device_readings
+  FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 )`}
                 </pre>
               </div>
@@ -138,7 +138,7 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -167,11 +167,11 @@ WHERE time >= (
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT patient_id) as high_risk_patients
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 WHERE glucose_out_of_range = 1
   AND time >= (
     SELECT MAX(time) - INTERVAL 24 HOUR
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
   )`}
                 </pre>
               </div>
@@ -187,7 +187,7 @@ WHERE glucose_out_of_range = 1
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -229,7 +229,7 @@ WHERE glucose_out_of_range = 1
     CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
     incident_type as incident_label,
     ABS(glucose_observed - glucose_true) + 5.0 as error_value
-  FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+  FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
   WHERE time IS NOT NULL
 )
 SELECT 
@@ -270,7 +270,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled</span>
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
                   This table contains simulated incident data with labeled periods where device calibration failures occurred.
@@ -309,7 +309,7 @@ ORDER BY minute`}
     glucose_observed as glucose_device,
     CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
     (glucose_observed - glucose_true) as device_bias
-  FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+  FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
   WHERE time IS NOT NULL
 )
 SELECT 
@@ -356,7 +356,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled</span>
                 </p>
               </div>
             </div>
@@ -391,7 +391,7 @@ ORDER BY minute`}
     (glucose_observed - glucose_true) as bias,
     CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
     incident_type
-  FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+  FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
   WHERE time IS NOT NULL
 )
 SELECT 
@@ -421,7 +421,7 @@ FROM error_data`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled</span>
                 </p>
               </div>
             </div>
@@ -454,14 +454,14 @@ FROM error_data`}
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT device_id) as device_count
-FROM hls_glucosphere.cgm.silver_patient_registry`}
+FROM ws_ward_pixels_catalog.glucosphere.silver_patient_registry`}
                 </pre>
               </div>
               
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.silver_patient_registry</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.silver_patient_registry</span>
                 </p>
               </div>
             </div>
@@ -493,7 +493,7 @@ FROM hls_glucosphere.cgm.silver_patient_registry`}
   device_model as device_type,
   CAST(firmware_version AS STRING) as firmware_version,
   COUNT(*) as out_of_range_events
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 WHERE glucose_out_of_range = 1
 GROUP BY device_model, firmware_version
 ORDER BY device_model, firmware_version`}
@@ -512,7 +512,7 @@ ORDER BY device_model, firmware_version`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -548,7 +548,7 @@ ORDER BY device_model, firmware_version`}
   COUNT(*) as total_events,
   ROUND(AVG(CASE WHEN glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
   COUNT(DISTINCT DATE(time)) as days_tracked
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 GROUP BY device_model, firmware_version, region
 HAVING SUM(glucose_out_of_range) > 10
 ORDER BY avg_oor_rate_pct DESC
@@ -593,7 +593,7 @@ LIMIT 4`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -623,13 +623,13 @@ LIMIT 4`}
 {`SELECT 
   device_id,
   TIMESTAMPDIFF(MINUTE, time, 
-    (SELECT MAX(time) FROM hls_glucosphere.cgm.gold_patient_device_readings)
+    (SELECT MAX(time) FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings)
   ) as minutes_since_last_reading,
   patient_id,
   device_model as device_type,
   CAST(firmware_version AS STRING) as firmware_version,
   glucose as glucose_value
-FROM hls_glucosphere.cgm.gold_patient_device_readings
+FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
 WHERE glucose_out_of_range = 1
 ORDER BY time DESC
 LIMIT 50`}
@@ -653,7 +653,7 @@ LIMIT 50`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">
-                  Table: <span className="text-cyan-400">hls_glucosphere.cgm.gold_patient_device_readings</span>
+                  Table: <span className="text-cyan-400">ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings</span>
                 </p>
               </div>
             </div>
@@ -682,7 +682,7 @@ LIMIT 50`}
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-slate-800 text-center text-xs text-slate-500">
           <p>All metrics are calculated in real-time from Databricks Unity Catalog via DBSQL MCP Server</p>
-          <p className="mt-1 font-mono">Schema: hls_glucosphere.cgm</p>
+          <p className="mt-1 font-mono">Schema: ws_ward_pixels_catalog.glucosphere</p>
         </div>
       </main>
     </div>

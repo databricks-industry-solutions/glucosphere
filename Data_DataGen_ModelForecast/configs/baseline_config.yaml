@@ -41,7 +41,7 @@ dev:
   colsample: 0.8
   n_rounds: 2000
   early_stop: 50
-  mlflow_experiment: /Users/may.merkletan@databricks.com/cgm_glucose_forecast
+  mlflow_experiment: ""
   uc_model_name_15m: cgm_xgb_15m
   uc_model_name_30m: cgm_xgb_30m
 staging:

@@ -1,12 +1,6 @@
-// Databricks Multi-Agent Supervisor API Configuration
-
-const DATABRICKS_CONFIG = {
-  workspace_url: 'https://fe-vm-industry-solutions-buildathon.cloud.databricks.com',
-  endpoint_name: 'mas-fe615d4c-endpoint',  // Testing new MAS endpoint (was: mas-1e573408-endpoint / HLS_MAS_glucosphere)
-  // Token should be stored securely - for local dev, we'll use environment variable
-  // In production, this should be handled by your backend
-  token: import.meta.env.VITE_DATABRICKS_TOKEN || ''
-};
+// Databricks Multi-Agent Supervisor API Client
+// Authentication and endpoint routing are handled by the Flask backend (app.py).
+// The frontend always calls /api/agent/query — never directly to Databricks.
 
 /**
  * ALWAYS use the backend proxy to avoid CORS issues.
@@ -91,5 +85,5 @@ export const callMultiAgentSupervisor = async (message, conversationHistory = []
   }
 };
 
-export default DATABRICKS_CONFIG;
+export default {};
 

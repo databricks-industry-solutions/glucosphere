@@ -53,7 +53,7 @@ export async function executeSQLQuery(query) {
  * @returns {Promise<number>} Count of distinct devices
  */
 export async function getDistinctDeviceCount() {
-  const query = 'SELECT COUNT(DISTINCT device_id) as device_count FROM hls_glucosphere.cgm.silver_patient_registry';
+  const query = 'SELECT COUNT(DISTINCT device_id) as device_count FROM ws_ward_pixels_catalog.glucosphere.silver_patient_registry';
   
   try {
     const result = await executeSQLQuery(query);
@@ -96,7 +96,7 @@ export async function getDeviceHeatmapData() {
       device_model as device_type, 
       CAST(firmware_version AS STRING) as firmware_version,
       COUNT(*) as out_of_range_events 
-    FROM hls_glucosphere.cgm.gold_patient_device_readings 
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings 
     WHERE glucose_out_of_range = 1
     GROUP BY device_model, firmware_version
     ORDER BY device_model, firmware_version
@@ -148,13 +148,13 @@ export async function getOutOfRangeDevices() {
   const query = `
     SELECT 
       device_id,
-      TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM hls_glucosphere.cgm.gold_patient_device_readings)) as minutes_since_last_reading,
+      TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings)) as minutes_since_last_reading,
       patient_id,
       device_model as device_type,
       CAST(firmware_version AS STRING) as firmware_version,
       glucose as glucose_value
     FROM 
-      hls_glucosphere.cgm.gold_patient_device_readings
+      ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
     ORDER BY time DESC
     LIMIT 50
@@ -216,7 +216,7 @@ export async function getDevicePatternAlerts() {
       COUNT(*) as total_events,
       ROUND(AVG(CASE WHEN glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
       COUNT(DISTINCT DATE(time)) as days_tracked
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     GROUP BY device_model, firmware_version, region
     HAVING SUM(glucose_out_of_range) > 10
     ORDER BY avg_oor_rate_pct DESC

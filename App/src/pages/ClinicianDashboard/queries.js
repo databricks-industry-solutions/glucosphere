@@ -22,10 +22,10 @@ export async function getPopulationMetrics() {
       ROUND(AVG(CASE WHEN glucose < 70 THEN 1 ELSE 0 END) * 100, 1) as pct_time_below_range,
       ROUND(AVG(CASE WHEN glucose > 180 THEN 1 ELSE 0 END) * 100, 1) as pct_time_above_range,
       COUNT(DISTINCT patient_id) as total_patients_monitored
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
   `;
   
@@ -81,10 +81,10 @@ export async function getInsulinMetrics() {
       COUNT(CASE WHEN carb_event = 1 THEN 1 END) as carb_events,
       ROUND(AVG(CASE WHEN basal_rate > 0 THEN basal_rate END), 2) as avg_basal_rate,
       ROUND(AVG(CASE WHEN bolus_volume_delivered > 0 THEN bolus_volume_delivered END), 2) as avg_bolus_volume
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
   `;
   
@@ -131,10 +131,10 @@ export async function getDeviceDistribution() {
       device_model,
       COUNT(DISTINCT patient_id) as patient_count,
       COUNT(DISTINCT device_id) as device_count
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
     GROUP BY device_model
     ORDER BY patient_count DESC
@@ -183,10 +183,10 @@ export async function getRegionalDistribution() {
     SELECT 
       region,
       COUNT(DISTINCT patient_id) as patient_count
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
     GROUP BY region
     ORDER BY patient_count DESC

@@ -10,10 +10,10 @@ import { executeSQLQuery } from '../../api/databricksSQL';
 export async function getActivePatients() {
   const query = `
     SELECT COUNT(DISTINCT patient_id) as active_patients
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
   `;
   
@@ -50,10 +50,10 @@ export async function getActivePatients() {
 export async function getDevicesOnline() {
   const query = `
     SELECT COUNT(DISTINCT device_id) as devices_online
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 1 DAY
-      FROM hls_glucosphere.cgm.gold_patient_device_readings
+      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     )
   `;
   
@@ -90,11 +90,11 @@ export async function getDevicesOnline() {
 export async function getHighRiskAlerts() {
   const query = `
     SELECT COUNT(DISTINCT patient_id) as high_risk_patients
-    FROM hls_glucosphere.cgm.gold_patient_device_readings
+    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
       AND time >= (
         SELECT MAX(time) - INTERVAL 24 HOUR
-        FROM hls_glucosphere.cgm.gold_patient_device_readings
+        FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
       )
   `;
   

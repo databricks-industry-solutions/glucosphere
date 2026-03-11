@@ -1,4 +1,11 @@
 # Databricks notebook source
+
+# COMMAND ----------
+
+%pip install pyyaml "mlflow[databricks]" databricks-sdk --quiet
+dbutils.library.restartPython()
+
+# COMMAND ----------
 # DBTITLE 1,Verify YAML config exists
 # ------------------------
 # Verify existing YAML config file
@@ -379,6 +386,7 @@ else:
     w.serving_endpoints.create(
         name=ENDPOINT_15M,
         config=EndpointCoreConfigInput(
+            name=ENDPOINT_15M,
             served_entities=[
                 ServedEntityInput(
                     entity_name=MODEL_15M,
@@ -526,7 +534,7 @@ if endpoint_exists:
                 entity_name=MODEL_30M,
                 entity_version=champion_version,
                 scale_to_zero_enabled=True,
-                workload_size="Small"
+                workload_size="Medium"
             )
         ]
     )
@@ -536,12 +544,13 @@ else:
     w.serving_endpoints.create(
         name=ENDPOINT_30M,
         config=EndpointCoreConfigInput(
+            name=ENDPOINT_30M,
             served_entities=[
                 ServedEntityInput(
                     entity_name=MODEL_30M,
                     entity_version=champion_version,
                     scale_to_zero_enabled=True,
-                    workload_size="Small"
+                    workload_size="Medium"
                 )
             ]
         )

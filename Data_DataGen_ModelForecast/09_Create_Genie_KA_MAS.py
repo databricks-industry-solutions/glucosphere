@@ -1,0 +1,307 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Glucosphere: Knowledge Assistant + Genie Room + Supervisor Agent
+# MAGIC
+# MAGIC Uses native Databricks Agent Bricks APIs:
+# MAGIC - `/api/2.0/knowledge-assistants`   — WHO diabetes RAG (Databricks handles chunking/VS)
+# MAGIC - `/api/2.0/data-rooms/`            — Genie room over gold_patient_device_readings
+# MAGIC - `/api/2.0/multi-agent-supervisors` — MAS routing between KA and Genie
+# MAGIC
+# MAGIC **Prerequisites:** DLT pipeline must have completed.
+
+# COMMAND ----------
+
+# DBTITLE 1, Parameters
+dbutils.widgets.text("CATALOG_NAME",     "ws_ward_pixels_catalog",       "Catalog")
+dbutils.widgets.text("SCHEMA_NAME",      "glucosphere",                  "Schema")
+dbutils.widgets.text("KA_NAME",          "Glucosphere-Knowledge-Assistant", "KA Name")
+dbutils.widgets.text("GENIE_NAME",       "Glucosphere CGM Intelligence",   "Genie Space Name")
+dbutils.widgets.text("MAS_NAME",         "Glucosphere-Supervisor",          "MAS Name")
+
+CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")
+SCHEMA_NAME  = dbutils.widgets.get("SCHEMA_NAME")
+KA_NAME      = dbutils.widgets.get("KA_NAME")
+GENIE_NAME   = dbutils.widgets.get("GENIE_NAME")
+MAS_NAME     = dbutils.widgets.get("MAS_NAME")
+
+GOLD_TABLE  = f"{CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings"
+DOCS_VOLUME = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/data/who_docs"
+
+print(f"Catalog:     {CATALOG_NAME}.{SCHEMA_NAME}")
+print(f"Gold table:  {GOLD_TABLE}")
+print(f"Docs volume: {DOCS_VOLUME}")
+
+# COMMAND ----------
+
+# DBTITLE 1, REST API helper
+import json
+import time
+import urllib.request
+import urllib.error
+import os
+
+host  = spark.conf.get("spark.databricks.workspaceUrl", "")
+if not host.startswith("https://"):
+    host = f"https://{host}"
+token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
+
+def _api(method, path, body=None, params=None):
+    url = f"{host}{path}"
+    if params:
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        url = f"{url}?{qs}"
+    data = json.dumps(body).encode() if body else None
+    req  = urllib.request.Request(
+        url, data=data,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code} {path}: {e.read().decode()}") from e
+
+# COMMAND ----------
+
+# MAGIC %md ## Part 1: WHO Knowledge Assistant
+
+# COMMAND ----------
+
+# DBTITLE 1, Copy WHO PDF from bundle assets to volume
+import shutil
+
+# Ensure the 'data' volume exists before writing to it
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.data")
+os.makedirs(DOCS_VOLUME, exist_ok=True)
+
+WHO_PDF_PATH = f"{DOCS_VOLUME}/WHO_NCD_NCS_99.2.pdf"
+
+if os.path.exists(WHO_PDF_PATH):
+    print(f"Already in volume ({os.path.getsize(WHO_PDF_PATH) // 1024} KB): {WHO_PDF_PATH}")
+else:
+    notebook_ws_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    # notebookPath() returns a workspace path (e.g. /Users/...) without the /Workspace prefix.
+    # Prepend /Workspace so os.path.exists resolves via the FUSE mount.
+    if not notebook_ws_path.startswith("/Workspace"):
+        notebook_ws_path = "/Workspace" + notebook_ws_path
+    notebook_dir     = os.path.dirname(notebook_ws_path)
+    src_pdf          = f"{notebook_dir}/assets/who_docs/WHO_NCD_NCS_99.2.pdf"
+
+    if not os.path.exists(src_pdf):
+        raise FileNotFoundError(
+            f"WHO PDF not found at {src_pdf}. "
+            "Place the file at Data_DataGen_ModelForecast/assets/who_docs/WHO_NCD_NCS_99.2.pdf "
+            "in the repo and re-deploy the bundle."
+        )
+
+    shutil.copy2(src_pdf, WHO_PDF_PATH)
+    print(f"Copied to volume ({os.path.getsize(WHO_PDF_PATH) // 1024} KB): {WHO_PDF_PATH}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Create Knowledge Assistant
+# Check if it already exists
+tiles = _api("GET", "/api/2.0/tiles", params={"tile_type": "KNOWLEDGE_ASSISTANT"})
+existing_ka = next(
+    (t for t in tiles.get("tiles", [])
+     if t.get("name", "").lower() == KA_NAME.lower()),
+    None,
+)
+
+if existing_ka:
+    KA_TILE_ID = existing_ka["tile_id"]
+    print(f"KA already exists: {KA_TILE_ID}")
+else:
+    print(f"Creating Knowledge Assistant: {KA_NAME}")
+    resp = _api("POST", "/api/2.0/knowledge-assistants", {
+        "name": KA_NAME,
+        "description": "WHO diabetes definition, diagnosis and classification guidelines (1999)",
+        "instructions": (
+            "Answer questions about diabetes diagnosis, classification, and WHO guidelines. "
+            "Always cite the source page when possible. Be precise and clinical."
+        ),
+        "knowledge_sources": [
+            {
+                "files_source": {
+                    "name":  "who-diabetes-docs",
+                    "type":  "files",
+                    "files": {"path": DOCS_VOLUME},
+                }
+            }
+        ],
+    })
+    KA_TILE_ID = resp.get("knowledge_assistant", {}).get("tile", {}).get("tile_id") or resp.get("tile_id")
+    print(f"KA created: tile_id={KA_TILE_ID}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Get KA endpoint name (quick check, no long wait)
+print("Fetching KA status...")
+KA_ENDPOINT_NAME = ""
+for attempt in range(12):  # max ~2 min
+    ka_info = _api("GET", f"/api/2.0/knowledge-assistants/{KA_TILE_ID}")
+    status = (
+        ka_info.get("knowledge_assistant", {})
+               .get("status", {})
+               .get("endpoint_status", "UNKNOWN")
+    )
+    KA_ENDPOINT_NAME = (
+        ka_info.get("knowledge_assistant", {})
+               .get("status", {})
+               .get("endpoint_name", "")
+    )
+    print(f"  KA status: {status} | endpoint: {KA_ENDPOINT_NAME}")
+    if status in ("ONLINE", "FAILED", "ERROR") or KA_ENDPOINT_NAME:
+        break
+    time.sleep(10)
+print(f"KA endpoint name: {KA_ENDPOINT_NAME}")
+
+# COMMAND ----------
+
+# MAGIC %md ## Part 2: Genie Room
+
+# COMMAND ----------
+
+# DBTITLE 1, Create Genie Room
+warehouses = _api("GET", "/api/2.0/sql/warehouses")
+wh_list    = warehouses.get("warehouses", [])
+if not wh_list:
+    raise RuntimeError("No SQL warehouses found.")
+wh = next((w for w in wh_list if w.get("state") not in ("DELETING", "DELETED")), wh_list[0])
+warehouse_id = wh["id"]
+print(f"Using warehouse: {wh['name']} ({warehouse_id})")
+
+# Check if Genie space already exists
+data_rooms = _api("GET", "/api/2.0/data-rooms")
+existing_room = next(
+    (r for r in data_rooms.get("data_rooms", [])
+     if r.get("display_name", "") == GENIE_NAME),
+    None,
+)
+
+if existing_room:
+    GENIE_SPACE_ID = existing_room.get("space_id") or existing_room.get("id")
+    print(f"Genie space already exists: {GENIE_SPACE_ID}")
+else:
+    print(f"Creating Genie space: {GENIE_NAME}")
+    room = _api("POST", "/api/2.0/data-rooms/", {
+        "display_name":      GENIE_NAME,
+        "description":       "AI-powered natural language interface for CGM glucose monitoring data",
+        "warehouse_id":      warehouse_id,
+        "table_identifiers": [GOLD_TABLE],
+        "run_as_type":       "VIEWER",
+    })
+    GENIE_SPACE_ID = room.get("space_id") or room.get("id")
+    print(f"Genie space created: {GENIE_SPACE_ID}")
+
+# Add instructions to the Genie space
+_api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
+    "title": "CGM Data Context",
+    "content": (
+        "This space contains continuous glucose monitoring (CGM) data. "
+        "Key columns: patient_id, device_id, reading_timestamp, glucose_value_mg_dl, "
+        "is_incident (device calibration bug flag), forecast_15m, forecast_30m, "
+        "diabetes_type, bmi, hba1c_baseline, device_model, calibration_status. "
+        "Normal range: 70-180 mg/dL. Hypoglycemia: <70. Hyperglycemia: >180."
+    ),
+    "instruction_type": "TEXT",
+})
+print(f"Genie Space ID: {GENIE_SPACE_ID}")
+
+# COMMAND ----------
+
+# MAGIC %md ## Part 3: Multi-Agent Supervisor
+
+# COMMAND ----------
+
+# DBTITLE 1, Create MAS Supervisor Agent
+MAS_TILE_ID = ""
+MAS_ENDPOINT_NAME = ""
+try:
+    tiles_mas = _api("GET", "/api/2.0/tiles", params={"tile_type": "MULTI_AGENT_SUPERVISOR"})
+    existing_mas = next(
+        (t for t in tiles_mas.get("tiles", [])
+         if t.get("name", "").lower() == MAS_NAME.lower()),
+        None,
+    )
+
+    if existing_mas:
+        MAS_TILE_ID = existing_mas["tile_id"]
+        print(f"MAS already exists: {MAS_TILE_ID}")
+    else:
+        print(f"Creating Supervisor Agent: {MAS_NAME}")
+        mas_resp = _api("POST", "/api/2.0/multi-agent-supervisors", {
+            "name":        MAS_NAME,
+            "description": "Clinical intelligence supervisor for the Glucosphere CGM platform",
+            "instructions": (
+                "You are GlucoScope, an AI clinical intelligence assistant for the Glucosphere CGM platform. "
+                "Route SQL/data questions about patient glucose readings, device incidents, "
+                "fleet statistics, and trends to the CGM Genie space. "
+                "Route questions about WHO diagnostic criteria, diabetes classification, "
+                "and clinical guidelines to the WHO Knowledge Assistant."
+            ),
+            "agents": [
+                {
+                    "name":        "CGM_Data_Explorer",
+                    "description": "Answers questions about patient glucose readings, device incidents, fleet statistics, time-in-range, and CGM trends by querying the gold table",
+                    "agent_type":  "genie",
+                    "genie_space": {"id": GENIE_SPACE_ID},
+                },
+                {
+                    "name":        "WHO_Guidelines_Assistant",
+                    "description": "Answers clinical questions about diabetes diagnosis, WHO criteria, diabetes types, and evidence-based guidelines",
+                    "agent_type":  "serving_endpoint",
+                    "serving_endpoint": {"name": KA_ENDPOINT_NAME},
+                },
+            ],
+        })
+        MAS_TILE_ID = (
+            mas_resp.get("multi_agent_supervisor", {}).get("tile", {}).get("tile_id")
+            or mas_resp.get("tile_id")
+        )
+        print(f"MAS created: tile_id={MAS_TILE_ID}")
+except Exception as e:
+    print(f"WARNING: MAS creation failed (non-fatal): {e}")
+    print("If this is a preview-feature error, enable 'Agent Framework: On-Behalf-Of-User Authorization' in workspace admin settings.")
+
+# COMMAND ----------
+
+# DBTITLE 1, Get MAS endpoint name (quick check, no long wait)
+if MAS_TILE_ID:
+    print("Fetching MAS status...")
+    for attempt in range(12):  # max ~2 min
+        mas_info = _api("GET", f"/api/2.0/multi-agent-supervisors/{MAS_TILE_ID}")
+        status = (
+            mas_info.get("multi_agent_supervisor", {})
+                    .get("status", {})
+                    .get("endpoint_status", "UNKNOWN")
+        )
+        MAS_ENDPOINT_NAME = (
+            mas_info.get("multi_agent_supervisor", {})
+                    .get("status", {})
+                    .get("endpoint_name", "")
+        )
+        print(f"  MAS status: {status} | endpoint: {MAS_ENDPOINT_NAME}")
+        if status in ("ONLINE", "FAILED", "ERROR") or MAS_ENDPOINT_NAME:
+            break
+        time.sleep(10)
+else:
+    print("Skipping MAS status check (MAS was not created).")
+print(f"MAS endpoint name: {MAS_ENDPOINT_NAME}")
+
+# COMMAND ----------
+
+# DBTITLE 1, Summary
+print("=" * 60)
+print("DEPLOYMENT COMPLETE")
+print("=" * 60)
+print(f"KA tile_id:     {KA_TILE_ID}")
+print(f"KA endpoint:    {KA_ENDPOINT_NAME}")
+print(f"Genie space ID: {GENIE_SPACE_ID}")
+print(f"MAS tile_id:    {MAS_TILE_ID}")
+print(f"MAS endpoint:   {MAS_ENDPOINT_NAME}")
+print()
+print("Update App/databricks/app.yaml with:")
+print(f"  ENDPOINT_NAME:  {MAS_ENDPOINT_NAME}")
+print(f"  GENIE_SPACE_ID: {GENIE_SPACE_ID}")

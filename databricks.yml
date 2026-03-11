@@ -1,0 +1,249 @@
+bundle:
+  name: glucosphere
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: ws_ward_pixels_catalog
+  schema:
+    description: Schema / database name
+    default: glucosphere
+  app_name:
+    description: Name of the Databricks App
+    default: glucosphere-dashboard
+  warehouse_id:
+    description: SQL warehouse ID used for data queries and permission grants
+    default: 51c4c056c19e474b
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: https://fevm-ws-ward-pixels.cloud.databricks.com
+    variables:
+      catalog: ws_ward_pixels_catalog
+      schema: glucosphere
+
+  prod:
+    workspace:
+      host: https://fevm-ws-ward-pixels.cloud.databricks.com
+    variables:
+      catalog: ws_ward_pixels_catalog
+      schema: glucosphere
+
+  azure:
+    workspace:
+      host: https://adb-7405619937790736.16.azuredatabricks.net
+    variables:
+      catalog: catalog_demo_nj4186
+      schema: glucosphere
+      warehouse_id: 88ea03d3ff69e0b4
+
+  azure2:
+    workspace:
+      host: https://adb-7405614266629280.0.azuredatabricks.net
+    variables:
+      catalog: warddbx
+      schema: glucosphere
+      warehouse_id: 73c7a9f94ef108ab
+
+resources:
+
+  # ---------------------------------------------------------------------------
+  # DLT Pipeline: Silver & Gold CGM Views
+  # Reads from landing_zone volume (populated by setup job) and produces:
+  #   silver_patient_registry, silver_device_telemetry_stream,
+  #   silver_patient_readings, gold_patient_device_readings
+  # ---------------------------------------------------------------------------
+  pipelines:
+    cgm_silver_gold:
+      name: glucosphere-cgm-silver-gold-${bundle.target}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      channel: CURRENT
+      continuous: false
+      serverless: true
+      libraries:
+        - file:
+            path: Data_DataGen_ModelForecast/utils/additional_patient_info/transformations.sql
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+
+  # ---------------------------------------------------------------------------
+  # Job: End-to-End Glucosphere Setup
+  #
+  # Task order:
+  #   1. generate_baseline        — synthetic diabetes data + baseline time-series
+  #   2. datagen_modeling         — CGM pseudo data generation + XGBoost model training
+  #   3. incident_inference       — simulate calibration bug incident, run inference
+  #   4. deploy_model_endpoints   — deploy 15m & 30m XGBoost forecast serving endpoints
+  #   5. create_patient_registry  — generate patient registry parquet → landing_zone
+  #   6. create_device_telemetry  — generate device telemetry parquet → landing_zone
+  #   7. generate_patient_device  — additional patient/device join data
+  #   8. run_dlt_pipeline         — trigger silver/gold DLT pipeline
+  #   9. create_genie_ka_mas      — create KA, Genie room, and MAS supervisor endpoint
+  #  10. grant_app_permissions    — grant app SP access to all resources
+  # ---------------------------------------------------------------------------
+  jobs:
+    glucosphere_full_setup:
+      name: glucosphere-full-setup-${bundle.target}
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+      tasks:
+        # ── Data Generation ────────────────────────────────────────────────
+        - task_key: generate_baseline
+          description: Generate synthetic baseline CGM data (diabetes_data + baseline_timeseries)
+          max_retries: 0
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/01_generate_synthetic_baseline.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
+        - task_key: datagen_modeling
+          description: Generate synthetic CGM data and train XGBoost glucose forecast models
+          max_retries: 0
+          depends_on:
+            - task_key: generate_baseline
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/04_CGM_PseudoGeneration_CleanData_Modeling.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+              ENV: dev
+              RUN_OPTUNA_TUNING: "false"
+          environment_key: default
+
+        - task_key: incident_inference
+          description: >
+            Simulate device calibration bug incident, run inference,
+            and produce pseudo_incident_7d_labeled table consumed by app
+          max_retries: 0
+          depends_on:
+            - task_key: datagen_modeling
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/05_CGM_Incident_Inference_DeviceCalibrationBug.py
+            base_parameters:
+              CATALOG_NAME:     ${var.catalog}
+              SCHEMA_NAME:      ${var.schema}
+              ENV: dev
+              INCLUDE_INCIDENT: "true"
+          environment_key: default
+
+        - task_key: deploy_model_endpoints
+          description: Deploy XGBoost 15m and 30m forecast models as serving endpoints
+          max_retries: 0
+          depends_on:
+            - task_key: datagen_modeling
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/06_DeployModel_as_ServingEndpoint.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
+        # ── Landing Zone Population ────────────────────────────────────────
+        # generate_patient_device_data must run first — it creates the patient_device
+        # table (from pseudo_incident_7d_labeled) that the registry and telemetry
+        # notebooks depend on for patient/device IDs.
+        - task_key: generate_patient_device_data
+          description: Create patient_device table from pseudo_incident_7d_labeled
+          max_retries: 0
+          depends_on:
+            - task_key: incident_inference
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Patient_Device Table.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema:  ${var.schema}
+          environment_key: default
+
+        - task_key: create_patient_registry
+          description: Generate synthetic patient registry parquet files into landing_zone volume
+          max_retries: 0
+          depends_on:
+            - task_key: generate_patient_device_data
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema:  ${var.schema}
+          environment_key: default
+
+        - task_key: create_device_telemetry
+          description: Generate synthetic device telemetry parquet files into landing_zone volume
+          max_retries: 0
+          depends_on:
+            - task_key: generate_patient_device_data
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Raw Device Data.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema:  ${var.schema}
+          environment_key: default
+
+        # ── DLT Pipeline ──────────────────────────────────────────────────
+        - task_key: run_dlt_pipeline
+          description: Run DLT pipeline to produce silver/gold CGM tables from landing_zone
+          max_retries: 0
+          depends_on:
+            - task_key: create_patient_registry
+            - task_key: create_device_telemetry
+            - task_key: deploy_model_endpoints
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.cgm_silver_gold.id}
+            full_refresh: false
+
+        # ── Intelligence Layer ────────────────────────────────────────────
+        - task_key: create_genie_ka_mas
+          description: Create WHO Knowledge Assistant, Genie room, and Multi-Agent Supervisor endpoint
+          max_retries: 0
+          depends_on:
+            - task_key: run_dlt_pipeline
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/09_Create_Genie_KA_MAS.py
+            base_parameters:
+              CATALOG_NAME:      ${var.catalog}
+              SCHEMA_NAME:       ${var.schema}
+              KA_NAME:           "Glucosphere-Knowledge-Assistant"
+              GENIE_NAME:        "Glucosphere CGM Intelligence"
+              MAS_NAME:          "Glucosphere-Supervisor"
+          environment_key: default
+
+        # ── Permissions ───────────────────────────────────────────────────
+        - task_key: grant_app_permissions
+          description: >
+            Grant the deployed app's service principal access to the catalog,
+            all serving endpoints, and the Genie space
+          max_retries: 0
+          depends_on:
+            - task_key: create_genie_ka_mas
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/10_Grant_App_Permissions.py
+            base_parameters:
+              CATALOG_NAME:      ${var.catalog}
+              SCHEMA_NAME:       ${var.schema}
+              APP_NAME:          ${var.app_name}
+              WAREHOUSE_ID:      ${var.warehouse_id}
+              # Endpoint names and Genie space ID are auto-discovered from
+              # the workspace if left empty, or can be set explicitly here.
+              MAS_ENDPOINT_NAME: ""
+              KA_ENDPOINT_NAME:  ""
+              GENIE_SPACE_ID:    ""
+          environment_key: default
+
+  # ---------------------------------------------------------------------------
+  # App: Glucosphere Dashboard
+  # ---------------------------------------------------------------------------
+  apps:
+    glucosphere_dashboard:
+      name: ${var.app_name}
+      description: >
+        Glucosphere CGM Intelligence Dashboard — continuous glucose monitoring
+        platform with AI-powered clinician insights, device anomaly detection,
+        and fleet-level incident analysis.
+      source_code_path: App/databricks

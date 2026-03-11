@@ -1,6 +1,26 @@
 command: ["python", "app.py"]
 env:
-  - name: DATABRICKS_HOST
-    value: "https://fe-vm-industry-solutions-buildathon.cloud.databricks.com"
-  - name: DATABRICKS_TOKEN
-    value: "${DATABRICKS_TOKEN}"
+  - name: ENDPOINT_NAME
+    value: "mas-f5254bd1-endpoint"
+  - name: GENIE_SPACE_ID
+    value: "01f11cce11d819e5ae9f8e99b5a97b8a"
+  - name: CATALOG_NAME
+    value: "catalog_demo_nj4186"
+  - name: SCHEMA_NAME
+    value: "glucosphere"
+resources:
+  - name: mas-endpoint
+    description: "Multi-Agent Supervisor serving endpoint"
+    serving_endpoint:
+      name: mas-f5254bd1-endpoint
+      permission: CAN_QUERY
+  - name: ka-endpoint
+    description: "WHO Knowledge Assistant serving endpoint"
+    serving_endpoint:
+      name: ka-237b0c58-endpoint
+      permission: CAN_QUERY
+  - name: sql-warehouse
+    description: "SQL warehouse for CGM data queries"
+    sql_warehouse:
+      id: 88ea03d3ff69e0b4
+      permission: CAN_USE

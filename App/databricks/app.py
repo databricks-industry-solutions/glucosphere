@@ -4,34 +4,82 @@ import requests
 
 app = Flask(__name__)
 
-# Databricks configuration
-DATABRICKS_HOST = os.getenv('DATABRICKS_HOST', 'https://fe-vm-industry-solutions-buildathon.cloud.databricks.com')
-DATABRICKS_TOKEN = os.getenv('DATABRICKS_TOKEN', '')
-ENDPOINT_NAME = 'mas-fe615d4c-endpoint'  # Testing new MAS endpoint (was: mas-1e573408-endpoint / HLS_MAS_glucosphere)
+# Static config (safe to read at startup)
+ENDPOINT_NAME = os.getenv('ENDPOINT_NAME', '')
+GENIE_SPACE_ID = os.getenv('GENIE_SPACE_ID', '')
+CATALOG_NAME  = os.getenv('CATALOG_NAME', 'ws_ward_pixels_catalog')
+SCHEMA_NAME   = os.getenv('SCHEMA_NAME',  'glucosphere')
 
-# Get the directory where this script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DIST_DIR = os.path.join(BASE_DIR, 'dist')
+DIST_DIR = os.path.join(BASE_DIR, 'static')
 
 print(f"[STARTUP] BASE_DIR: {BASE_DIR}")
-print(f"[STARTUP] DIST_DIR: {DIST_DIR}")
-print(f"[STARTUP] DIST_DIR exists: {os.path.exists(DIST_DIR)}")
+print(f"[STARTUP] STATIC_DIR: {DIST_DIR}")
+print(f"[STARTUP] STATIC_DIR exists: {os.path.exists(DIST_DIR)}")
 if os.path.exists(DIST_DIR):
-    print(f"[STARTUP] DIST contents: {os.listdir(DIST_DIR)}")
+    print(f"[STARTUP] STATIC contents: {os.listdir(DIST_DIR)}")
+
+# Log all Databricks env vars at startup for diagnosis
+db_vars = {k: v for k, v in os.environ.items() if k.startswith('DATABRICKS')}
+print(f"[STARTUP] Databricks env vars present: {list(db_vars.keys())}")
+print(f"[STARTUP] DATABRICKS_TOKEN set: {bool(os.getenv('DATABRICKS_TOKEN'))}")
+print(f"[STARTUP] DATABRICKS_HOST: {os.getenv('DATABRICKS_HOST', '(not set)')}")
+
+import time as _time
+_token_cache = {'token': '', 'expires_at': 0}
+
+def get_auth():
+    """Read auth credentials per-request, caching M2M token for 50 minutes."""
+    host = os.getenv('DATABRICKS_HOST', '')
+    if host and not host.startswith('https://'):
+        host = f'https://{host}'
+    token = os.getenv('DATABRICKS_TOKEN', '')
+    if not token:
+        now = _time.time()
+        if _token_cache['token'] and now < _token_cache['expires_at']:
+            return host, _token_cache['token']
+        client_id = os.getenv('DATABRICKS_CLIENT_ID', '')
+        client_secret = os.getenv('DATABRICKS_CLIENT_SECRET', '')
+        if client_id and client_secret:
+            print(f"[AUTH] Fetching M2M OAuth token (client_id={client_id[:8]}...)")
+            resp = requests.post(
+                f"{host}/oidc/v1/token",
+                data={
+                    'grant_type': 'client_credentials',
+                    'scope': 'all-apis',
+                    'client_id': client_id,
+                    'client_secret': client_secret,
+                },
+                timeout=30,
+            )
+            if resp.ok:
+                token = resp.json().get('access_token', '')
+                _token_cache['token'] = token
+                _token_cache['expires_at'] = now + 3000  # cache 50 min
+            else:
+                print(f"[AUTH] M2M token exchange failed: {resp.status_code} {resp.text[:200]}")
+        else:
+            print(f"[AUTH] No credentials available")
+    return host, token
 
 @app.route('/api/sql/query', methods=['POST'])
 def execute_sql():
     """Execute SQL queries via Databricks DBSQL MCP server."""
     try:
+        DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
         data = request.get_json()
         sql_query = data.get('query', '')
-        
+
         if not sql_query:
             return jsonify({'error': 'No SQL query provided'}), 400
-        
+
         if not DATABRICKS_TOKEN:
             return jsonify({'error': 'DATABRICKS_TOKEN not set'}), 500
-        
+
+        # Substitute catalog/schema placeholders so queries work across workspaces
+        sql_query = sql_query.replace('ws_ward_pixels_catalog.glucosphere', f'{CATALOG_NAME}.{SCHEMA_NAME}')
+        sql_query = sql_query.replace('hls_glucosphere.cgm', f'{CATALOG_NAME}.{SCHEMA_NAME}')
+
         mcp_sql_url = f"{DATABRICKS_HOST}/api/2.0/mcp/sql"
         
         payload = {
@@ -55,21 +103,32 @@ def execute_sql():
         )
         
         if response.ok:
-            return jsonify(response.json()), 200
+            resp_data = response.json()
+            is_error = resp_data.get('result', {}).get('isError', False)
+            structured = resp_data.get('result', {}).get('structuredContent', {})
+            sql_state = structured.get('status', {}).get('state', 'UNKNOWN')
+            print(f"[SQL] query='{sql_query[:80]}' isError={is_error} state={sql_state}")
+            if is_error:
+                content = resp_data.get('result', {}).get('content', [])
+                print(f"[SQL] MCP error content: {content}")
+            return jsonify(resp_data), 200
         else:
+            print(f"[SQL] HTTP error {response.status_code}: {response.text[:300]}")
             return jsonify({
                 'error': f'DBSQL MCP error: {response.status_code}',
                 'details': response.text
             }), response.status_code
-            
+
     except Exception as e:
+        import traceback
+        print(f"[SQL] Exception: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/genie/query', methods=['POST'])
 def query_genie():
     """Query CGM Genie room for natural language queries."""
     import time
-    
+    DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
     print(f"[GENIE] Received request")
     try:
         data = request.get_json()
@@ -86,8 +145,9 @@ def query_genie():
             print(f"[GENIE] DATABRICKS_TOKEN not set")
             return jsonify({'error': 'DATABRICKS_TOKEN not set'}), 500
         
-        # CGM Genie Space ID - Updated to use the correct room with gold table
-        space_id = '01f0ecde8dfa12f2bc27893a097f63a8'
+        if not GENIE_SPACE_ID:
+            return jsonify({'error': 'GENIE_SPACE_ID environment variable not set'}), 500
+        space_id = GENIE_SPACE_ID
         
         # Start or continue conversation
         if conversation_id:
@@ -220,6 +280,7 @@ def query_agent():
     This avoids CORS issues when running locally.
     """
     try:
+        DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
         # Get request data from frontend
         data = request.get_json()
         messages = data.get('messages', [])
@@ -231,7 +292,12 @@ def query_agent():
             return jsonify({
                 'error': 'DATABRICKS_TOKEN environment variable not set'
             }), 500
-        
+
+        if not ENDPOINT_NAME:
+            return jsonify({
+                'error': 'ENDPOINT_NAME environment variable not set'
+            }), 500
+
         # Construct the Databricks endpoint URL
         endpoint_url = f"{DATABRICKS_HOST}/serving-endpoints/{ENDPOINT_NAME}/invocations"
         
@@ -290,20 +356,37 @@ def query_agent():
                     'response_preview': response.text[:200]
                 }), 500
             
-            # Extract the text content from the Databricks response format
-            # Response format: {"output": [{"content": [{"text": "...", "type": "output_text"}]}]}
+            # Extract the final answer from the MAS response.
+            # The output array contains intermediate steps (planning, tool calls)
+            # followed by the final synthesized message. We want the LAST message-type
+            # item, which is the agent's final answer — not the first "I'll query..."
             if 'output' in response_data and len(response_data['output']) > 0:
-                output_content = response_data['output'][0].get('content', [])
-                if output_content and len(output_content) > 0:
-                    # Extract text from the first content item
-                    text_content = output_content[0].get('text', '')
-                    
-                    print(f"[AGENT] Successfully extracted response text (length: {len(text_content)})")
-                    
-                    # Return in a format the frontend expects
+                outputs = response_data['output']
+                print(f"[AGENT] output items: {len(outputs)}, types: {[o.get('type') for o in outputs]}")
+
+                # Find the last item that is a message with output_text content
+                text_content = None
+                for item in reversed(outputs):
+                    if item.get('type') == 'message':
+                        for c in item.get('content', []):
+                            if c.get('type') == 'output_text' and c.get('text', '').strip():
+                                text_content = c['text']
+                                break
+                    if text_content:
+                        break
+
+                # Fallback: last item regardless of type
+                if not text_content:
+                    last = outputs[-1]
+                    content = last.get('content', [])
+                    if content:
+                        text_content = content[-1].get('text', '') or content[0].get('text', '')
+
+                if text_content:
+                    print(f"[AGENT] Final response extracted (length: {len(text_content)})")
                     return jsonify({
                         'response': text_content,
-                        'raw': response_data  # Include raw response for debugging
+                        'raw': response_data
                     }), 200
             
             # Fallback: return the raw response if format is different
@@ -325,6 +408,15 @@ def query_agent():
         return jsonify({
             'error': str(e)
         }), 500
+
+@app.route('/api/config')
+def get_config():
+    """Expose non-secret config to the frontend."""
+    return jsonify({
+        'catalog': CATALOG_NAME,
+        'schema': SCHEMA_NAME,
+        'genie_space_id': GENIE_SPACE_ID,
+    })
 
 @app.route('/health')
 def health():

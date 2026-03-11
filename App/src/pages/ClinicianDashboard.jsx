@@ -455,10 +455,10 @@ export default function ClinicianDashboard() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-slate-500 font-mono">Hypoglycemia Risk</span>
-                    <span className="text-sm font-mono font-bold text-rose-400">HIGH - 78%</span>
+                    <span className="text-sm font-mono font-bold text-amber-400">MED - 78%</span>
                   </div>
                   <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-rose-500 to-rose-400" style={{ width: '78%' }} />
+                    <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: '78%' }} />
                   </div>
                 </div>
                 
@@ -483,7 +483,7 @@ export default function ClinicianDashboard() {
                 </div>
               </div>
               
-              <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-400">
+              <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-400">
                 <p className="font-mono mb-1">⚠️ Key Driver:</p>
                 <p>Nocturnal hypoglycemia pattern + recent basal insulin adjustment</p>
               </div>

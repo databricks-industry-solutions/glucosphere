@@ -14,7 +14,7 @@ export async function getIncidentImpactData() {
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         incident_type as incident_label,
         ABS(glucose_observed - glucose_true) + 5.0 as error_value
-      FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 
@@ -89,7 +89,7 @@ export async function getGlucoseTimelineData() {
         glucose_observed as glucose_device,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         (glucose_observed - glucose_true) as device_bias
-      FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 
@@ -164,7 +164,7 @@ export async function getIncidentSummary() {
         (glucose_observed - glucose_true) as bias,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         incident_type
-      FROM hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105
+      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 
