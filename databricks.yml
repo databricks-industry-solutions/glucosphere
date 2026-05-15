@@ -56,6 +56,18 @@ targets:
       schema: glucosphere
       warehouse_id: 73c7a9f94ef108ab
 
+  # Backup / portability-test target on May's personal MMT workspace.
+  # Has plenty of app-cap headroom (1/100 used) so unblocked from the
+  # fe-vm-hls-amer cap issue. No frozen reference catalogs here — only
+  # synthetic or HUPA-UCM-download baseline modes will work.
+  mmt_aws_usw2:
+    workspace:
+      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
+    variables:
+      catalog: mmt_aws_usw2_catalog
+      schema: glucosphere_dev
+      warehouse_id: dafc5dff8eb8094a   # Serverless Starter Warehouse (Small)
+
 resources:
 
   # ---------------------------------------------------------------------------
