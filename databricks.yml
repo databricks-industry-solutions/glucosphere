@@ -14,8 +14,8 @@ variables:
   baseline_source:
     description: |
       Which baseline ingest path the job runs at the head of the pipeline.
-      "synthetic" → 01_generate_synthetic_baseline.py (textbook phenotypes + AR(1)).
-      "real"      → 01_ingest_real_baseline.py (HUPA-UCM download OR existing UC table — sub-option set inside the notebook).
+      "synthetic" → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1)).
+      "real"      → dual_01_ingest_real_baseline.py (HUPA-UCM download OR existing UC table — sub-option set inside the notebook).
     default: synthetic
   app_name:
     description: Name of the Databricks App
@@ -132,7 +132,7 @@ resources:
             - task_key: dispatch_baseline_source
               outcome: "true"
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/01_generate_synthetic_baseline.py
+            notebook_path: Data_DataGen_ModelForecast/dual_01_generate_synthetic_baseline.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -145,7 +145,7 @@ resources:
             - task_key: dispatch_baseline_source
               outcome: "false"
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/01_ingest_real_baseline.py
+            notebook_path: Data_DataGen_ModelForecast/dual_01_ingest_real_baseline.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}

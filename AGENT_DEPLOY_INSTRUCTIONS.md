@@ -331,7 +331,8 @@ hls-glucosphere/
 │   ├── src/                                ← React source
 │   └── vite.config.js
 ├── Data_DataGen_ModelForecast/
-│   ├── 01_generate_synthetic_baseline.py
+│   ├── dual_01_generate_synthetic_baseline.py      ← cloned from cleanup branch + dual-baseline checks
+│   ├── dual_01_ingest_real_baseline.py             ← real-data ingest (stub; implemented in plan's Commit C.2/C.3)
 │   ├── 04_CGM_PseudoGeneration_CleanData_Modeling.py
 │   ├── 05_CGM_Incident_Inference_DeviceCalibrationBug.py
 │   ├── 06_DeployModel_as_ServingEndpoint.py

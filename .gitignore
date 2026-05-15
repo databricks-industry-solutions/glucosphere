@@ -103,3 +103,6 @@ App/.env
 # Local working notes / investigation snapshots
 # (un-ignore on a dedicated notes/docs branch if/when consolidating)
 ref_notes/
+
+# Cloned originals from cleanup branch — kept for reference, not in active tree
+previous/
