@@ -99,3 +99,7 @@ config/databricks_config_*.json
 
 # App env (do not commit secrets)
 App/.env
+
+# Local working notes / investigation snapshots
+# (un-ignore on a dedicated notes/docs branch if/when consolidating)
+ref_notes/

@@ -47,6 +47,14 @@ targets:
       schema: glucosphere
       warehouse_id: 73c7a9f94ef108ab
 
+  hls_amer:
+    workspace:
+      host: https://fe-vm-hls-amer.cloud.databricks.com
+    variables:
+      catalog: hls_amer_catalog
+      schema: glucosphere_dev
+      warehouse_id: d9af05523dafe3a6   # HLS AMER SQL Warehouse
+
 resources:
 
   # ---------------------------------------------------------------------------

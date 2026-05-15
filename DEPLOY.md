@@ -172,6 +172,54 @@ Or manage through the UI: **Apps → glucosphere-dashboard**
 
 ---
 
+## Target: `hls_amer` (fe-vm-hls-amer workspace)
+
+Added on `feature/dual-baseline-hls-amer` branch for HLS-AMER buildathon work. Backbone is the cleanup branch; only differences are a new bundle target and a render script for `app.yaml` templating.
+
+**Variables (`targets.hls_amer` in `databricks.yml`):**
+
+| Variable | Value |
+|---|---|
+| `catalog` | `hls_amer_catalog` |
+| `schema` | `glucosphere_dev` |
+| `warehouse_id` | `d9af05523dafe3a6` (HLS AMER SQL Warehouse) |
+| host | `fe-vm-hls-amer.cloud.databricks.com` |
+
+**Workflow:**
+
+```bash
+# 1. Render app.yaml for hls_amer (rewrites catalog/schema/warehouse in place)
+python scripts/render_app_yaml.py --target hls_amer
+
+# 2. Deploy the bundle (job + DLT pipeline + app shell + permission grants)
+databricks bundle deploy -t hls_amer
+
+# 3. Run the full setup job (data gen → ML training → endpoint deploy → Genie + KA + MAS creation)
+databricks bundle run glucosphere_full_setup -t hls_amer
+
+# 4. After step 3 completes, re-render with discovered IDs and redeploy the app
+python scripts/render_app_yaml.py --target hls_amer \
+    --mas-endpoint   <name-from-step-3>  \
+    --ka-endpoint    <name-from-step-3>  \
+    --genie-space-id <id-from-step-3>
+databricks bundle deploy -t hls_amer
+```
+
+`render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. The committed `app.yaml` keeps the `azure`-target values as the default fallback, so `dev`/`prod`/`azure`/`azure2` deployments don't require the render step.
+
+**Grants preflight — the deployed app's service principal needs:**
+
+- `USE CATALOG hls_amer_catalog`
+- `USE SCHEMA hls_amer_catalog.glucosphere_dev`
+- `SELECT` on the silver / gold tables consumed by the Flask app
+- `CAN_USE` on warehouse `d9af05523dafe3a6` (handled by the `sql-warehouse` resource block in `app.yaml`)
+- `CAN_QUERY` on the MAS and KA serving endpoints (handled by the `mas-endpoint` / `ka-endpoint` resource blocks)
+- `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `10_Grant_App_Permissions.py` during the setup job)
+
+The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
+
+---
+
 ## Teardown
 
 ```bash
