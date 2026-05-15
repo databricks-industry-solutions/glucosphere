@@ -336,7 +336,7 @@ hls-glucosphere/
 │   ├── 04_CGM_PseudoGeneration_CleanData_Modeling.py
 │   ├── 05_CGM_Incident_Inference_DeviceCalibrationBug.py
 │   ├── 06_DeployModel_as_ServingEndpoint.py
-│   ├── 09_Create_Genie_KA_MAS.py          ← Creates KA + Genie + MAS
+│   ├── dual_09_Create_Genie_KA_MAS.py     ← Creates KA + Genie + MAS (with KA-ready wait + fail-fast)
 │   ├── 10_Grant_App_Permissions.py         ← Grants SP access to all resources
 │   └── utils/additional_patient_info/      ← Patient/device data generators
 └── scripts/

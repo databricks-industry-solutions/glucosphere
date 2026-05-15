@@ -254,7 +254,7 @@ resources:
           depends_on:
             - task_key: run_dlt_pipeline
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/09_Create_Genie_KA_MAS.py
+            notebook_path: Data_DataGen_ModelForecast/dual_09_Create_Genie_KA_MAS.py
             base_parameters:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}

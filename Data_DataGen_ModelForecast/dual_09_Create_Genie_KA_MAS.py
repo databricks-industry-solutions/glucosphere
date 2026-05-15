@@ -136,12 +136,21 @@ else:
 
 # COMMAND ----------
 
-# DBTITLE 1, Get KA endpoint name (quick check, no long wait)
-print("Fetching KA status...")
+# DBTITLE 1, Wait for KA endpoint to be ONLINE (blocks MAS creation otherwise)
+# Previously this was a "quick check, no long wait" that broke out the loop as
+# soon as the endpoint NAME was populated — even if status was still PENDING.
+# That race let MAS creation race ahead and silently fail when it tried to
+# reference a KA endpoint that wasn't actually ready.
+# Fix: require status == ONLINE before proceeding. Bump max wait to 10 min.
+print("Waiting for KA endpoint to be ONLINE...")
 KA_ENDPOINT_NAME = ""
-for attempt in range(12):  # max ~2 min
+KA_STATUS = "UNKNOWN"
+KA_WAIT_MAX_SEC = 600   # 10 min — KA serving endpoints commonly take 3-7 min
+KA_POLL_SEC = 15
+ka_wait_start = time.time()
+while time.time() - ka_wait_start < KA_WAIT_MAX_SEC:
     ka_info = _api("GET", f"/api/2.0/knowledge-assistants/{KA_TILE_ID}")
-    status = (
+    KA_STATUS = (
         ka_info.get("knowledge_assistant", {})
                .get("status", {})
                .get("endpoint_status", "UNKNOWN")
@@ -151,11 +160,20 @@ for attempt in range(12):  # max ~2 min
                .get("status", {})
                .get("endpoint_name", "")
     )
-    print(f"  KA status: {status} | endpoint: {KA_ENDPOINT_NAME}")
-    if status in ("ONLINE", "FAILED", "ERROR") or KA_ENDPOINT_NAME:
+    elapsed = int(time.time() - ka_wait_start)
+    print(f"  [{elapsed:>3}s] KA status: {KA_STATUS} | endpoint: {KA_ENDPOINT_NAME}")
+    if KA_STATUS == "ONLINE" and KA_ENDPOINT_NAME:
         break
-    time.sleep(10)
-print(f"KA endpoint name: {KA_ENDPOINT_NAME}")
+    if KA_STATUS in ("FAILED", "ERROR"):
+        raise RuntimeError(f"KA endpoint creation failed: status={KA_STATUS}")
+    time.sleep(KA_POLL_SEC)
+else:
+    raise RuntimeError(
+        f"KA endpoint did not reach ONLINE within {KA_WAIT_MAX_SEC}s "
+        f"(last status: {KA_STATUS}, endpoint: {KA_ENDPOINT_NAME}). "
+        f"MAS creation depends on KA being ready; aborting."
+    )
+print(f"✓ KA endpoint ready: {KA_ENDPOINT_NAME}")
 
 # COMMAND ----------
 
@@ -216,54 +234,57 @@ print(f"Genie Space ID: {GENIE_SPACE_ID}")
 # COMMAND ----------
 
 # DBTITLE 1, Create MAS Supervisor Agent
+# Previously wrapped in `try/except Exception` with "non-fatal" warning, which
+# silently swallowed real failures (the task would succeed in DABs even when
+# MAS was never created — caught 2026-05-15 on mmt_aws_usw2 L3 test). Fix: let
+# errors propagate. KA-ready wait above is the precondition that makes this
+# safe to fail fast. If a real preview-feature toggle is needed, the error
+# message will surface it cleanly instead of hiding behind a print.
 MAS_TILE_ID = ""
 MAS_ENDPOINT_NAME = ""
-try:
-    tiles_mas = _api("GET", "/api/2.0/tiles", params={"tile_type": "MULTI_AGENT_SUPERVISOR"})
-    existing_mas = next(
-        (t for t in tiles_mas.get("tiles", [])
-         if t.get("name", "").lower() == MAS_NAME.lower()),
-        None,
-    )
 
-    if existing_mas:
-        MAS_TILE_ID = existing_mas["tile_id"]
-        print(f"MAS already exists: {MAS_TILE_ID}")
-    else:
-        print(f"Creating Supervisor Agent: {MAS_NAME}")
-        mas_resp = _api("POST", "/api/2.0/multi-agent-supervisors", {
-            "name":        MAS_NAME,
-            "description": "Clinical intelligence supervisor for the Glucosphere CGM platform",
-            "instructions": (
-                "You are GlucoScope, an AI clinical intelligence assistant for the Glucosphere CGM platform. "
-                "Route SQL/data questions about patient glucose readings, device incidents, "
-                "fleet statistics, and trends to the CGM Genie space. "
-                "Route questions about WHO diagnostic criteria, diabetes classification, "
-                "and clinical guidelines to the WHO Knowledge Assistant."
-            ),
-            "agents": [
-                {
-                    "name":        "CGM_Data_Explorer",
-                    "description": "Answers questions about patient glucose readings, device incidents, fleet statistics, time-in-range, and CGM trends by querying the gold table",
-                    "agent_type":  "genie",
-                    "genie_space": {"id": GENIE_SPACE_ID},
-                },
-                {
-                    "name":        "WHO_Guidelines_Assistant",
-                    "description": "Answers clinical questions about diabetes diagnosis, WHO criteria, diabetes types, and evidence-based guidelines",
-                    "agent_type":  "serving_endpoint",
-                    "serving_endpoint": {"name": KA_ENDPOINT_NAME},
-                },
-            ],
-        })
-        MAS_TILE_ID = (
-            mas_resp.get("multi_agent_supervisor", {}).get("tile", {}).get("tile_id")
-            or mas_resp.get("tile_id")
-        )
-        print(f"MAS created: tile_id={MAS_TILE_ID}")
-except Exception as e:
-    print(f"WARNING: MAS creation failed (non-fatal): {e}")
-    print("If this is a preview-feature error, enable 'Agent Framework: On-Behalf-Of-User Authorization' in workspace admin settings.")
+tiles_mas = _api("GET", "/api/2.0/tiles", params={"tile_type": "MULTI_AGENT_SUPERVISOR"})
+existing_mas = next(
+    (t for t in tiles_mas.get("tiles", [])
+     if t.get("name", "").lower() == MAS_NAME.lower()),
+    None,
+)
+
+if existing_mas:
+    MAS_TILE_ID = existing_mas["tile_id"]
+    print(f"MAS already exists: {MAS_TILE_ID}")
+else:
+    print(f"Creating Supervisor Agent: {MAS_NAME}")
+    mas_resp = _api("POST", "/api/2.0/multi-agent-supervisors", {
+        "name":        MAS_NAME,
+        "description": "Clinical intelligence supervisor for the Glucosphere CGM platform",
+        "instructions": (
+            "You are GlucoScope, an AI clinical intelligence assistant for the Glucosphere CGM platform. "
+            "Route SQL/data questions about patient glucose readings, device incidents, "
+            "fleet statistics, and trends to the CGM Genie space. "
+            "Route questions about WHO diagnostic criteria, diabetes classification, "
+            "and clinical guidelines to the WHO Knowledge Assistant."
+        ),
+        "agents": [
+            {
+                "name":        "CGM_Data_Explorer",
+                "description": "Answers questions about patient glucose readings, device incidents, fleet statistics, time-in-range, and CGM trends by querying the gold table",
+                "agent_type":  "genie",
+                "genie_space": {"id": GENIE_SPACE_ID},
+            },
+            {
+                "name":        "WHO_Guidelines_Assistant",
+                "description": "Answers clinical questions about diabetes diagnosis, WHO criteria, diabetes types, and evidence-based guidelines",
+                "agent_type":  "serving_endpoint",
+                "serving_endpoint": {"name": KA_ENDPOINT_NAME},
+            },
+        ],
+    })
+    MAS_TILE_ID = (
+        mas_resp.get("multi_agent_supervisor", {}).get("tile", {}).get("tile_id")
+        or mas_resp.get("tile_id")
+    )
+    print(f"MAS created: tile_id={MAS_TILE_ID}")
 
 # COMMAND ----------
 
