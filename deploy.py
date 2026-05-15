@@ -196,9 +196,9 @@ def step_bundle_deploy():
 
 def step_run_setup_job():
     with Step("Run setup job (generate baseline → train models)"):
-        job_id = get_job_id(f"glucosphere-setup-dev")
+        job_id = get_job_id(f"glucosphere-setup-ward_consolidated")
         if not job_id:
-            print("  ✗ Could not find glucosphere-setup-dev job", file=sys.stderr)
+            print("  ✗ Could not find glucosphere-setup-ward_consolidated job", file=sys.stderr)
             sys.exit(1)
         print(f"  Job ID: {job_id}")
         data   = api_post("/api/2.1/jobs/run-now", {"job_id": job_id})
@@ -209,7 +209,7 @@ def step_run_setup_job():
 
 def step_run_dlt():
     with Step("Run DLT pipeline (silver → gold tables)"):
-        pipeline_name = f"glucosphere-cgm-silver-gold-dev"
+        pipeline_name = f"glucosphere-cgm-silver-gold-ward_consolidated"
         pipeline_id   = get_pipeline_id(pipeline_name)
         if not pipeline_id:
             print(f"  ✗ Could not find pipeline: {pipeline_name}", file=sys.stderr)
@@ -266,7 +266,7 @@ def step_create_mas_endpoint():
         # Submit notebook 07 as a one-time job run
         nb_workspace_path = (
             f"/Workspace/Users/justin.ward@databricks.com"
-            f"/.bundle/glucosphere/dev/files/{NB_MAS.replace('.py', '')}"
+            f"/.bundle/glucosphere/ward_consolidated/files/{NB_MAS.replace('.py', '')}"
         )
         payload = {
             "run_name": "glucosphere-create-mas",

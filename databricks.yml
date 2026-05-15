@@ -4,32 +4,35 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog catalog name
-    default: ws_ward_pixels_catalog
+    default: hls_amer_catalog
   schema:
     description: Schema / database name
-    default: glucosphere
+    default: glucosphere_dev
+  volume:
+    description: UC Volume name for the landing-zone data feeding the DLT pipeline
+    default: landing_zone
   app_name:
     description: Name of the Databricks App
     default: glucosphere-dashboard
   warehouse_id:
     description: SQL warehouse ID used for data queries and permission grants
-    default: 51c4c056c19e474b
+    default: d9af05523dafe3a6   # HLS AMER SQL Warehouse on fe-vm-hls-amer
 
 targets:
-  dev:
+  hls_amer:
     default: true
     workspace:
-      host: https://fevm-ws-ward-pixels.cloud.databricks.com
-    variables:
-      catalog: ws_ward_pixels_catalog
-      schema: glucosphere
+      host: https://fe-vm-hls-amer.cloud.databricks.com
+    # No variables: block — defaults above already match this target.
 
-  prod:
+  # Ward's consolidated workspace (was dev + prod, which were identical).
+  ward_consolidated:
     workspace:
       host: https://fevm-ws-ward-pixels.cloud.databricks.com
     variables:
       catalog: ws_ward_pixels_catalog
       schema: glucosphere
+      warehouse_id: 51c4c056c19e474b
 
   azure:
     workspace:
@@ -46,14 +49,6 @@ targets:
       catalog: warddbx
       schema: glucosphere
       warehouse_id: 73c7a9f94ef108ab
-
-  hls_amer:
-    workspace:
-      host: https://fe-vm-hls-amer.cloud.databricks.com
-    variables:
-      catalog: hls_amer_catalog
-      schema: glucosphere_dev
-      warehouse_id: d9af05523dafe3a6   # HLS AMER SQL Warehouse
 
 resources:
 

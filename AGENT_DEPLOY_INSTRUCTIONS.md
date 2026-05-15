@@ -163,8 +163,8 @@ databricks bundle deploy \
 
 This deploys to the workspace:
 - Notebooks (all `Data_DataGen_ModelForecast/*.py` + utils)
-- DLT pipeline (`glucosphere-cgm-silver-gold-dev`)
-- Job (`glucosphere-full-setup-dev`)
+- DLT pipeline (`glucosphere-cgm-silver-gold-<target>`)
+- Job (`glucosphere-full-setup-<target>`)
 - App (`glucosphere-dashboard`)
 
 Verify deployment:
@@ -206,7 +206,7 @@ Monitor progress:
 # Get the run ID from the output of the run command, then:
 databricks runs get --run-id <run-id> --profile ward-demo
 ```
-Or watch in the UI: **Workflows → glucosphere-full-setup-dev**
+Or watch in the UI: **Workflows → glucosphere-full-setup-`<target>`**
 
 ---
 

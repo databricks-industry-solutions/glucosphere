@@ -137,7 +137,7 @@ After the setup job completes, trigger the DLT pipeline to build silver and gold
 databricks bundle run cgm_silver_gold
 ```
 
-Or in the Databricks UI: **Pipelines → glucosphere-cgm-silver-gold-dev → Start**
+Or in the Databricks UI: **Pipelines → glucosphere-cgm-silver-gold-${bundle.target} → Start**
 
 ---
 
@@ -205,7 +205,7 @@ python scripts/render_app_yaml.py --target hls_amer \
 databricks bundle deploy -t hls_amer
 ```
 
-`render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. The committed `app.yaml` keeps the `azure`-target values as the default fallback, so `dev`/`prod`/`azure`/`azure2` deployments don't require the render step.
+`render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. The committed `app.yaml` keeps the `azure`-target values as the default fallback, so deployments to `ward_consolidated` / `azure` / `azure2` don't strictly require the render step (catalog/schema/warehouse will differ from what `app.yaml` declares, but the resource blocks still match `azure`).
 
 **Grants preflight — the deployed app's service principal needs:**
 
