@@ -183,6 +183,7 @@ Added on `feature/dual-baseline-hls-amer` branch for HLS-AMER buildathon work. B
 | `catalog` | `hls_amer_catalog` |
 | `schema` | `glucosphere_dev` |
 | `warehouse_id` | `d9af05523dafe3a6` (HLS AMER SQL Warehouse) |
+| `baseline_source` | `synthetic` (default — set to anything else to run the real-baseline branch via `01_ingest_real_baseline.py`) |
 | host | `fe-vm-hls-amer.cloud.databricks.com` |
 
 **Workflow:**

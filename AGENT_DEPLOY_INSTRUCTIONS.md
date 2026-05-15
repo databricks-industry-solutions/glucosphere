@@ -184,12 +184,14 @@ databricks bundle run glucosphere_full_setup \
   --var warehouse_id=<your-warehouse-id>
 ```
 
-This single job runs all 10 tasks in order:
+This single job runs in order:
 
 | # | Task | What it does |
 |---|------|-------------|
-| 1 | `generate_baseline` | Synthetic diabetes data + baseline time-series |
-| 2 | `datagen_modeling` | CGM pseudo data generation + XGBoost model training |
+| 1a | `dispatch_baseline_source` | Branches on `${var.baseline_source}` ("synthetic" vs anything else) |
+| 1b | `generate_synthetic_baseline` | Runs if baseline_source == "synthetic" — textbook phenotypes + AR(1) → `diabetes_data` |
+| 1c | `ingest_real_baseline` | Runs if baseline_source != "synthetic" — HUPA-UCM download OR existing UC table → `diabetes_data` (stub until Commit C) |
+| 2 | `datagen_modeling` | CGM pseudo data generation + XGBoost model training (depends on 1b OR 1c via `run_if: AT_LEAST_ONE_SUCCESS`) |
 | 3 | `incident_inference` | Simulate calibration bug, produce incident table |
 | 4 | `deploy_model_endpoints` | Deploy 15m + 30m forecast serving endpoints |
 | 5 | `create_patient_registry` | Patient registry parquet → landing_zone volume |

@@ -11,6 +11,12 @@ variables:
   volume:
     description: UC Volume name for the landing-zone data feeding the DLT pipeline
     default: landing_zone
+  baseline_source:
+    description: |
+      Which baseline ingest path the job runs at the head of the pipeline.
+      "synthetic" → 01_generate_synthetic_baseline.py (textbook phenotypes + AR(1)).
+      "real"      → 01_ingest_real_baseline.py (HUPA-UCM download OR existing UC table — sub-option set inside the notebook).
+    default: synthetic
   app_name:
     description: Name of the Databricks App
     default: glucosphere-dashboard
@@ -77,16 +83,19 @@ resources:
   # Job: End-to-End Glucosphere Setup
   #
   # Task order:
-  #   1. generate_baseline        — synthetic diabetes data + baseline time-series
-  #   2. datagen_modeling         — CGM pseudo data generation + XGBoost model training
-  #   3. incident_inference       — simulate calibration bug incident, run inference
-  #   4. deploy_model_endpoints   — deploy 15m & 30m XGBoost forecast serving endpoints
-  #   5. create_patient_registry  — generate patient registry parquet → landing_zone
-  #   6. create_device_telemetry  — generate device telemetry parquet → landing_zone
-  #   7. generate_patient_device  — additional patient/device join data
-  #   8. run_dlt_pipeline         — trigger silver/gold DLT pipeline
-  #   9. create_genie_ka_mas      — create KA, Genie room, and MAS supervisor endpoint
-  #  10. grant_app_permissions    — grant app SP access to all resources
+  #   1a. dispatch_baseline_source     — branches on ${var.baseline_source}
+  #   1b. generate_synthetic_baseline  — runs if baseline_source == "synthetic"
+  #   1c. ingest_real_baseline         — runs if baseline_source != "synthetic"
+  #   2.  datagen_modeling             — CGM pseudo data generation + XGBoost training
+  #                                      (depends on either 1b or 1c via run_if=AT_LEAST_ONE_SUCCESS)
+  #   3.  incident_inference           — simulate calibration bug incident, run inference
+  #   4.  deploy_model_endpoints       — deploy 15m & 30m XGBoost forecast serving endpoints
+  #   5.  create_patient_registry      — generate patient registry parquet → landing_zone
+  #   6.  create_device_telemetry      — generate device telemetry parquet → landing_zone
+  #   7.  generate_patient_device      — additional patient/device join data
+  #   8.  run_dlt_pipeline             — trigger silver/gold DLT pipeline
+  #   9.  create_genie_ka_mas          — create KA, Genie room, and MAS supervisor endpoint
+  #  10.  grant_app_permissions        — grant app SP access to all resources
   # ---------------------------------------------------------------------------
   jobs:
     glucosphere_full_setup:
@@ -96,12 +105,35 @@ resources:
           spec:
             client: "1"
       tasks:
-        # ── Data Generation ────────────────────────────────────────────────
-        - task_key: generate_baseline
+        # ── Baseline ingest dispatch ───────────────────────────────────────
+        - task_key: dispatch_baseline_source
+          description: Branch on ${var.baseline_source} — synthetic vs real baseline ingest
+          condition_task:
+            op: EQUAL_TO
+            left: ${var.baseline_source}
+            right: "synthetic"
+
+        - task_key: generate_synthetic_baseline
           description: Generate synthetic baseline CGM data (diabetes_data + baseline_timeseries)
           max_retries: 0
+          depends_on:
+            - task_key: dispatch_baseline_source
+              outcome: "true"
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/01_generate_synthetic_baseline.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
+        - task_key: ingest_real_baseline
+          description: Ingest real baseline (HUPA-UCM download or existing UC table — sub-option set inside notebook)
+          max_retries: 0
+          depends_on:
+            - task_key: dispatch_baseline_source
+              outcome: "false"
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/01_ingest_real_baseline.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -111,7 +143,9 @@ resources:
           description: Generate synthetic CGM data and train XGBoost glucose forecast models
           max_retries: 0
           depends_on:
-            - task_key: generate_baseline
+            - task_key: generate_synthetic_baseline
+            - task_key: ingest_real_baseline
+          run_if: AT_LEAST_ONE_SUCCESS
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/04_CGM_PseudoGeneration_CleanData_Modeling.py
             base_parameters:
