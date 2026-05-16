@@ -110,6 +110,8 @@ resources:
   #
   #   validate_baseline_source       (enum + banner — fail-fast typo guard)
   #            ↓
+  #   check_pre_baseline_grants      (verify catalog/schema/table/volume/function perms before any work)
+  #            ↓
   #   dispatch_baseline_source       (condition_task: == "synthetic"?)
   #            ↓                ↓
   #    true ↙               ↘ false
@@ -133,7 +135,9 @@ resources:
   #               ↘                    ↓
   #                ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
   #                 ↘                  ↓
-  #                  ↘        grant_app_permissions  (app SP access on UC + endpoints)
+  #                  ↘    check_post_endpoint_grants (verify KA/MAS/Genie exist before grant_app_permissions)
+  #                   ↘                ↓
+  #                    ↘     grant_app_permissions  (app SP access on UC + endpoints)
   # ---------------------------------------------------------------------------
   jobs:
     glucosphere_full_setup:
@@ -158,11 +162,24 @@ resources:
               SOURCE_TABLE:    ${var.source_table}
           environment_key: default
 
+        # ── Pre-baseline grants check ──────────────────────────────────────
+        - task_key: check_pre_baseline_grants
+          description: Verify UC permissions needed by baseline + modeling tasks (fail-fast on missing grants)
+          max_retries: 0
+          depends_on:
+            - task_key: validate_baseline_source
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/dual_check_pre_baseline_grants.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
         # ── Baseline ingest dispatch ───────────────────────────────────────
         - task_key: dispatch_baseline_source
           description: Branch on ${var.baseline_source} — synthetic vs real baseline ingest
           depends_on:
-            - task_key: validate_baseline_source
+            - task_key: check_pre_baseline_grants
           condition_task:
             op: EQUAL_TO
             left: ${var.baseline_source}
@@ -323,6 +340,22 @@ resources:
               MAS_NAME:          "Glucosphere-Supervisor"
           environment_key: default
 
+        # ── Post-endpoint grants check ────────────────────────────────────
+        - task_key: check_post_endpoint_grants
+          description: Verify KA + MAS + Genie resources exist before grant_app_permissions runs
+          max_retries: 0
+          depends_on:
+            - task_key: create_genie_ka_mas
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/dual_check_post_endpoint_grants.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+              KA_NAME:      "Glucosphere-Knowledge-Assistant"
+              MAS_NAME:     "Glucosphere-Supervisor"
+              GENIE_NAME:   "Glucosphere CGM Intelligence"
+          environment_key: default
+
         # ── Permissions ───────────────────────────────────────────────────
         - task_key: grant_app_permissions
           description: >
@@ -330,7 +363,7 @@ resources:
             all serving endpoints, and the Genie space
           max_retries: 0
           depends_on:
-            - task_key: create_genie_ka_mas
+            - task_key: check_post_endpoint_grants
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/10_Grant_App_Permissions.py
             base_parameters:

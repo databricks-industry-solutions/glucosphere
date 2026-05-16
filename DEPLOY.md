@@ -127,6 +127,8 @@ This runs the end-to-end pipeline below.
 ```
 validate_baseline_source       (enum check on baseline_source; print run banner)
          ↓
+check_pre_baseline_grants      (verify catalog/schema/table/volume/function perms)
+         ↓
 dispatch_baseline_source       (condition_task: baseline_source == "synthetic"?)
          ↓                ↓
   true  ↙               ↘  false
@@ -151,7 +153,9 @@ deploy_model_endpoints       generate_patient_device_data
             ↘                    ↓
              ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
               ↘                  ↓
-               ↘        grant_app_permissions  (app SP access on UC + endpoints)
+               ↘ check_post_endpoint_grants    (verify KA/MAS/Genie exist before grant)
+                ↘                ↓
+                 ↘    grant_app_permissions    (app SP access on UC + endpoints)
 ```
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
