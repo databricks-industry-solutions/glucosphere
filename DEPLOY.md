@@ -212,6 +212,23 @@ Or manage through the UI: **Apps → glucosphere-dashboard**
 
 ---
 
+## Step 11: Smoke-test the deployed app
+
+Before declaring the deployment "done," walk through these checks in the browser. Each catches a specific class of post-deploy issue (UI build, backend wiring, agent endpoints, Genie binding, data access). All should complete in <5 minutes.
+
+Open the app URL from `databricks apps get glucosphere-dashboard --output json | jq -r .url`, then:
+
+- [ ] **Home page loads** — no blank screen, no JS console errors. (If blank: React frontend wasn't built; run `npm run build` in `App/` and re-do `apps deploy`.)
+- [ ] **Navigate to "Device Support Dashboard"** in the left sidebar. Device table populates with rows. (If empty: gold table `${catalog}.${schema}.gold_patient_device_readings` not populated → DLT pipeline didn't run successfully.)
+- [ ] **Click a device row → "Run Clinical Analysis"** — wait ~30-60s. Text analysis appears with device-specific glucose stats. (If 404 ENDPOINT_NOT_FOUND: `app.yaml` references a deleted MAS endpoint — re-render with current `mas-<hash>-endpoint`. If 403 PERMISSION_DENIED: re-run `grant_app_permissions` task.)
+- [ ] **Open Genie (or Chat / Ask) panel** and ask a natural-language question like *"How many distinct devices reported in the last hour?"* — response should include a SQL query and a result. (If errors: GENIE_SPACE_ID points at a non-existent space → re-render app.yaml with current Genie space ID.)
+- [ ] **Refresh metrics tiles on the home page** — patient count, device count, high-risk alert count should update without errors. (If errors: app SP missing `USE CATALOG` / `SELECT` on gold tables → re-run `grant_app_permissions` or check Catalog Explorer permissions.)
+- [ ] **Export to Chart button** (Device Support → Clinical Analysis section) — currently shows "(placeholder)" + disabled; tooltip on hover. Future feature; not a failure.
+
+If all 5 functional checks pass, the deployment is verified end-to-end. Any failure narrows the diagnostic surface significantly (the bracketed hints above name the most common cause for each).
+
+---
+
 ## Target: `hls_amer` (fe-vm-hls-amer workspace)
 
 Added on `feature/dual-baseline-hls-amer` branch for HLS-AMER buildathon work. Backbone is the cleanup branch; only differences are a new bundle target and a render script for `app.yaml` templating.
