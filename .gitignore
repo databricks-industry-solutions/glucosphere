@@ -77,6 +77,10 @@ dist
 dist-ssr
 *.local
 
+# Internal Databricks npm/pip proxy configs — do not commit (this is a PUBLIC repo)
+.npmrc
+.pip/pip.conf
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
