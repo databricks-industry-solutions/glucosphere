@@ -184,6 +184,140 @@ except Exception as e:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Plots — visual distribution comparison
+# MAGIC
+# MAGIC Renders three matplotlib views to a UC Volume so they can be downloaded
+# MAGIC (e.g. `databricks fs cp -r <path> <local>`) for inline review or sharing:
+# MAGIC   - Overlaid glucose histograms per mode (density-normalized so cohort
+# MAGIC     size doesn't dominate the visual)
+# MAGIC   - Per-mode boxplot of glucose with hypo/hyper reference lines
+# MAGIC   - Grouped bar chart of hypo / normal / hyper bucket %
+# MAGIC
+# MAGIC Skipped if `PLOTS_OUTPUT_VOLUME_PATH` widget is empty (default).
+
+# COMMAND ----------
+
+dbutils.widgets.text(
+    "PLOTS_OUTPUT_VOLUME_PATH",
+    "",
+    "UC Volume path to write PNG plots (empty = skip plots)",
+)
+PLOTS_OUTPUT_VOLUME_PATH = dbutils.widgets.get("PLOTS_OUTPUT_VOLUME_PATH")
+
+if PLOTS_OUTPUT_VOLUME_PATH:
+    import os
+    import matplotlib
+    matplotlib.use("Agg")  # non-interactive backend — no display, file-only
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    os.makedirs(PLOTS_OUTPUT_VOLUME_PATH, exist_ok=True)
+    print(f"[plots] output dir = {PLOTS_OUTPUT_VOLUME_PATH}")
+
+    # Re-collect glucose samples per mode (independent of the KS-test cell — runs
+    # even when scipy is unavailable). 50k rows per mode keeps plot rendering snappy.
+    plot_samples = {}
+    for mode, schema in MODES.items():
+        df = spark.table(f"{CATALOG_NAME}.{schema}.diabetes_data")
+        n = per_mode_stats[mode]["n_rows"]
+        sample_frac = min(1.0, 50000.0 / max(n, 1))
+        plot_samples[mode] = (
+            df.select("glucose")
+              .where(F.col("glucose").isNotNull())
+              .sample(False, sample_frac, seed=42)
+              .toPandas()["glucose"]
+              .values
+        )
+        print(f"[plots]   {mode}: {len(plot_samples[mode]):,} samples")
+
+    mode_colors = {
+        "synthetic":        "#1f77b4",
+        "real_from_source": "#d62728",
+        "real_from_table":  "#2ca02c",
+    }
+
+    # ── Plot 1: overlaid density histograms ───────────────────────────────
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bins = np.linspace(40, 400, 60)
+    for m in mode_names:
+        ax.hist(
+            plot_samples[m],
+            bins=bins,
+            density=True,
+            alpha=0.5,
+            color=mode_colors.get(m, "#7f7f7f"),
+            label=f"{m}  (n={len(plot_samples[m]):,}, μ={per_mode_stats[m]['glucose_mean']:.1f})",
+        )
+    ax.axvline(70,  color="orange", linestyle="--", linewidth=1, alpha=0.8, label="hypo / normal (70)")
+    ax.axvline(180, color="red",    linestyle="--", linewidth=1, alpha=0.8, label="normal / hyper (180)")
+    ax.set_xlabel("Glucose (mg/dL)")
+    ax.set_ylabel("Density")
+    ax.set_title(f"Glucose distribution by baseline mode — {CATALOG_NAME}")
+    ax.legend(loc="upper right", fontsize=9)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    hist_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_histogram.png"
+    fig.savefig(hist_path, dpi=120)
+    plt.close(fig)
+    print(f"[plots] ✓ {hist_path}")
+
+    # ── Plot 2: boxplot per mode ──────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(8, 6))
+    box_data = [plot_samples[m] for m in mode_names]
+    bp = ax.boxplot(box_data, labels=mode_names, showmeans=True, patch_artist=True)
+    for patch, m in zip(bp["boxes"], mode_names):
+        patch.set_facecolor(mode_colors.get(m, "#7f7f7f"))
+        patch.set_alpha(0.5)
+    ax.axhline(70,  color="orange", linestyle="--", linewidth=1, alpha=0.8)
+    ax.axhline(180, color="red",    linestyle="--", linewidth=1, alpha=0.8)
+    ax.set_ylabel("Glucose (mg/dL)")
+    ax.set_title(f"Glucose boxplot by baseline mode — {CATALOG_NAME}")
+    ax.grid(alpha=0.3, axis="y")
+    fig.tight_layout()
+    box_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_boxplot.png"
+    fig.savefig(box_path, dpi=120)
+    plt.close(fig)
+    print(f"[plots] ✓ {box_path}")
+
+    # ── Plot 3: glycemic range bucket % grouped bars ──────────────────────
+    fig, ax = plt.subplots(figsize=(9, 6))
+    bucket_keys   = ["pct_hypoglycemia", "pct_normal", "pct_hyperglycemia"]
+    bucket_labels = ["hypo (<70)", "normal (70-180)", "hyper (>180)"]
+    n_buckets = len(bucket_keys)
+    n_modes_p = len(mode_names)
+    bar_width = 0.8 / n_modes_p
+    x = np.arange(n_buckets)
+    for i, m in enumerate(mode_names):
+        vals = [per_mode_stats[m][k] for k in bucket_keys]
+        offset = (i - (n_modes_p - 1) / 2) * bar_width
+        bars = ax.bar(x + offset, vals, bar_width,
+                      label=m, color=mode_colors.get(m, "#7f7f7f"), alpha=0.85)
+        for bar, val in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.5,
+                    f"{val:.1f}%",
+                    ha="center", va="bottom", fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(bucket_labels)
+    ax.set_ylabel("% of readings")
+    ax.set_title(f"Glycemic range bucket % by mode — {CATALOG_NAME}")
+    ax.legend()
+    ax.grid(alpha=0.3, axis="y")
+    fig.tight_layout()
+    bucket_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_buckets.png"
+    fig.savefig(bucket_path, dpi=120)
+    plt.close(fig)
+    print(f"[plots] ✓ {bucket_path}")
+
+    print(f"\n[plots] all PNGs written to {PLOTS_OUTPUT_VOLUME_PATH}")
+    print("[plots] to download for local viewing:")
+    print(f"[plots]   databricks fs cp -r 'dbfs:{PLOTS_OUTPUT_VOLUME_PATH}' <local-dir>")
+else:
+    print("[plots] skipped (PLOTS_OUTPUT_VOLUME_PATH widget is empty)")
+
+# COMMAND ----------
+
 # Optional: write summary table for archival / dashboards
 if WRITE_SUMMARY_TO_SCHEMA:
     from datetime import datetime
