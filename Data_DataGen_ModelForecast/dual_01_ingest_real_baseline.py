@@ -238,6 +238,146 @@ if BASELINE_SOURCE == "real_from_source":
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Build QC observability tables (baseline_timeseries + baseline_windows_metadata)
+# MAGIC
+# MAGIC Mirrors the windowed observability tables that `dual_01_generate_synthetic_baseline.py`
+# MAGIC emits, so the two baseline paths produce a SYMMETRIC set of outputs:
+# MAGIC
+# MAGIC   - `diabetes_data` — the data contract for `04_*` (required)
+# MAGIC   - `baseline_timeseries` — sliding 10-day windows per patient (stride 2 days)
+# MAGIC   - `baseline_windows_metadata` — per-window aggregates (glucose mean / std / coverage)
+# MAGIC
+# MAGIC Foundation for model/data monitoring: concept-drift detection, per-window
+# MAGIC data-quality monitoring, prediction-degradation diagnostics, retraining triggers,
+# MAGIC cohort tracking. Runs for BOTH `real_from_source` and `real_from_table` modes
+# MAGIC since both have written `diabetes_data` by this point.
+
+# COMMAND ----------
+
+# Build baseline_timeseries (10-day windows, stride 2 days, per patient) + baseline_windows_metadata
+from pyspark.sql import functions as _F
+from pyspark.sql.window import Window as _W
+
+WINDOW_DAYS  = 10
+STRIDE_DAYS  = 2
+WINDOW_SECS  = WINDOW_DAYS  * 86400
+STRIDE_SECS  = STRIDE_DAYS  * 86400
+
+print(f"[windows] reading {target_table} to build observability tables")
+diabetes_df = spark.table(target_table)
+
+# Per-patient time range → number of windows that fit (need (span - WINDOW_DAYS) / STRIDE + 1 windows)
+patient_ranges = (
+    diabetes_df
+    .groupBy("patient_id")
+    .agg(
+        _F.min("time").alias("t_first"),
+        _F.max("time").alias("t_last"),
+    )
+    .withColumn("span_seconds", _F.unix_timestamp("t_last") - _F.unix_timestamp("t_first"))
+    .withColumn(
+        "n_windows",
+        _F.greatest(
+            _F.lit(0),
+            ((_F.col("span_seconds") - _F.lit(WINDOW_SECS)) / _F.lit(STRIDE_SECS) + _F.lit(1)).cast("int"),
+        ),
+    )
+)
+
+# Explode each patient into one row per window
+windows = (
+    patient_ranges
+    .withColumn("window_index", _F.explode(_F.expr("sequence(0, n_windows - 1)")))
+    .withColumn(
+        "window_start",
+        _F.to_timestamp(_F.unix_timestamp("t_first") + _F.col("window_index") * _F.lit(STRIDE_SECS)),
+    )
+    .withColumn(
+        "window_end",
+        _F.to_timestamp(_F.unix_timestamp("t_first") + _F.col("window_index") * _F.lit(STRIDE_SECS) + _F.lit(WINDOW_SECS)),
+    )
+    .select("patient_id", "window_index", "window_start", "window_end")
+)
+
+# Assign stable global window_id (W000000 format). Order by (patient_id, window_index) for determinism.
+windows_ranked = (
+    windows
+    .withColumn("global_idx", _F.row_number().over(_W.orderBy("patient_id", "window_index")) - _F.lit(1))
+    .withColumn("window_id", _F.format_string("W%06d", _F.col("global_idx")))
+    .drop("global_idx", "window_index")
+)
+
+# Join diabetes_data to windows — each reading may belong to multiple windows (stride < window).
+# Note: is_non_anchor_15min is a synthetic-only flag (HUPA-UCM CSVs don't have it);
+# emit as null for the real-data path so the column-set matches synthetic-mode parity.
+baseline_ts = (
+    diabetes_df.alias("d")
+    .join(
+        windows_ranked.alias("w"),
+        (_F.col("d.patient_id") == _F.col("w.patient_id"))
+        & (_F.col("d.time") >= _F.col("w.window_start"))
+        & (_F.col("d.time") < _F.col("w.window_end")),
+    )
+    .select(
+        _F.col("w.window_id"),
+        _F.col("d.time"),
+        _F.col("d.glucose"),
+        _F.col("d.calories"),
+        _F.col("d.heart_rate"),
+        _F.col("d.steps"),
+        _F.col("d.basal_rate"),
+        _F.col("d.bolus_volume_delivered"),
+        _F.col("d.carb_input"),
+        _F.col("d.patient_id"),
+        _F.lit(None).cast("boolean").alias("is_non_anchor_15min"),
+    )
+)
+
+baseline_table = f"{CATALOG_NAME}.{SCHEMA_NAME}.baseline_timeseries"
+print(f"[windows] writing {baseline_table}")
+(
+    baseline_ts.write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(baseline_table)
+)
+n_windows = baseline_ts.select("window_id").distinct().count()
+n_baseline_rows = baseline_ts.count()
+print(f"[windows] ✓ wrote {baseline_table}  ({n_baseline_rows:,} rows across {n_windows} windows)")
+
+# COMMAND ----------
+
+# Per-window aggregates → baseline_windows_metadata
+meta = (
+    baseline_ts
+    .groupBy("window_id", "patient_id")
+    .agg(
+        _F.min("time").alias("start_time"),
+        _F.max("time").alias("end_time"),
+        _F.count("*").alias("n_readings"),
+        _F.round(_F.mean("glucose"), 2).alias("glucose_mean"),
+        _F.round(_F.stddev("glucose"), 2).alias("glucose_std"),
+        _F.round(_F.mean(_F.col("glucose").isNotNull().cast("double")), 4).alias("glucose_coverage"),
+    )
+    .withColumn("tier", _F.lit("tier1"))
+    .orderBy("window_id")
+)
+
+meta_table = f"{CATALOG_NAME}.{SCHEMA_NAME}.baseline_windows_metadata"
+print(f"[windows] writing {meta_table}")
+(
+    meta.write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(meta_table)
+)
+print(f"[windows] ✓ wrote {meta_table}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Check the diabetes_data table looks right
 # MAGIC
 # MAGIC Same check used by `dual_01_generate_synthetic_baseline.py` — confirms the
