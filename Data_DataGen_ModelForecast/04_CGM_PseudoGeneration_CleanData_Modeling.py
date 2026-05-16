@@ -535,17 +535,29 @@ for stratum_name, target_count in strata_targets:
         print(f"   WARNING: {stratum_name}: No patients available, skipping")
         continue
     
-    # Sample with replacement if needed
-    if target_count <= n_available:
-        # Sample without replacement
-        sampled = stratum_segs.orderBy(F.rand(seed=cfg.seed)).limit(target_count)
-    else:
-        # Sample with replacement (repeat patients)
-        sample_frac = target_count / n_available
-        sampled = stratum_segs.sample(withReplacement=True, fraction=sample_frac, seed=cfg.seed).limit(target_count)
-    
+    # Deterministic exact-count sampling.
+    #   1. Shuffle source segments via row_number() over rand(seed) — controlled randomization
+    #   2. Generate exactly target_count indices 0..target_count-1
+    #   3. Map each index to a source segment via modular arithmetic
+    # When target_count > n_available, source segments cycle deterministically (each
+    # appears ⌈target_count/n_available⌉ or ⌊target_count/n_available⌋ times). Replaces
+    # the previous stochastic sample(withReplacement=True, fraction=...) approach, which
+    # was Poisson-noisy and could land short of target_count even after .limit() —
+    # surfaced as the "999 patients" off-by-one in the gold table on 2026-05-16.
+    w_seg = Window.orderBy(F.rand(seed=cfg.seed))
+    stratum_segs_indexed = stratum_segs.withColumn(
+        "seg_idx", F.row_number().over(w_seg) - F.lit(1)
+    )
+    sampled = (
+        spark.range(target_count)
+             .withColumn("seg_idx", (F.col("id") % F.lit(n_available)).cast("int"))
+             .drop("id")
+             .join(stratum_segs_indexed, "seg_idx")
+             .drop("seg_idx")
+    )
+
     sampled_plans.append(sampled)
-    print(f"   {stratum_name:15s}: {target_count:3d} requested, {n_available:3d} available")
+    print(f"   {stratum_name:15s}: {target_count:3d} requested, {n_available:3d} available, returned exactly {target_count}")
 
 # Combine all strata
 plan0 = sampled_plans[0]
@@ -563,8 +575,23 @@ plan = (plan0
 
 plan.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(plan_tbl)
 
-print(f"\nStratified sampling plan created: {plan.count()} pseudo patients")
+actual_plan_size = plan.count()
+print(f"\nStratified sampling plan created: {actual_plan_size} pseudo patients")
 print("   Distribution will match baseline after generation")
+
+# Hard assertion: plan size MUST equal NUM_PSEUDO. With the deterministic cycling
+# sampler above (added 2026-05-16), this holds by construction. The assertion catches
+# regressions (e.g. anyone reintroducing stochastic sampling, or a stratum with zero
+# source patients getting silently skipped) BEFORE the off-by-one propagates to the
+# gold table + dashboard. Diagnoses the 2026-05-16 "999 patients" issue at the source.
+assert actual_plan_size == NUM_PSEUDO, (
+    f"[plan-size] expected {NUM_PSEUDO} pseudo patients in {plan_tbl}, got {actual_plan_size}. "
+    f"Per-stratum targets were: hypo={target_hypo}, normal={target_normal}, "
+    f"hyper={target_hyper}, mixed={target_mixed} "
+    f"(sum={target_hypo + target_normal + target_hyper + target_mixed}). "
+    f"If a stratum was skipped (n_available == 0), the sum will fall short — adjust "
+    f"NUM_PSEUDO or redistribute the missing stratum's quota to a populated one."
+)
 
 # COMMAND ----------
 
