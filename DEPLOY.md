@@ -117,10 +117,46 @@ databricks bundle deploy \
 ## Step 7: Run the Setup Job
 
 ```bash
-databricks bundle run glucosphere_setup
+databricks bundle run glucosphere_full_setup -t <target>
 ```
 
-This runs all data generation notebooks in sequence (01–05), trains and registers the XGBoost models, deploys the forecast serving endpoints, and generates the patient/device registry landing zone data.
+This runs the end-to-end pipeline below.
+
+### Job DAG
+
+```
+validate_baseline_source       (enum check on baseline_source; print run banner)
+         ↓
+dispatch_baseline_source       (condition_task: baseline_source == "synthetic"?)
+         ↓                ↓
+  true  ↙               ↘  false
+generate_synthetic_   ingest_real_baseline
+  baseline            (HUPA-UCM download OR existing UC table copy;
+  (textbook +          writes diabetes_data + baseline_timeseries
+   AR(1); writes       + baseline_windows_metadata)
+   same three tables)
+         ↘                ↙
+sanity_summary           (run_if AT_LEAST_ONE_SUCCESS;
+                          asserts diabetes_data non-empty + plausible)
+         ↓
+datagen_modeling         (04_*: pseudo CGM data + XGBoost training)
+         ↓
+incident_inference       (05_*: device calibration bug simulation + inference)
+         ↓                            ↓
+deploy_model_endpoints       generate_patient_device_data
+         ↓                       ↓                ↓
+         ↘            create_patient_registry  create_device_telemetry
+          ↘                      ↓
+           ↘             run_dlt_pipeline      (silver/gold from landing_zone)
+            ↘                    ↓
+             ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
+              ↘                  ↓
+               ↘        grant_app_permissions  (app SP access on UC + endpoints)
+```
+
+The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
+operator typos and silent baseline-write failures before they cost ~45 min
+of downstream modeling compute.
 
 > **Note:** The `generate_patient_device_data` task references the Jupyter notebooks in `Data_DataGen_ModelForecast/utils/additional_patient_info/`. If those notebooks need to be converted to Databricks-native format before running, do so with:
 > ```bash

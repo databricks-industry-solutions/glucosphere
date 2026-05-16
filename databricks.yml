@@ -14,9 +14,21 @@ variables:
   baseline_source:
     description: |
       Which baseline ingest path the job runs at the head of the pipeline.
-      "synthetic" → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1)).
-      "real"      → dual_01_ingest_real_baseline.py (HUPA-UCM download OR existing UC table — sub-option set inside the notebook).
+      Valid: "synthetic" | "real_from_source" | "real_from_table".
+      Validated upfront by validate_baseline_source task (typos fail fast).
+        - synthetic        → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1))
+        - real_from_source → dual_01_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
+        - real_from_table  → dual_01_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
     default: synthetic
+  source_catalog:
+    description: Source catalog for baseline_source=real_from_table mode (empty otherwise)
+    default: ""
+  source_schema:
+    description: Source schema for baseline_source=real_from_table mode (empty otherwise)
+    default: ""
+  source_table:
+    description: Source table for baseline_source=real_from_table mode (empty otherwise)
+    default: ""
   app_name:
     description: Name of the Databricks App
     default: glucosphere-dashboard
@@ -94,20 +106,34 @@ resources:
   # ---------------------------------------------------------------------------
   # Job: End-to-End Glucosphere Setup
   #
-  # Task order:
-  #   1a. dispatch_baseline_source     — branches on ${var.baseline_source}
-  #   1b. generate_synthetic_baseline  — runs if baseline_source == "synthetic"
-  #   1c. ingest_real_baseline         — runs if baseline_source != "synthetic"
-  #   2.  datagen_modeling             — CGM pseudo data generation + XGBoost training
-  #                                      (depends on either 1b or 1c via run_if=AT_LEAST_ONE_SUCCESS)
-  #   3.  incident_inference           — simulate calibration bug incident, run inference
-  #   4.  deploy_model_endpoints       — deploy 15m & 30m XGBoost forecast serving endpoints
-  #   5.  create_patient_registry      — generate patient registry parquet → landing_zone
-  #   6.  create_device_telemetry      — generate device telemetry parquet → landing_zone
-  #   7.  generate_patient_device      — additional patient/device join data
-  #   8.  run_dlt_pipeline             — trigger silver/gold DLT pipeline
-  #   9.  create_genie_ka_mas          — create KA, Genie room, and MAS supervisor endpoint
-  #  10.  grant_app_permissions        — grant app SP access to all resources
+  # Task DAG (ASCII):
+  #
+  #   validate_baseline_source       (enum + banner — fail-fast typo guard)
+  #            ↓
+  #   dispatch_baseline_source       (condition_task: == "synthetic"?)
+  #            ↓                ↓
+  #    true ↙               ↘ false
+  #   generate_synthetic_   ingest_real_baseline    (writes diabetes_data
+  #     baseline             [+ baseline_timeseries  + baseline_timeseries
+  #                          + baseline_windows_     + baseline_windows_
+  #                          metadata via C.4 port]   metadata]
+  #            ↘                 ↙
+  #   sanity_summary             (run_if AT_LEAST_ONE_SUCCESS;
+  #                               asserts diabetes_data non-empty + plausible)
+  #            ↓
+  #   datagen_modeling           (04_*: pseudo CGM data + XGBoost training)
+  #            ↓
+  #   incident_inference         (05_*: device calibration bug + inference)
+  #            ↓                            ↓
+  #   deploy_model_endpoints       generate_patient_device_data
+  #            ↓                       ↓                ↓
+  #            ↘            create_patient_registry  create_device_telemetry
+  #             ↘                      ↓
+  #              ↘             run_dlt_pipeline      (silver/gold from landing_zone)
+  #               ↘                    ↓
+  #                ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
+  #                 ↘                  ↓
+  #                  ↘        grant_app_permissions  (app SP access on UC + endpoints)
   # ---------------------------------------------------------------------------
   jobs:
     glucosphere_full_setup:
@@ -117,9 +143,26 @@ resources:
           spec:
             client: "1"
       tasks:
+        # ── Preflight: validate baseline_source + print run banner ─────────
+        - task_key: validate_baseline_source
+          description: Validate baseline_source enum + print run banner (fail-fast on typos)
+          max_retries: 0
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/dual_validate_baseline_source.py
+            base_parameters:
+              BASELINE_SOURCE: ${var.baseline_source}
+              CATALOG_NAME:    ${var.catalog}
+              SCHEMA_NAME:     ${var.schema}
+              SOURCE_CATALOG:  ${var.source_catalog}
+              SOURCE_SCHEMA:   ${var.source_schema}
+              SOURCE_TABLE:    ${var.source_table}
+          environment_key: default
+
         # ── Baseline ingest dispatch ───────────────────────────────────────
         - task_key: dispatch_baseline_source
           description: Branch on ${var.baseline_source} — synthetic vs real baseline ingest
+          depends_on:
+            - task_key: validate_baseline_source
           condition_task:
             op: EQUAL_TO
             left: ${var.baseline_source}
@@ -147,6 +190,25 @@ resources:
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/dual_01_ingest_real_baseline.py
             base_parameters:
+              CATALOG_NAME:    ${var.catalog}
+              SCHEMA_NAME:     ${var.schema}
+              BASELINE_SOURCE: ${var.baseline_source}
+              SOURCE_CATALOG:  ${var.source_catalog}
+              SOURCE_SCHEMA:   ${var.source_schema}
+              SOURCE_TABLE:    ${var.source_table}
+          environment_key: default
+
+        # ── Sanity gate before heavy downstream modeling ───────────────────
+        - task_key: sanity_summary
+          description: Assert diabetes_data is non-empty + plausible before modeling
+          max_retries: 0
+          depends_on:
+            - task_key: generate_synthetic_baseline
+            - task_key: ingest_real_baseline
+          run_if: AT_LEAST_ONE_SUCCESS
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/dual_sanity_summary.py
+            base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
           environment_key: default
@@ -155,9 +217,7 @@ resources:
           description: Generate synthetic CGM data and train XGBoost glucose forecast models
           max_retries: 0
           depends_on:
-            - task_key: generate_synthetic_baseline
-            - task_key: ingest_real_baseline
-          run_if: AT_LEAST_ONE_SUCCESS
+            - task_key: sanity_summary
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/04_CGM_PseudoGeneration_CleanData_Modeling.py
             base_parameters:
