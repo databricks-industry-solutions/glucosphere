@@ -15,7 +15,7 @@ This application provides:
 
 **Frontend**: React + Vite + Tailwind CSS
 **Backend**: Flask (proxy server for Databricks APIs)
-**Data Source**: Databricks Unity Catalog (`hls_glucosphere.cgm` schema)
+**Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` schema — set per-target via the bundle's `catalog` + `schema` variables; current `mmt_aws_usw2` target writes to `mmt_aws_usw2_catalog.glucosphere_dev`)
 **AI Agent**: Databricks Multi-Agent Supervisor
 
 ## Project Structure

@@ -8,8 +8,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME", "ws_ward_pixels_catalog", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema")
 
 CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME  = dbutils.widgets.get("SCHEMA_NAME")

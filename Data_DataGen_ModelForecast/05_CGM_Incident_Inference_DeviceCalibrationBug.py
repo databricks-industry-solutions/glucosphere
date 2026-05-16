@@ -1724,13 +1724,13 @@ display(spark.table(fleet_forecast_tbl).orderBy(F.desc("delta_30m")).limit(20))
 # MAGIC
 # MAGIC ## Supporting Tables
 # MAGIC
-# MAGIC ### For Incident Analysis:
-# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d` - Full incident data with bias
-# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d_labeled` - With prediction labels
+# MAGIC ### For Incident Analysis (replace `${CATALOG_NAME}.${SCHEMA_NAME}` with your target):
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d` - Full incident data with bias
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled` - With prediction labels
 # MAGIC
 # MAGIC ### For Baseline Comparison:
-# MAGIC * `hls_glucosphere.cgm.pseudo_clean_7d` - Original clean data
-# MAGIC * `hls_glucosphere.cgm.diabetes_data` - Real baseline data
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_clean_7d` - Original clean data
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` - Baseline data (synthetic OR real per baseline_source mode)
 # MAGIC
 # MAGIC ---
 # MAGIC

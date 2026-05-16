@@ -46,7 +46,7 @@ dbutils.widgets.removeAll()
 
 # Essential widgets only
 dbutils.widgets.dropdown("ENV", "dev", ["dev", "staging", "prod"], "Environment")
-dbutils.widgets.text("CATALOG_NAME", "hls_glucosphere", "Catalog")
+dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
 dbutils.widgets.text("SCHEMA_NAME", "cgm", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Include Incident")
 dbutils.widgets.dropdown("RUN_OPTUNA_TUNING", "true", ["false", "true"], "Run Optuna Tuning")

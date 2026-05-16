@@ -76,6 +76,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.vite/
 
 # Internal Databricks npm/pip proxy configs — do not commit (this is a PUBLIC repo)
 .npmrc

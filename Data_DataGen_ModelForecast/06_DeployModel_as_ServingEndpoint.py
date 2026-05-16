@@ -58,8 +58,8 @@ dbutils.widgets.removeAll()
 
 # Essential widgets only
 dbutils.widgets.dropdown("ENV", "dev", ["dev", "staging", "prod"], "Environment")
-dbutils.widgets.text("CATALOG_NAME", "hls_glucosphere", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "cgm", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Include Incident")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
