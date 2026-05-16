@@ -42,6 +42,10 @@
   - **Recommended:** workspace admin quota bump (durable fix; workspace is genuinely 95/100 ACTIVE)
   - Both ERROR apps systemically un-deletable from fe-vm-hls-amer alone — SPs registered in `fevm-industry-solns-buildathon` (`237438879023004`); owner SP cleanup there required first (`facers2` SP `75351379136763`, `biomcp-server` SP `73911714383112`). Admin permission on fe-vm-hls-amer does NOT bypass this.
 
+## Follow-up deliverables (post dual-baseline closure)
+
+- [ ] **One-command deploy template** for fresh-workspace bootstrap. User-facing config (`glucosphere.deploy.yaml`) with minimum input: workspace host/profile + UC catalog name. Script auto-derives warehouse ID, MAS/KA endpoint names, Genie space ID, app SP, etc. Replaces today's render-script + manual-orchestration ritual. Captured in memory `project_deploy_template_design.md`. ~1-2 days focused work. Slotted AFTER C/D/E/F.
+
 ## Follow-up features
 
 - [ ] **Implement "Export to Chart"** on `DeviceSupportDashboard.jsx` (currently labeled "(placeholder)" + disabled). Origin: button was copied in from EMU scaffold in `d0bcf7c`, never wired up. **Faithful intent:** turn the Clinical Analysis text into a comparative-stats chart for this device vs fleet (hyperglycemia rate, hypoglycemia rate, mean glucose, std, reading/incident counts). **Recommended approach** (per 2026-05-16 discussion): new Flask endpoint `/api/device/stats?device_id=X` returns structured numbers from gold tables → new React chart component (likely hand-rolled SVG matching the `IncidentCharts.jsx` style; recharts isn't currently a dependency). Estimate ~1.5-2 hr. Could also extend KA/MAS to return structured comparison data alongside the text analysis.
