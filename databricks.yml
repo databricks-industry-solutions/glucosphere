@@ -378,6 +378,49 @@ resources:
               GENIE_SPACE_ID:    ""
           environment_key: default
 
+    # -------------------------------------------------------------------------
+    # Standalone analytics — distribution comparison across baseline modes
+    # -------------------------------------------------------------------------
+    # On-demand: operator triggers when ≥2 baseline modes have been populated
+    # (e.g. live synthetic + a real_from_source sandbox snapshot, or two real
+    # snapshots from different sources). NOT part of glucosphere_full_setup.
+    glucosphere_distribution_comparison:
+      name: glucosphere-distribution-comparison-${bundle.target}
+      description: |
+        Compare diabetes_data distributions across baseline modes side-by-side.
+        Emits headline stats (n, percentiles, glycemic buckets) + KS test +
+        matplotlib plots (overlaid histograms, boxplot, bucket bars). Plots
+        embed inline in cell output AND save to a UC Volume.
+
+        Operator MUST set at least 2 of {SYNTHETIC_SCHEMA, REAL_FROM_SOURCE_SCHEMA,
+        REAL_FROM_TABLE_SCHEMA} to non-empty schema names containing diabetes_data.
+        The notebook validates the ≥2 precondition and fails fast otherwise.
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+      tasks:
+        - task_key: distribution_comparison
+          description: Compute side-by-side stats and render inline plots
+          max_retries: 0
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/dual_02_compare_baseline_modes.py
+            base_parameters:
+              CATALOG_NAME:             ${var.catalog}
+              # Operator must override at least 2 of the next 3 at run time.
+              # Defaults are empty so the notebook fails fast if launched
+              # without intent (avoids silently comparing the live schema
+              # against itself with a misleading "synthetic" label).
+              SYNTHETIC_SCHEMA:         ""
+              REAL_FROM_SOURCE_SCHEMA:  ""
+              REAL_FROM_TABLE_SCHEMA:   ""
+              # Optional: archive the comparison summary as a delta table.
+              WRITE_SUMMARY_TO_SCHEMA:  ""
+              # Plots: written under the live schema's `comparison_plots`
+              # volume (auto-created by the notebook if missing).
+              PLOTS_OUTPUT_VOLUME_PATH: /Volumes/${var.catalog}/${var.schema}/comparison_plots
+          environment_key: default
+
   # ---------------------------------------------------------------------------
   # App: Glucosphere Dashboard
   # ---------------------------------------------------------------------------

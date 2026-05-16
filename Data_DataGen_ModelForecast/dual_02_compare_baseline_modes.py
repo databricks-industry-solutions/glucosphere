@@ -207,10 +207,18 @@ PLOTS_OUTPUT_VOLUME_PATH = dbutils.widgets.get("PLOTS_OUTPUT_VOLUME_PATH")
 
 if PLOTS_OUTPUT_VOLUME_PATH:
     import os
-    import matplotlib
-    matplotlib.use("Agg")  # non-interactive backend — no display, file-only
     import matplotlib.pyplot as plt
     import numpy as np
+
+    # Self-provision the UC Volume if missing. Path format expected:
+    #   /Volumes/<catalog>/<schema>/<volume>[/<subdir>...]
+    # Parsing the first 4 path components lets the notebook be operator-friendly
+    # — they don't need to pre-create the volume manually.
+    _parts = PLOTS_OUTPUT_VOLUME_PATH.strip("/").split("/")
+    if len(_parts) >= 4 and _parts[0] == "Volumes":
+        _vol_catalog, _vol_schema, _vol_name = _parts[1], _parts[2], _parts[3]
+        spark.sql(f"CREATE VOLUME IF NOT EXISTS {_vol_catalog}.{_vol_schema}.{_vol_name}")
+        print(f"[plots] volume ensured: {_vol_catalog}.{_vol_schema}.{_vol_name}")
 
     os.makedirs(PLOTS_OUTPUT_VOLUME_PATH, exist_ok=True)
     print(f"[plots] output dir = {PLOTS_OUTPUT_VOLUME_PATH}")
@@ -259,6 +267,7 @@ if PLOTS_OUTPUT_VOLUME_PATH:
     fig.tight_layout()
     hist_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_histogram.png"
     fig.savefig(hist_path, dpi=120)
+    display(fig)  # inline render in cell output for permanent workspace viewing
     plt.close(fig)
     print(f"[plots] ✓ {hist_path}")
 
@@ -277,6 +286,7 @@ if PLOTS_OUTPUT_VOLUME_PATH:
     fig.tight_layout()
     box_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_boxplot.png"
     fig.savefig(box_path, dpi=120)
+    display(fig)  # inline render in cell output for permanent workspace viewing
     plt.close(fig)
     print(f"[plots] ✓ {box_path}")
 
@@ -307,6 +317,7 @@ if PLOTS_OUTPUT_VOLUME_PATH:
     fig.tight_layout()
     bucket_path = f"{PLOTS_OUTPUT_VOLUME_PATH}/glucose_buckets.png"
     fig.savefig(bucket_path, dpi=120)
+    display(fig)  # inline render in cell output for permanent workspace viewing
     plt.close(fig)
     print(f"[plots] ✓ {bucket_path}")
 
