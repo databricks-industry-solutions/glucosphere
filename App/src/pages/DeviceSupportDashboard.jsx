@@ -660,8 +660,12 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                       <Brain className="w-3 h-3" />
                                       Refresh Analysis
                                     </button>
-                                    <button className="px-3 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs text-cyan-400 hover:bg-cyan-500/20 transition-colors">
-                                      Export to Chart
+                                    <button
+                                      disabled
+                                      title="Not yet implemented — planned: comparative-stats chart (this device vs fleet)"
+                                      className="px-3 py-2 bg-slate-800/40 border border-slate-700 rounded text-xs text-slate-500 italic cursor-not-allowed"
+                                    >
+                                      Export to Chart (placeholder)
                                     </button>
                                   </div>
                                 </div>
