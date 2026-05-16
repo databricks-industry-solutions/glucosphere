@@ -100,10 +100,11 @@ def main() -> int:
         content = patch(content,
             r'(- name: sql-warehouse\b[\s\S]*?sql_warehouse:\s+id: )\S+',
             rf'\g<1>{warehouse_id}', "resource sql-warehouse.id")
+    # ENDPOINT_NAME and GENIE_SPACE_ID env vars now use `valueFrom:` (post-E.1)
+    # — the env value gets resolved at app startup by the Databricks Apps
+    # platform from the named resource block, so we only need to rewrite the
+    # resource-block fields (the single source of truth).
     if args.mas_endpoint:
-        content = patch(content,
-            r'(- name: ENDPOINT_NAME\s+value: ")[^"]*(")',
-            rf'\g<1>{args.mas_endpoint}\g<2>', "env ENDPOINT_NAME")
         content = patch(content,
             r'(- name: mas-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
             rf'\g<1>{args.mas_endpoint}', "resource mas-endpoint.name")
@@ -113,8 +114,8 @@ def main() -> int:
             rf'\g<1>{args.ka_endpoint}', "resource ka-endpoint.name")
     if args.genie_space_id:
         content = patch(content,
-            r'(- name: GENIE_SPACE_ID\s+value: ")[^"]*(")',
-            rf'\g<1>{args.genie_space_id}\g<2>', "env GENIE_SPACE_ID")
+            r'(- name: genie-space\b[\s\S]*?genie_space:\s+id: )\S+',
+            rf'\g<1>{args.genie_space_id}', "resource genie-space.id")
 
     APP_YAML.write_text(content)
     print(f"Wrote {APP_YAML.relative_to(REPO_ROOT)}")

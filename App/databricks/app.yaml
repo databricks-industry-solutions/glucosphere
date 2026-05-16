@@ -1,9 +1,16 @@
 command: ["python", "app.py"]
 env:
+  # ENDPOINT_NAME and GENIE_SPACE_ID are resolved at app startup via valueFrom
+  # against the resource blocks below (Databricks Apps platform pattern).
+  # render_app_yaml.py no longer rewrites these env values — it only updates
+  # the resource block names/ids, which is the single source of truth.
   - name: ENDPOINT_NAME
-    value: "mas-94acba91-endpoint"
+    valueFrom: mas-endpoint
   - name: GENIE_SPACE_ID
-    value: "01f150850a66184ba68fb1b26f092287"
+    valueFrom: genie-space
+  # CATALOG_NAME and SCHEMA_NAME stay as plain `value:` — Databricks Apps
+  # doesn't expose a `valueFrom` resource type for UC catalogs/schemas, so
+  # these still need per-target customization via render_app_yaml.py.
   - name: CATALOG_NAME
     value: "mmt_aws_usw2_catalog"
   - name: SCHEMA_NAME
@@ -24,3 +31,8 @@ resources:
     sql_warehouse:
       id: dafc5dff8eb8094a
       permission: CAN_USE
+  - name: genie-space
+    description: "Genie space for CGM intelligence queries (ENV GENIE_SPACE_ID resolves from here)"
+    genie_space:
+      id: 01f150850a66184ba68fb1b26f092287
+      permission: CAN_RUN
