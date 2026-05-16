@@ -21,31 +21,81 @@ This repo contains two main parts that work together:
 
 ![Architecture](Data_DataGen_ModelForecast/assets/architecture_0.1.png)
 
+## Data fidelity & baseline modes
+
+Glucosphere supports three **baseline source modes** for the CGM data that feeds every downstream model and dashboard. The mode is selected at deploy time via the bundle variable `baseline_source`. The downstream notebooks (`04_*`, `05_*`, `06_*`) read a single contract table — `diabetes_data` — and don't know which mode produced it.
+
+| Mode | Source of glucose / insulin / wearable signals | Patient count | Default? | When to use |
+|---|---|---|---|---|
+| `synthetic` | In-cluster generator: textbook diabetes phenotype + AR(1) glucose dynamics | 1,000 pseudo-patients | ✅ default | CI / fresh-workspace bootstrap / demos that don't need clinical extremes. No network egress, deterministic. |
+| `real_from_source` | Downloaded from Mendeley (HUPA-UCM dataset, Universidad Complutense de Madrid) | 25 real type-1 diabetes patients (oversampled to 1,000) | opt-in via `--var` | Demos that need clinical realism — actual hypoglycemia events, hyperglycemia extremes, real CGM signal noise. |
+| `real_from_table` | CTAS from an existing UC table you point at | configurable via widgets | opt-in via `--var` | Once you've ingested HUPA-UCM elsewhere and want to mirror without re-downloading. |
+
+### Column-level provenance (important — easy to mis-explain)
+
+"Real-baseline mode" does **NOT** mean every column is real. Provenance is per-column:
+
+| Column class | `synthetic` | `real_from_*` |
+|---|---|---|
+| `glucose`, `calories`, `heart_rate`, `steps`, `basal_rate`, `bolus_volume_delivered`, `carb_input` | synthetic | **real** (HUPA-UCM) |
+| 5-min reading cadence | synthetic | real (FreeStyle Libre 2) |
+| `patient_id`, `device_id`, demographics, device model, firmware | always synthetic | always synthetic |
+| Incident flags (calibration bug) | synthetic simulation | synthetic simulation overlaid on real glucose |
+| Forecast values | XGBoost on synthetic | XGBoost on real-derived |
+
+In real-mode, what you get is **real CGM signal dynamics carried by synthetic patient identities and device-fleet metadata** — i.e. pseudo-patients with real clinical waveforms. This is a deliberate privacy + demo property.
+
+**How to explain externally:**
+- "Glucose values and Fitbit readings are from real type-1 diabetes patients (HUPA-UCM dataset)."
+- "Patient names, device IDs, demographics, and incident scenarios are synthetic for privacy and demo purposes."
+
+### How synthetic and real compare (verified 2026-05-16)
+
+| metric | synthetic | real_from_source |
+|---|---:|---:|
+| glucose mean (mg/dL) | 134.9 | 141.4 |
+| glucose std (mg/dL) | 34.0 | 57.1 |
+| glucose p95 (mg/dL) | 189.4 | 251.3 |
+| glucose max (mg/dL) | 251.0 | 444.0 |
+| % hypoglycemia (<70) | 0.14% | 6.59% |
+| % normal (70-180) | 89.71% | 71.72% |
+| % hyperglycemia (>180) | 10.15% | 21.70% |
+
+Synthetic produces a "well-managed diabetes" idealization; real captures genuine clinical extremes. Medians are nearly identical (133 vs 132 mg/dL) — the divergence is in the tails. See `glucosphere_distribution_comparison` job for the standalone analytics notebook + plots.
+
 ## Repository structure
 
 High-level layout:
 
 ```text
 /
+├── databricks.yml                                # Bundle entry: targets, variables, resources
+├── DEPLOY.md                                     # Step-by-step deploy guide
+├── scripts/
+│   └── render_app_yaml.py                        # Per-target app.yaml templating
 ├── App/
-│   ├── src/                 # React UI (pages/components/api)
-│   ├── scripts/             # Deployment & workspace utilities
-│   ├── databricks/          # Databricks App runtime/config (app.yaml, Dockerfile, etc.)
-│   ├── config/              # Workspace config templates (do not commit secrets)
-│   ├── docs/                # Deployment + ops docs
-│   ├── package.json         # Frontend deps
+│   ├── src/                                      # React UI (pages/components/api)
+│   ├── databricks/                               # App runtime config (app.yaml, app.py)
+│   ├── package.json                              # Frontend deps
 │   └── README.md
 ├── Data_DataGen_ModelForecast/
-│   ├── assets/
-│   ├── configs/
-│   ├── dev/
+│   ├── assets/                                   # Architecture diagrams, plots
+│   ├── configs/                                  # Pipeline parameters
 │   ├── utils/
-│   ├── 01_download_data.ipynb
-│   ├── 02_parseNcombine_processed_data.ipynb
-│   ├── 03_extract_baselineTS_EDAcheck.py
+│   │   ├── dual_validate_baseline_source.py      # Enum + banner preflight
+│   │   ├── dual_validate_diabetes_data.py        # Schema contract check (cols, cadence, coverage)
+│   │   ├── dual_sanity_summary.py                # Non-empty + plausible-range assertion
+│   │   ├── dual_check_pre_baseline_grants.py     # Try-create-drop probe (catalog/schema/volume)
+│   │   ├── dual_check_post_endpoint_grants.py    # KA/MAS/Genie existence check
+│   │   └── additional_patient_info/              # Registry + device + telemetry generators
+│   ├── dual_01_generate_synthetic_baseline.py    # baseline_source = synthetic
+│   ├── dual_01_ingest_real_baseline.py           # baseline_source = real_from_source | real_from_table
+│   ├── dual_02_compare_baseline_modes.py         # Standalone analytics (synthetic vs real)
 │   ├── 04_CGM_PseudoGeneration_CleanData_Modeling.py
 │   ├── 05_CGM_Incident_Inference_DeviceCalibrationBug.py
 │   ├── 06_DeployModel_as_ServingEndpoint.py
+│   ├── dual_09_Create_Genie_KA_MAS.py            # KA + MAS + Genie tile setup
+│   ├── 10_Grant_App_Permissions.py               # App SP grants on UC + endpoints
 │   ├── README.md
 │   └── README_data.md
 └── README.md
@@ -79,6 +129,67 @@ Databricks App code (UI + dashboards + **Genie/Agent** experiences). The app rea
   - The `App/` folder may include its own UI assets (icons/images) for the frontend (separate from analysis figures).
 
 ---
+
+## Getting started
+
+### Prerequisites
+
+- Databricks CLI configured for your target workspace (`databricks auth login --host <workspace-url>`)
+- UC catalog you can write to + SQL warehouse to query through
+
+### Deploy the pipeline + app
+
+Deploy with the **default synthetic baseline** — safest for a fresh workspace, no external network deps, fully self-contained:
+
+```bash
+databricks bundle deploy -t <target> --profile <profile>
+databricks bundle run -t <target> glucosphere_full_setup --profile <profile> --no-wait
+```
+
+End-to-end ~15-20 min. Produces 1,000 pseudo-patients with textbook glucose phenotypes + AR(1) dynamics.
+
+### Deploy with real HUPA-UCM data
+
+Real-mode requires Mendeley URL reachability. Opt in via the `baseline_source` variable:
+
+```bash
+databricks bundle deploy -t <target> \
+  --var "baseline_source=real_from_source" \
+  --profile <profile>
+
+databricks bundle run -t <target> glucosphere_full_setup \
+  --profile <profile> --no-wait
+```
+
+End-to-end ~25 min (extra time = Mendeley zip download + parse). Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients with real CGM/insulin/wearable signal dynamics.
+
+After running, restore the safe synthetic deploy default (so a future fresh deploy is self-contained):
+
+```bash
+databricks bundle deploy -t <target> --profile <profile>
+```
+
+### Verify which mode dispatched
+
+The first task of every job run (`validate_baseline_source`) prints a banner showing the dispatched mode + catalog + schema. Open it in the Workflows run UI for unambiguous after-the-fact verification.
+
+### Distribution comparison
+
+Once at least two modes have been populated (e.g., synthetic + a real-mode snapshot in a sandbox schema), trigger the standalone comparison job:
+
+```bash
+databricks bundle run -t <target> glucosphere_distribution_comparison \
+  --profile <profile>
+```
+
+Or click "Run now with different parameters" in Workflows UI and point `SYNTHETIC_SCHEMA` / `REAL_FROM_SOURCE_SCHEMA` at the schemas you want compared. Emits side-by-side stats (n, percentiles, glycemic buckets), pairwise Kolmogorov-Smirnov test, and three inline matplotlib plots (overlaid histograms, boxplot, bucket %). PNGs auto-save to a UC Volume.
+
+### See also
+
+- **[DEPLOY.md](DEPLOY.md)** — step-by-step first-time deploy guide with troubleshooting + post-deploy smoke-test checklist
+- **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
+- **[App/README.md](App/README.md)** — frontend dev setup
+- `Data_DataGen_ModelForecast/assets/architecture_0.1.png` — system architecture diagram
 
 ## Contributors
 
