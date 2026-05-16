@@ -155,10 +155,14 @@ while time.time() - ka_wait_start < KA_WAIT_MAX_SEC:
                .get("status", {})
                .get("endpoint_status", "UNKNOWN")
     )
+    # NOTE on JSON path: the API returns serving_endpoint_name at .tile.*, not
+    # at .status.* — the original notebook 09 read the wrong path and got
+    # empty strings (which the silent try/except then masked). Caught
+    # 2026-05-15 during L-full validation.
     KA_ENDPOINT_NAME = (
         ka_info.get("knowledge_assistant", {})
-               .get("status", {})
-               .get("endpoint_name", "")
+               .get("tile", {})
+               .get("serving_endpoint_name", "")
     )
     elapsed = int(time.time() - ka_wait_start)
     print(f"  [{elapsed:>3}s] KA status: {KA_STATUS} | endpoint: {KA_ENDPOINT_NAME}")
@@ -298,10 +302,12 @@ if MAS_TILE_ID:
                     .get("status", {})
                     .get("endpoint_status", "UNKNOWN")
         )
+        # Same path correction as the KA block above — endpoint name lives at
+        # .tile.serving_endpoint_name, not at .status.endpoint_name.
         MAS_ENDPOINT_NAME = (
             mas_info.get("multi_agent_supervisor", {})
-                    .get("status", {})
-                    .get("endpoint_name", "")
+                    .get("tile", {})
+                    .get("serving_endpoint_name", "")
         )
         print(f"  MAS status: {status} | endpoint: {MAS_ENDPOINT_NAME}")
         if status in ("ONLINE", "FAILED", "ERROR") or MAS_ENDPOINT_NAME:
