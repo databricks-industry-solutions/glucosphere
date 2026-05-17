@@ -33,6 +33,20 @@ Glucosphere supports three **baseline source modes** for the CGM data that feeds
 
 **Why `real_from_source` is the default** (changed 2026-05-16): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
 
+### Model performance — clean vs incident (2026-05-16, real-trained)
+
+The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) trained on real HUPA-UCM-derived data, evaluated under a simulated +40 mg/dL device calibration bug overlay:
+
+| Period | Timepoints | MAE 15m | MAE 30m |
+|---|---:|---:|---:|
+| Clean (no device bug) | 588,550 | **5.3 mg/dL** | **9.2 mg/dL** |
+| Incident (+40 mg/dL bias, 3-hour window, 300/1000 patients affected) | 3,218 | **38.8 mg/dL** | **37.7 mg/dL** |
+| Degradation | — | **+631%** | **+310%** |
+
+A well-tuned model performs at published-research-quality on clean data (~5 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — by over 6× — when device calibration is compromised**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
+
+Real-trained vs synthetic-trained models produce nearly identical numbers (the synthetic-trained baseline in `origin/hls-buildathon-main` was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See `Data_DataGen_ModelForecast/05_CGM_Incident_Inference_DeviceCalibrationBug.py` for the inference notebook.
+
 ### Column-level provenance (important — easy to mis-explain)
 
 "Real-baseline mode" does **NOT** mean every column is real. Provenance is per-column:
