@@ -429,6 +429,28 @@ resources:
           environment_key: default
 
   # ---------------------------------------------------------------------------
+  # Lakebase: OLTP alert state cache (Plan's Commit F — #42)
+  # ---------------------------------------------------------------------------
+  # Postgres-managed instance hosting the live alert lifecycle tables (alerts +
+  # alert_transitions). Consumed by the Flask app for sub-100ms reads/writes
+  # against mutable row state — Delta's lakehouse semantics are awkward for
+  # OLTP-style alert acknowledge / resolve workflows.
+  #
+  # Capacity CU_1 (smallest) — autoscale can be enabled later if read latency
+  # demands. node_count defaults to 1 (primary only, no read replicas).
+  # retention_window_in_days defaults to 7 (sufficient for demo / development).
+  #
+  # Sizing rule: feedback_smallest_nonnegotiable_compute applies — start small,
+  # escalate only on demonstrated workload need.
+  database_instances:
+    glucosphere_oltp:
+      name: glucosphere-oltp-${bundle.target}
+      capacity: CU_1
+      # enable_pg_native_login defaults to false — connection uses Databricks
+      # OAuth credentials (app SP). Flip to true if a password-based Postgres
+      # client is needed for debug / migrations.
+
+  # ---------------------------------------------------------------------------
   # App: Glucosphere Dashboard
   # ---------------------------------------------------------------------------
   apps:
