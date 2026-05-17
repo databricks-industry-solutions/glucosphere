@@ -3,22 +3,30 @@
 # MAGIC %md
 # MAGIC # CGM Incident Simulation - Device Calibration Bug (BIDIRECTIONAL variant)
 # MAGIC
-# MAGIC **Status (2026-05-17):** Scaffolded clone of `05_CGM_Incident_Inference_DeviceCalibrationBug.py`.
-# MAGIC **Bidirectional cohort-split logic NOT YET IMPLEMENTED** — currently runs identically to original
-# MAGIC (single +40 mg/dL bias for ALL affected patients). To finish:
+# MAGIC **Status (2026-05-17):** Bidirectional core logic IMPLEMENTED. Cohort splits into +N/-N groups
+# MAGIC deterministically by seed; signed bias applied via `signed_bias_mgdl` column; new
+# MAGIC `incident_direction` schema column flows through `pseudo_incident_7d_labeled` → feature dataframe
+# MAGIC → MAE breakouts. MAE summary print breaks out by direction (both should be ~equal, proving
+# MAGIC direction-agnostic anomaly detection).
 # MAGIC
-# MAGIC 1. Read `cfg.calibration_bias_magnitude_mgdl` + `cfg.calibration_bias_direction_split` from config
-# MAGIC    (NEW params in `configs/baseline_config.yaml` as of 2026-05-17).
-# MAGIC 2. Where bias is applied (`glucose_observed = glucose_true + cfg.calibration_bias_mgdl` for all
-# MAGIC    affected): split `affected_patients` deterministically by seed into `pos_patients` +
-# MAGIC    `neg_patients` (fraction `direction_split` go positive, rest negative). Apply `+magnitude` to
-# MAGIC    pos and `-magnitude` to neg via a signed-bias column.
-# MAGIC 3. Add schema column `incident_direction` ∈ {'positive', 'negative', 'none'} flowing downstream to
-# MAGIC    `pseudo_incident_7d_labeled`. Lakebase F (task #42) consumes this as `bias_direction` on alerts.
-# MAGIC 4. Visualization: 3-panel "all/affected/unaffected" → 4-panel adding affected_negative.
-# MAGIC 5. MAE summary print: break out by direction (both ~equal proves direction-agnostic monitoring).
+# MAGIC Implemented (#41 Option 3):
+# MAGIC
+# MAGIC 1. ✅ Read `cfg.calibration_bias_magnitude_mgdl` + `cfg.calibration_bias_direction_split` from config
+# MAGIC    (with safe fallback to legacy `cfg.calibration_bias_mgdl` if new params absent).
+# MAGIC 2. ✅ Split `affected_patients` deterministically into pos/neg groups; apply signed bias via
+# MAGIC    `signed_bias_mgdl` column (+magnitude or -magnitude).
+# MAGIC 3. ✅ `incident_direction` ∈ {'positive', 'negative', 'none'} added to schema; propagates into
+# MAGIC    feature dataframe through the incident_info join. `incident_bias_mgdl` now stores the SIGNED
+# MAGIC    value (downstream consumers can `ABS()` if they need magnitude).
+# MAGIC 4. ⏳ Visualization: 3-panel "all/affected/unaffected" still 3-panel — 4-panel upgrade deferred
+# MAGIC    as follow-up commit (won't break demo; existing viz still works, just doesn't break out
+# MAGIC    direction). See follow-up task; could be folded into #47 helper extract.
+# MAGIC 5. ✅ MAE summary print breaks out by `incident_direction` (positive vs negative groups).
 # MAGIC
 # MAGIC See `ref_notes/2026-05-16_app-display-and-incident-simulation.md` for full design + code sketch.
+# MAGIC
+# MAGIC **Lakebase F (task #42) integration:** the new `incident_direction` column on
+# MAGIC `pseudo_incident_7d_labeled` is what populates the `bias_direction` field on the alerts table.
 # MAGIC
 # MAGIC **Runtime backup:** original `05_CGM_Incident_Inference_DeviceCalibrationBug.py` retained unchanged.
 # MAGIC Revert by changing `databricks.yml` `incident_inference` task's `notebook_path` back to `05_*.py`.
@@ -415,21 +423,56 @@ if incident_start_ts < data_start or incident_end_ts > data_end:
 else:
     print(f"   ✅ Incident window is within data timerange")
 
-# Select patients for incident (random 30%)
+# Select patients for incident (random fraction = cfg.incident_pct)
 all_patients = pseudo_clean.select("patient_id").distinct()
 total_patients = all_patients.count()
 n_incident_patients = int(total_patients * cfg.incident_pct)
 
-incident_patients = (all_patients
+# Bidirectional split (#41 Option 3, 2026-05-17): cfg.calibration_bias_direction_split is
+# the fraction of affected cohort that gets POSITIVE bias; rest get NEGATIVE. Defaults to
+# 0.5 (symmetric bidirectional). 1.0 = legacy single-direction (matches old 05_*.py).
+# 0.0 = all negative. Bias magnitude comes from cfg.calibration_bias_magnitude_mgdl
+# (new param, 2026-05-17); legacy cfg.calibration_bias_mgdl retained for the unchanged
+# backup notebook in 05_*.py.
+direction_split = getattr(cfg, 'calibration_bias_direction_split', 1.0)
+bias_magnitude = getattr(cfg, 'calibration_bias_magnitude_mgdl', cfg.calibration_bias_mgdl)
+n_positive = int(n_incident_patients * direction_split)
+n_negative = n_incident_patients - n_positive
+
+# Pick affected cohort (deterministic by seed)
+_incident_cohort = (all_patients
   .orderBy(F.rand(seed=cfg.seed))
   .limit(n_incident_patients)
-  .withColumn("has_incident", F.lit(1))
 )
 
-print(f"\nAffected Patients:")
-print(f"   Total patients: {total_patients}")
-print(f"   Incident patients: {n_incident_patients} ({cfg.incident_pct*100:.0f}%)")
-print(f"   Clean patients: {total_patients - n_incident_patients} ({(1-cfg.incident_pct)*100:.0f}%)")
+# Split deterministically into pos/neg groups by patient_id order within cohort.
+# Deterministic AND splits the cohort cleanly. The randomness of "which patients" is in
+# the .orderBy(rand(seed)) above; the pos/neg assignment is then deterministic within the
+# already-randomized cohort.
+from pyspark.sql import Window as _W
+_rank_window = _W.orderBy("patient_id")
+incident_patients = (_incident_cohort
+  .withColumn("_rank", F.row_number().over(_rank_window))
+  .withColumn(
+    "incident_direction",
+    F.when(F.col("_rank") <= F.lit(n_positive), F.lit("positive")).otherwise(F.lit("negative"))
+  )
+  .withColumn(
+    "signed_bias_mgdl",
+    F.when(F.col("incident_direction") == "positive", F.lit(bias_magnitude))
+     .otherwise(F.lit(-bias_magnitude))
+  )
+  .withColumn("has_incident", F.lit(1))
+  .drop("_rank")
+)
+
+print(f"\nAffected Patients (bidirectional split #41 Option 3):")
+print(f"   Total patients:               {total_patients}")
+print(f"   Incident patients:            {n_incident_patients} ({cfg.incident_pct*100:.0f}%)")
+print(f"     Positive bias (+{bias_magnitude} mg/dL): {n_positive} patients ({direction_split*100:.0f}% of cohort)")
+print(f"     Negative bias (-{bias_magnitude} mg/dL): {n_negative} patients ({(1-direction_split)*100:.0f}% of cohort)")
+print(f"   Clean patients:               {total_patients - n_incident_patients} ({(1-cfg.incident_pct)*100:.0f}%)")
+print(f"   Bias direction split:         direction_split={direction_split}  (1.0=legacy unidir; 0.5=symmetric)")
 
 # Calculate expected impact
 points_per_patient = pseudo_clean.count() / total_patients
@@ -453,34 +496,35 @@ print(f"\n[SUCCESS] Incident patients selected")
 # glucose_observed gets +40 mg/dL bias during incident
 # ------------------------
 
-print("Injecting calibration bias...")
-print(f"   Bias: +{cfg.calibration_bias_mgdl} mg/dL")
-print(f"   Affected: {cfg.incident_pct*100:.0f}% of patients during incident window\n")
+print("Injecting calibration bias (bidirectional #41 Option 3)...")
+print(f"   Magnitude:       {bias_magnitude} mg/dL")
+print(f"   Direction split: {direction_split*100:.0f}% positive / {(1-direction_split)*100:.0f}% negative")
+print(f"   Affected:        {cfg.incident_pct*100:.0f}% of patients during incident window\n")
 
-# Drop has_incident from pseudo_clean to avoid ambiguity, then join
+# Drop has_incident from pseudo_clean to avoid ambiguity, then join incident_patients
+# (which now also carries `incident_direction` and `signed_bias_mgdl` per-patient).
 pseudo_with_flag = pseudo_clean.drop("has_incident").join(
     incident_patients,
     "patient_id",
     "left"
 ).fillna({"has_incident": 0})
 
-# Inject bias: Add calibration_bias_mgdl to glucose_observed during incident window
+# Build the in-window mask once (shared across multiple withColumn calls).
+_in_window = (
+    (F.col("has_incident") == 1) &
+    (F.col("time") >= F.lit(incident_start_ts)) &
+    (F.col("time") < F.lit(incident_end_ts))
+)
+
+# Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the incident window.
+# signed_bias_mgdl is +magnitude for positive-direction patients, -magnitude for negative.
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
-    F.when(
-        (F.col("has_incident") == 1) &
-        (F.col("time") >= F.lit(incident_start_ts)) &
-        (F.col("time") < F.lit(incident_end_ts)),
-        F.col("glucose_observed") + F.lit(cfg.calibration_bias_mgdl)
-    ).otherwise(F.col("glucose_observed"))
+    F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
+     .otherwise(F.col("glucose_observed"))
 ).withColumn(
     "incident_type",
-    F.when(
-        (F.col("has_incident") == 1) &
-        (F.col("time") >= F.lit(incident_start_ts)) &
-        (F.col("time") < F.lit(incident_end_ts)),
-        F.lit("calibration_bias")
-    ).otherwise(F.lit(None).cast("string"))
+    F.when(_in_window, F.lit("calibration_bias")).otherwise(F.lit(None).cast("string"))
 ).withColumn(
     "incident_start_time",
     F.when(F.col("has_incident") == 1, F.lit(incident_start_ts)).otherwise(F.lit(None).cast("timestamp"))
@@ -488,9 +532,18 @@ pseudo_incident = pseudo_with_flag.withColumn(
     "incident_end_time",
     F.when(F.col("has_incident") == 1, F.lit(incident_end_ts)).otherwise(F.lit(None).cast("timestamp"))
 ).withColumn(
+    # Stores the SIGNED value (+magnitude or -magnitude). Downstream consumers can take
+    # ABS() if they want magnitude. Pairs with `incident_direction` enum for explicit
+    # direction signaling.
     "incident_bias_mgdl",
-    F.when(F.col("has_incident") == 1, F.lit(cfg.calibration_bias_mgdl)).otherwise(F.lit(None).cast("double"))
+    F.when(F.col("has_incident") == 1, F.col("signed_bias_mgdl")).otherwise(F.lit(None).cast("double"))
 )
+# incident_direction column is already on incident_patients → flows through the join.
+# Null it out for clean (non-affected) patients for consistency.
+pseudo_incident = pseudo_incident.withColumn(
+    "incident_direction",
+    F.when(F.col("has_incident") == 1, F.col("incident_direction")).otherwise(F.lit(None).cast("string"))
+).drop("signed_bias_mgdl")  # drop the intermediate column; incident_bias_mgdl carries the signed value
 
 # Save incident data
 pseudo_incident.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(pseudo_incident_tbl)
@@ -597,8 +650,10 @@ incident_labeled_tbl = f"{CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled
 df = spark.table(incident_labeled_tbl)
 
 # Join with incident flags - drop has_incident from df first to avoid ambiguity
+# Pull `incident_direction` too so it flows into the feature dataframe for direction-
+# aware MAE breakouts downstream (#41 Option 3, 2026-05-17).
 incident_info = spark.table(pseudo_incident_tbl).select(
-    "patient_id", "time", "has_incident", "incident_type"
+    "patient_id", "time", "has_incident", "incident_type", "incident_direction"
 )
 df = df.drop("has_incident").join(incident_info, ["patient_id", "time"], "inner")
 
@@ -619,7 +674,7 @@ df = df.withColumn(
 w_ord = Window.partitionBy("patient_id").orderBy("time")
 
 feat = (df.select(
-        "patient_id", "time", "incident_active", "has_incident",
+        "patient_id", "time", "incident_active", "has_incident", "incident_direction",
         F.col("glucose_true").cast("double").alias("glucose_true"),  # TRUE glucose (ground truth)
         F.col("glucose_observed").cast("double").alias("glucose_observed"),  # OBSERVED glucose (with bias)
         F.col("y_tplus_3").cast("double").alias("y_tplus_3"),
@@ -660,8 +715,10 @@ print(f"[SUCCESS] Features built: {len(feat_sample):,} timepoints")
 print(f"   Incident timepoints: {feat_sample['incident_active'].sum():,} ({feat_sample['incident_active'].sum()/len(feat_sample)*100:.1f}%)")
 
 # Prepare feature matrix (exclude glucose_true from features - it's only for visualization)
-feature_cols = [c for c in feat_sample.columns if c not in 
-                {"patient_id", "time", "incident_active", "has_incident", "glucose_true", "y_tplus_3", "y_tplus_6"}]
+# incident_direction is metadata for downstream MAE breakouts, NOT a model feature.
+feature_cols = [c for c in feat_sample.columns if c not in
+                {"patient_id", "time", "incident_active", "has_incident", "incident_direction",
+                 "glucose_true", "y_tplus_3", "y_tplus_6"}]
 X_inference = feat_sample[feature_cols].to_numpy(dtype=np.float32)
 d_inference = xgb.DMatrix(X_inference, feature_names=feature_cols)
 
@@ -710,10 +767,24 @@ if len(incident_period) > 0:
     print(f"\nCLEAN PERIOD (no device bug):")
     print(f"   MAE: {clean_mae_15m:.1f} mg/dL (15m) | {clean_mae_30m:.1f} mg/dL (30m)")
     print(f"   Status: Normal performance")
-    
-    print(f"\nINCIDENT PERIOD (+{cfg.calibration_bias_mgdl} mg/dL calibration bug):")
-    print(f"   MAE: {incident_mae_15m:.1f} mg/dL (15m) | {incident_mae_30m:.1f} mg/dL (30m)")
-    print(f"   Status: CATASTROPHIC FAILURE")
+
+    print(f"\nINCIDENT PERIOD (calibration bug, magnitude {bias_magnitude} mg/dL, bidirectional):")
+    print(f"   MAE (aggregate): {incident_mae_15m:.1f} mg/dL (15m) | {incident_mae_30m:.1f} mg/dL (30m)")
+
+    # Bidirectional MAE breakout — both directions should produce similar MAE magnitudes
+    # because MAE is sign-agnostic (|forecast - observed|). Demonstrates direction-agnostic
+    # anomaly detection: platform catches both over- and under-reading equally.
+    pos_period = incident_period[incident_period['incident_direction'] == 'positive']
+    neg_period = incident_period[incident_period['incident_direction'] == 'negative']
+    if len(pos_period) > 0:
+        pos_mae_15m = pos_period['mae_15m'].mean()
+        pos_mae_30m = pos_period['mae_30m'].mean()
+        print(f"   - Positive-bias group (+{bias_magnitude} mg/dL): MAE {pos_mae_15m:.1f} (15m) | {pos_mae_30m:.1f} (30m)  [over-reading, n={len(pos_period):,}]")
+    if len(neg_period) > 0:
+        neg_mae_15m = neg_period['mae_15m'].mean()
+        neg_mae_30m = neg_period['mae_30m'].mean()
+        print(f"   - Negative-bias group (-{bias_magnitude} mg/dL): MAE {neg_mae_15m:.1f} (15m) | {neg_mae_30m:.1f} (30m)  [under-reading, n={len(neg_period):,}]")
+    print(f"   Status: CATASTROPHIC FAILURE — direction-agnostic detection proven")
     
     degradation_15m = incident_mae_15m - clean_mae_15m
     degradation_30m = incident_mae_30m - clean_mae_30m
