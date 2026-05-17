@@ -216,3 +216,5 @@ Or click "Run now with different parameters" in Workflows UI and point `SYNTHETI
 Team 11 (HLS) — Real-time Digital Health Apps for Connected Devices
 
 Justin Ward | Morgan Williams | May Merkle-Tan | Nikita Kamraj | Sabrina Wang
+
+**Currently active on MVP tidy-up (post-buildathon):** Justin Ward, May Merkle-Tan, Morgan Williams

@@ -112,7 +112,7 @@ This will:
 
 ## Data Schema
 
-Primary table: `hls_glucosphere.cgm.gold_patient_device_readings`
+Primary table: `${CATALOG_NAME}.${SCHEMA_NAME}.gold_patient_device_readings` (currently `mmt_aws_usw2_catalog.glucosphere_dev.gold_patient_device_readings`; the app's Flask backend rewrites the JS-hardcoded `ws_ward_pixels_catalog.glucosphere` references at request time via env vars).
 
 Key columns:
 - `device_id`, `patient_id`, `time`
@@ -120,7 +120,7 @@ Key columns:
 - `device_model`, `firmware_version`
 - `region`, `diabetes_type`
 
-Incident table: `hls_glucosphere.cgm.pseudo_incident_7d_labeled_v20260105`
+Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
 ## Configuration Files
 
