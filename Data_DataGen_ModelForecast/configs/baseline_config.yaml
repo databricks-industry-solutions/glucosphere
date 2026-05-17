@@ -25,7 +25,13 @@ dev:
   bolus_mult_lo: 0.95
   bolus_mult_hi: 1.1
   incident_pct: 0.3
-  calibration_bias_mgdl: 40.0
+  calibration_bias_mgdl: 40.0                # kept for backwards-compat with original 05_*.py runtime backup
+  # Bidirectional incident params (2026-05-17, #41 Option 3 — consumed by dual_05_*_Bidirectional.py):
+  calibration_bias_magnitude_mgdl: 40.0      # absolute bias size (same value as legacy calibration_bias_mgdl)
+  calibration_bias_direction_split: 0.5      # fraction of affected cohort getting POSITIVE bias; rest get NEGATIVE.
+                                             # 1.0 = unidirectional positive (matches legacy 05_*.py behavior);
+                                             # 0.5 = symmetric bidirectional (recommended for demo);
+                                             # 0.0 = unidirectional negative.
   incident_start_day: 2
   incident_start_hour: 14
   incident_duration_min: 180

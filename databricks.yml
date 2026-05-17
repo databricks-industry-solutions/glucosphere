@@ -251,12 +251,15 @@ resources:
         - task_key: incident_inference
           description: >
             Simulate device calibration bug incident, run inference,
-            and produce pseudo_incident_7d_labeled table consumed by app
+            and produce pseudo_incident_7d_labeled table consumed by app.
+            Switched to dual_05 bidirectional variant 2026-05-17 (#41 Option 3
+            side-by-side); original 05_*.py retained as runtime backup —
+            revert by changing notebook_path below back to 05_*.py.
           max_retries: 0
           depends_on:
             - task_key: datagen_modeling
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/05_CGM_Incident_Inference_DeviceCalibrationBug.py
+            notebook_path: Data_DataGen_ModelForecast/dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py
             base_parameters:
               CATALOG_NAME:     ${var.catalog}
               SCHEMA_NAME:      ${var.schema}
