@@ -27,9 +27,11 @@ Glucosphere supports three **baseline source modes** for the CGM data that feeds
 
 | Mode | Source of glucose / insulin / wearable signals | Patient count | Default? | When to use |
 |---|---|---|---|---|
-| `synthetic` | In-cluster generator: textbook diabetes phenotype + AR(1) glucose dynamics | 1,000 pseudo-patients | ✅ default | CI / fresh-workspace bootstrap / demos that don't need clinical extremes. No network egress, deterministic. |
-| `real_from_source` | Downloaded from Mendeley (HUPA-UCM dataset, Universidad Complutense de Madrid) | 25 real type-1 diabetes patients (oversampled to 1,000) | opt-in via `--var` | Demos that need clinical realism — actual hypoglycemia events, hyperglycemia extremes, real CGM signal noise. |
+| `real_from_source` | Downloaded from Mendeley (HUPA-UCM dataset, Universidad Complutense de Madrid) | 25 real type-1 diabetes patients (oversampled to 1,000) | ✅ default | Buildathon demos + anything that benefits from real clinical extremes (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL, realistic CGM signal noise). |
+| `synthetic` | In-cluster generator: textbook diabetes phenotype + AR(1) glucose dynamics | 1,000 pseudo-patients | opt-in via `--var` | CI / smoke tests / restricted-egress workspaces (no network call to Mendeley) / scenarios where deterministic in-cluster generation is preferred. |
 | `real_from_table` | CTAS from an existing UC table you point at | configurable via widgets | opt-in via `--var` | Once you've ingested HUPA-UCM elsewhere and want to mirror without re-downloading. |
+
+**Why `real_from_source` is the default** (changed 2026-05-16): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
 
 ### Column-level provenance (important — easy to mis-explain)
 
@@ -137,33 +139,35 @@ Databricks App code (UI + dashboards + **Genie/Agent** experiences). The app rea
 - Databricks CLI configured for your target workspace (`databricks auth login --host <workspace-url>`)
 - UC catalog you can write to + SQL warehouse to query through
 
-### Deploy the pipeline + app
-
-Deploy with the **default synthetic baseline** — safest for a fresh workspace, no external network deps, fully self-contained:
+### Deploy the pipeline + app (default — real HUPA-UCM data)
 
 ```bash
 databricks bundle deploy -t <target> --profile <profile>
 databricks bundle run -t <target> glucosphere_full_setup --profile <profile> --no-wait
 ```
 
-End-to-end ~15-20 min. Produces 1,000 pseudo-patients with textbook glucose phenotypes + AR(1) dynamics.
+End-to-end ~25-40 min. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
 
-### Deploy with real HUPA-UCM data
+> **Note:** The first deploy downloads the HUPA-UCM zip from Mendeley (~25 MB) and auto-creates the `raw_baseline` UC Volume. No pre-setup needed.
 
-Real-mode requires Mendeley URL reachability. Opt in via the `baseline_source` variable:
+### Deploy with synthetic baseline instead
+
+For CI, smoke tests, or restricted-egress workspaces where the Mendeley download is unavailable:
 
 ```bash
 databricks bundle deploy -t <target> \
-  --var "baseline_source=real_from_source" \
+  --var "baseline_source=synthetic" \
   --profile <profile>
 
 databricks bundle run -t <target> glucosphere_full_setup \
   --profile <profile> --no-wait
 ```
 
-End-to-end ~25 min (extra time = Mendeley zip download + parse). Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients with real CGM/insulin/wearable signal dynamics.
+End-to-end ~15-20 min. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
 
-After running, restore the safe synthetic deploy default (so a future fresh deploy is self-contained):
+> ⚠️ **`--var` placement matters:** it MUST go on `bundle deploy`, not `bundle run`. The `${var.baseline_source}` in the dispatch condition is interpolated at deploy time. Putting `--var` on `bundle run` silently routes to whatever the deployed default is.
+
+To restore the real-data default afterward:
 
 ```bash
 databricks bundle deploy -t <target> --profile <profile>

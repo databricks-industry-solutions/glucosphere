@@ -19,7 +19,11 @@ variables:
         - synthetic        → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1))
         - real_from_source → dual_01_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
         - real_from_table  → dual_01_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
-    default: synthetic
+      Default is real_from_source (changed 2026-05-16) — buildathon demos want
+      clinical realism (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL),
+      and the Mendeley URL has been reliable. Synthetic remains one --var away for
+      CI / restricted-egress scenarios.
+    default: real_from_source
   source_catalog:
     description: Source catalog for baseline_source=real_from_table mode (empty otherwise)
     default: ""
