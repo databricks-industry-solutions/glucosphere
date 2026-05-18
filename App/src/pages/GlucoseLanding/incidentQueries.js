@@ -215,6 +215,94 @@ export async function getGlucoseTimelineData() {
 }
 
 /**
+ * Get ABSOLUTE-GLUCOSE timeline data per cohort.
+ *
+ * Returns per-minute aggregates across the 7-day window:
+ *   - glucose_true     : AVG(glucose_true) across affected patients (ground truth)
+ *   - glucose_positive : AVG(glucose_observed) over positive-direction cohort.
+ *                        Tracks glucose_true outside incidents, spikes +bias_magnitude
+ *                        during window 1 (cohort 1's incident).
+ *   - glucose_negative : AVG(glucose_observed) over negative-direction cohort.
+ *                        Tracks glucose_true outside incidents, drops -bias_magnitude
+ *                        during window 2 (cohort 2's incident).
+ *   - incident_period  : 1 inside ANY patient's incident window, 0 outside.
+ *
+ * Cohort-AVG approach (vs picking sample patients) is mirror of the notebook
+ * 3-panel chart's "affected patients only" middle panel. Outside-incident
+ * separation between cohort_pos and cohort_neg lines is small because both
+ * cohorts share similar patient sampling (no longer the same cancellation
+ * concern as the original single-window bidirectional design — the two
+ * cohorts are distinct random subsets but both shadow glucose_true closely).
+ */
+export async function getAbsoluteGlucoseTimelineData() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH minute_data AS (
+      SELECT
+        DATE_TRUNC('minute', time) as minute,
+        glucose_true,
+        glucose_observed,
+        incident_direction,
+        CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+      WHERE time IS NOT NULL
+        AND incident_direction IS NOT NULL
+    )
+    SELECT
+      minute as time,
+      AVG(glucose_true) as glucose_true,
+      AVG(CASE WHEN incident_direction = 'positive' THEN glucose_observed END) as glucose_positive,
+      AVG(CASE WHEN incident_direction = 'negative' THEN glucose_observed END) as glucose_negative,
+      MAX(incident_period) as incident_period
+    FROM minute_data
+    GROUP BY minute
+    ORDER BY minute
+  `;
+
+  try {
+    console.log('Fetching absolute glucose timeline data...');
+    const result = await executeSQLQuery(query);
+
+    if (result && result.result && result.result.structuredContent) {
+      const structuredContent = result.result.structuredContent;
+      if (structuredContent.result &&
+          structuredContent.result.data_array &&
+          structuredContent.result.data_array.length > 0) {
+        const parseOrNull = (v) => {
+          if (v == null) return null;
+          const s = v.string_value;
+          if (s == null || s === '') return null;
+          const n = parseFloat(s);
+          return isNaN(n) ? null : n;
+        };
+        const rows = structuredContent.result.data_array.map(row => {
+          if (row.values && row.values.length >= 5) {
+            const timeStr = row.values[0].string_value;
+            const timeDate = new Date(timeStr);
+            if (isNaN(timeDate.getTime())) return null;
+            return {
+              time: timeStr,
+              glucose_true: parseOrNull(row.values[1]),
+              glucose_positive: parseOrNull(row.values[2]),
+              glucose_negative: parseOrNull(row.values[3]),
+              incident_period: parseInt(row.values[4].string_value, 10) || 0
+            };
+          }
+          return null;
+        }).filter(item => item !== null);
+        console.log(`✅ Loaded ${rows.length} absolute glucose timeline data points`);
+        return rows;
+      }
+    }
+    console.warn('No absolute glucose timeline data found in response');
+    return [];
+  } catch (error) {
+    console.error('Error fetching absolute glucose timeline data:', error);
+    throw error;
+  }
+}
+
+/**
  * Get incident summary statistics
  * Returns key metrics about the incident (peak MAE, bias, duration, etc.)
  */

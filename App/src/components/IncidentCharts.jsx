@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { getIncidentImpactData, getGlucoseTimelineData, getIncidentSummary } from '../pages/GlucoseLanding/incidentQueries';
+import {
+  getIncidentImpactData,
+  getGlucoseTimelineData,
+  getAbsoluteGlucoseTimelineData,
+  getIncidentSummary,
+} from '../pages/GlucoseLanding/incidentQueries';
 
 /**
  * Incident Impact Chart - Shows MAE over time with incident period highlighted
@@ -302,7 +307,7 @@ export function IncidentImpactChart() {
             d={mae30Path}
             fill="none"
             stroke="rgb(251 146 60)"
-            strokeWidth="2"
+            strokeWidth="1.5"
             opacity="0.9"
           />
 
@@ -311,9 +316,22 @@ export function IncidentImpactChart() {
             d={mae15Path}
             fill="none"
             stroke="rgb(59 130 246)"
-            strokeWidth="2.5"
+            strokeWidth="1.5"
             opacity="0.9"
           />
+
+          {/* Downsampled markers — ~30 per series across the 7-day window, less bar-like rendering */}
+          {(() => {
+            const markerEveryN = Math.max(1, Math.floor(validData.length / 30));
+            return validData.filter((_, i) => i % markerEveryN === 0).map((d, i) => (
+              <g key={`mae-mk-${i}`}>
+                <circle cx={xScale(d.time)} cy={yScale(d.mae_fleet || 0)} r="2.5"
+                        fill="rgb(59 130 246)" stroke="rgb(59 130 246)" />
+                <rect x={xScale(d.time) - 2.5} y={yScale(d.mae_affected || 0) - 2.5} width="5" height="5"
+                      fill="rgb(251 146 60)" stroke="rgb(251 146 60)" />
+              </g>
+            ));
+          })()}
 
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
@@ -657,7 +675,7 @@ export function GlucoseTimelineChart() {
             d={biasPositivePath}
             fill="none"
             stroke="rgb(239 68 68)"
-            strokeWidth="2"
+            strokeWidth="1.5"
             opacity="0.9"
           />
 
@@ -666,9 +684,28 @@ export function GlucoseTimelineChart() {
             d={biasNegativePath}
             fill="none"
             stroke="rgb(59 130 246)"
-            strokeWidth="2"
+            strokeWidth="1.5"
             opacity="0.9"
           />
+
+          {/* Downsampled markers — ~30 per series across the 7-day window, less bar-like rendering */}
+          {(() => {
+            const markerEveryN = Math.max(1, Math.floor(validData.length / 30));
+            return validData.filter((_, i) => i % markerEveryN === 0).map((d, i) => (
+              <g key={`bias-mk-${i}`}>
+                {d.bias_positive != null && (
+                  <rect x={xScale(d.time) - 2.5} y={yScale(d.bias_positive) - 2.5} width="5" height="5"
+                        fill="rgb(239 68 68)" stroke="rgb(239 68 68)" />
+                )}
+                {d.bias_negative != null && (
+                  <polygon
+                    points={`${xScale(d.time)},${yScale(d.bias_negative) - 3} ${xScale(d.time) - 3},${yScale(d.bias_negative) + 2.5} ${xScale(d.time) + 3},${yScale(d.bias_negative) + 2.5}`}
+                    fill="rgb(59 130 246)" stroke="rgb(59 130 246)"
+                  />
+                )}
+              </g>
+            ));
+          })()}
 
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
@@ -693,6 +730,282 @@ export function GlucoseTimelineChart() {
             </text>
           </g>
 
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Glucose Absolute Chart — absolute glucose timeline per direction cohort.
+ * Three lines: green True (ground truth), red Positive cohort device readings
+ * (spikes UP +bias_magnitude during window 1), blue Negative cohort device
+ * readings (drops DOWN -bias_magnitude during window 2). Mirrors the
+ * notebook 3-panel chart's middle "Affected Patients Only" panel.
+ */
+export function GlucoseAbsoluteChart() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const rows = await getAbsoluteGlucoseTimelineData();
+        setData(rows);
+      } catch (err) {
+        console.error('Error loading absolute glucose timeline data:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 h-96 flex items-center justify-center">
+        <div className="text-slate-400">Loading absolute glucose timeline...</div>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 h-96 flex items-center justify-center">
+        <div className="text-rose-400">Error: {error}</div>
+      </div>
+    );
+  }
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 h-96 flex items-center justify-center">
+        <div className="text-slate-400">No absolute glucose timeline data available</div>
+      </div>
+    );
+  }
+
+  // Layout (same scale as the other charts)
+  const chartWidth = 1400;
+  const chartHeight = 400;
+  const padding = { top: 60, right: 160, bottom: 80, left: 80 };
+  const innerWidth = chartWidth - padding.left - padding.right;
+  const innerHeight = chartHeight - padding.top - padding.bottom;
+
+  const validData = data.filter(d => d.time && !isNaN(new Date(d.time).getTime()));
+  if (validData.length === 0) {
+    return (
+      <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 h-96 flex items-center justify-center">
+        <div className="text-slate-400">No valid absolute glucose timeline data available</div>
+      </div>
+    );
+  }
+
+  // Extract values; allow nulls (some minutes may have no reading per cohort)
+  const allGlucoseValues = validData.flatMap(d => [d.glucose_true, d.glucose_positive, d.glucose_negative]).filter(v => v != null);
+  const timeValues = validData.map(d => new Date(d.time).getTime());
+
+  // Y-axis fit to actual glucose range — use observed min/max with a small pad.
+  const dataMin = Math.min(...allGlucoseValues);
+  const dataMax = Math.max(...allGlucoseValues);
+  // Pad and snap to nice round numbers
+  const minGlucose = Math.max(0, Math.floor((dataMin - 10) / 10) * 10);
+  const maxGlucose = Math.ceil((dataMax + 15) / 10) * 10;
+  const minTime = Math.min(...timeValues);
+  const maxTime = Math.max(...timeValues);
+  const timeRange = maxTime - minTime;
+
+  const xScale = (t) => padding.left + ((new Date(t).getTime() - minTime) / timeRange) * innerWidth;
+  const yScale = (v) => chartHeight - padding.bottom - ((v - minGlucose) / (maxGlucose - minGlucose)) * innerHeight;
+
+  // Build paths for each series — break on null so missing minutes don't connect
+  const buildPath = (yKey) => {
+    let started = false;
+    const segments = [];
+    validData.forEach(d => {
+      const v = d[yKey];
+      if (v == null) { started = false; return; }
+      const x = xScale(d.time);
+      const y = yScale(v);
+      segments.push(`${started ? 'L' : 'M'} ${x} ${y}`);
+      started = true;
+    });
+    return segments.join(' ');
+  };
+  const truePath = buildPath('glucose_true');
+  const positivePath = buildPath('glucose_positive');
+  const negativePath = buildPath('glucose_negative');
+
+  // Marker downsampling — show one marker every Nth point so the markers are
+  // visible (per-minute would be ~10000 dots; we want ~1 per ~6h block).
+  const markerEveryN = Math.max(1, Math.floor(validData.length / 30));
+  const markerPoints = validData.filter((_, i) => i % markerEveryN === 0);
+
+  // Find incident periods — there can be more than one contiguous block (two
+  // windows on different cohorts). Group consecutive incident_period=1 rows.
+  const incidentBlocks = [];
+  let inBlock = false;
+  let blockStart = null;
+  validData.forEach((d, idx) => {
+    if (d.incident_period === 1 && !inBlock) {
+      inBlock = true;
+      blockStart = d.time;
+    } else if (d.incident_period !== 1 && inBlock) {
+      inBlock = false;
+      incidentBlocks.push({ start: blockStart, end: validData[idx - 1].time });
+    }
+  });
+  if (inBlock) incidentBlocks.push({ start: blockStart, end: validData[validData.length - 1].time });
+
+  // Date tick formatting
+  const formatDate = (t) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const xAxisTicks = [];
+  for (let i = 0; i <= 5; i++) {
+    const tickTime = new Date(minTime + (timeRange / 5) * i);
+    xAxisTicks.push({ x: xScale(tickTime), label: formatDate(tickTime) });
+  }
+  const yAxisTicks = [];
+  const yStep = Math.max(10, Math.ceil((maxGlucose - minGlucose) / 5 / 10) * 10);
+  for (let v = minGlucose; v <= maxGlucose; v += yStep) {
+    yAxisTicks.push({ y: yScale(v), label: Math.round(v) });
+  }
+
+  // Hypo / hyper threshold lines (clinical reference)
+  const hypoY = (minGlucose <= 70 && maxGlucose >= 70) ? yScale(70) : null;
+  const hyperY = (minGlucose <= 180 && maxGlucose >= 180) ? yScale(180) : null;
+
+  return (
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+          Glucose Timeline: Actual vs Device Readings (per-cohort)
+        </h3>
+        <p className="text-xs text-slate-500 font-mono">
+          Affected patients only. Green = true glucose, Red = positive-bias cohort device readings (+40 mg/dL at Day 2 incident), Blue = negative-bias cohort device readings (-40 mg/dL at Day 5 incident).
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <svg width={chartWidth} height={chartHeight} className="mx-auto">
+          {/* Incident period shadings — one rectangle per contiguous incident block */}
+          {incidentBlocks.map((blk, i) => {
+            const x1 = xScale(blk.start);
+            const x2 = xScale(blk.end);
+            return (
+              <rect
+                key={`incident-${i}`}
+                x={x1}
+                y={padding.top}
+                width={Math.max(2, x2 - x1)}
+                height={innerHeight}
+                fill="rgb(248 113 113 / 0.1)"
+                stroke="rgb(248 113 113 / 0.3)"
+                strokeWidth="1"
+                strokeDasharray="4 2"
+              />
+            );
+          })}
+
+          {/* Clinical threshold lines */}
+          {hypoY != null && (
+            <line x1={padding.left} y1={hypoY} x2={chartWidth - padding.right} y2={hypoY}
+                  stroke="rgb(239 68 68)" strokeWidth="1" strokeDasharray="2 3" opacity="0.4" />
+          )}
+          {hyperY != null && (
+            <line x1={padding.left} y1={hyperY} x2={chartWidth - padding.right} y2={hyperY}
+                  stroke="rgb(251 146 60)" strokeWidth="1" strokeDasharray="2 3" opacity="0.4" />
+          )}
+
+          {/* Y axis */}
+          <line x1={padding.left} y1={padding.top} x2={padding.left} y2={chartHeight - padding.bottom}
+                stroke="rgb(71 85 105)" strokeWidth="1" />
+          {yAxisTicks.map((tick, i) => (
+            <g key={i}>
+              <line x1={padding.left - 5} y1={tick.y} x2={padding.left} y2={tick.y}
+                    stroke="rgb(71 85 105)" strokeWidth="1" />
+              <text x={padding.left - 10} y={tick.y + 4} fill="rgb(148 163 184)"
+                    fontSize="11" textAnchor="end" fontFamily="monospace">
+                {tick.label}
+              </text>
+            </g>
+          ))}
+          <text x={20} y={chartHeight / 2} fill="rgb(148 163 184)" fontSize="12"
+                textAnchor="middle" transform={`rotate(-90 20 ${chartHeight / 2})`} fontFamily="monospace">
+            Glucose (mg/dL)
+          </text>
+
+          {/* X axis */}
+          <line x1={padding.left} y1={chartHeight - padding.bottom}
+                x2={chartWidth - padding.right} y2={chartHeight - padding.bottom}
+                stroke="rgb(71 85 105)" strokeWidth="1" />
+          {xAxisTicks.map((tick, i) => (
+            <g key={i}>
+              <line x1={tick.x} y1={chartHeight - padding.bottom}
+                    x2={tick.x} y2={chartHeight - padding.bottom + 5}
+                    stroke="rgb(71 85 105)" strokeWidth="1" />
+              <text x={tick.x} y={chartHeight - padding.bottom + 20} fill="rgb(148 163 184)"
+                    fontSize="11" textAnchor="middle" fontFamily="monospace">
+                {tick.label}
+              </text>
+            </g>
+          ))}
+          <text x={chartWidth / 2} y={chartHeight - 10} fill="rgb(148 163 184)"
+                fontSize="12" textAnchor="middle" fontFamily="monospace">
+            Time
+          </text>
+
+          {/* Lines — thinner strokes than before for less bar-like appearance */}
+          <path d={truePath} fill="none" stroke="rgb(34 197 94)" strokeWidth="1.5" opacity="0.95" />
+          <path d={positivePath} fill="none" stroke="rgb(239 68 68)" strokeWidth="1.5" opacity="0.9" />
+          <path d={negativePath} fill="none" stroke="rgb(59 130 246)" strokeWidth="1.5" opacity="0.9" />
+
+          {/* Downsampled markers per series — circle (true), square (positive), triangle (negative) */}
+          {markerPoints.map((d, i) => (
+            <g key={`mk-${i}`}>
+              {d.glucose_true != null && (
+                <circle cx={xScale(d.time)} cy={yScale(d.glucose_true)} r="2.5"
+                        fill="rgb(34 197 94)" stroke="rgb(34 197 94)" />
+              )}
+              {d.glucose_positive != null && (
+                <rect x={xScale(d.time) - 2.5} y={yScale(d.glucose_positive) - 2.5} width="5" height="5"
+                      fill="rgb(239 68 68)" stroke="rgb(239 68 68)" />
+              )}
+              {d.glucose_negative != null && (
+                <polygon
+                  points={`${xScale(d.time)},${yScale(d.glucose_negative) - 3} ${xScale(d.time) - 3},${yScale(d.glucose_negative) + 2.5} ${xScale(d.time) + 3},${yScale(d.glucose_negative) + 2.5}`}
+                  fill="rgb(59 130 246)" stroke="rgb(59 130 246)"
+                />
+              )}
+            </g>
+          ))}
+
+          {/* Legend */}
+          <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
+            <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(34 197 94)" strokeWidth="2" />
+            <circle cx="15" cy="0" r="2.5" fill="rgb(34 197 94)" />
+            <text x="38" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
+              True glucose (ground truth)
+            </text>
+
+            <line x1="0" y1="18" x2="30" y2="18" stroke="rgb(239 68 68)" strokeWidth="2" />
+            <rect x="12.5" y="15.5" width="5" height="5" fill="rgb(239 68 68)" />
+            <text x="38" y="22" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
+              Device — positive cohort (+40 mg/dL during Day 2 incident)
+            </text>
+
+            <line x1="0" y1="36" x2="30" y2="36" stroke="rgb(59 130 246)" strokeWidth="2" />
+            <polygon points="15,33 12,38 18,38" fill="rgb(59 130 246)" />
+            <text x="38" y="40" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
+              Device — negative cohort (-40 mg/dL during Day 5 incident)
+            </text>
+
+            <rect x="0" y="50" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
+            <text x="38" y="59" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
+              Incident windows
+            </text>
+          </g>
         </svg>
       </div>
     </div>
