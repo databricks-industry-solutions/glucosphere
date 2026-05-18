@@ -2318,21 +2318,50 @@ print("="*80)
 # MAGIC %md
 # MAGIC ## Understanding Incident Flags
 # MAGIC
-# MAGIC **Two different fields serve different purposes:**
+# MAGIC Two different fields serve different purposes — note the SCOPE difference (patient vs timepoint):
 # MAGIC
-# MAGIC **`has_incident = 1` (2016 records)**
-# MAGIC * Patient-level metadata flag
-# MAGIC * Indicates this patient experiences an incident somewhere in their 7-day timeline
-# MAGIC * Set to 1 for ALL records of this patient (entire 7-day period)
-# MAGIC * Used for filtering/grouping patients by incident status
-# MAGIC * Question: "Does this patient have an incident event in their data?"
+# MAGIC ### `has_incident = 1` — PATIENT-LEVEL flag
+# MAGIC * Set to `1` for **every** record of any patient flagged for an incident (covers their entire 7-day timeline)
+# MAGIC * **Per affected patient** = one patient's full 7-day timeline at 5-minute cadence:
+# MAGIC   ```
+# MAGIC   7 days × 24 hours/day × (60 min/hour ÷ 5 min/timepoint)
+# MAGIC     = 7 × 24 × 12
+# MAGIC     = 2,016 records
+# MAGIC   ```
+# MAGIC * **Table-wide count** = (number of affected patients) × 2,016:
+# MAGIC   ```
+# MAGIC   incident_pct × total_patients × 2,016
+# MAGIC     = 0.3 × 1,000 × 2,016                  (with default config)
+# MAGIC     = 300 patients × 2,016
+# MAGIC     = ~604,800 rows with has_incident = 1
+# MAGIC   ```
+# MAGIC * Used for: filtering/grouping patients by incident status
+# MAGIC * Question: *"Does this patient have an incident event somewhere in their data?"*
 # MAGIC
-# MAGIC **`incident_type = "calibration_bias"` (36 records)**
-# MAGIC * Time-specific field populated only during the actual incident window
-# MAGIC * Only set for records from 2026-01-07 14:00:00 to 17:00:00 (3 hours = 36 × 5-minute intervals)
-# MAGIC * Indicates the exact timepoints when the device malfunction is occurring
-# MAGIC * Question: "Is this specific measurement affected by the incident?"
+# MAGIC ### `incident_type = "calibration_bias"` — TIMEPOINT-LEVEL flag
+# MAGIC * Only set on the EXACT records inside the actual incident window
+# MAGIC * **Per affected patient** = one patient's incident-window timepoints:
+# MAGIC   ```
+# MAGIC   incident_duration_min ÷ cadence_min
+# MAGIC     = 180 min ÷ 5 min/timepoint            (with default config)
+# MAGIC     = 36 timepoints
+# MAGIC   ```
+# MAGIC   Window starts at `incident_start_day` + `incident_start_hour` (default: day 2, hour 14) and runs `incident_duration_min` long (default 180 min = 3 hrs).
+# MAGIC * **Table-wide count** = (number of affected patients) × 36:
+# MAGIC   ```
+# MAGIC   incident_pct × total_patients × 36
+# MAGIC     = 0.3 × 1,000 × 36                     (with default config)
+# MAGIC     = 300 patients × 36
+# MAGIC     = ~10,800 rows with incident_type = "calibration_bias"
+# MAGIC   ```
+# MAGIC * Used for: identifying exact affected measurements for analysis or model training
+# MAGIC * Question: *"Is this specific measurement affected by the incident?"*
 # MAGIC
-# MAGIC **Use Case Guidance:**
-# MAGIC * Use `has_incident=1` to identify which patients experienced incidents
-# MAGIC * Use `incident_type IS NOT NULL` to identify the exact affected measurements for analysis or model training
+# MAGIC ### Quick reference (numbers reflect default `baseline_config.yaml`)
+# MAGIC | Field | Scope | Per-patient | Table-wide | Use case |
+# MAGIC |---|---|---|---|---|
+# MAGIC | `has_incident = 1` | All records of affected patients (full 7-day timeline) | 2,016 records | ~604,800 rows | "Which patients?" |
+# MAGIC | `incident_type = "calibration_bias"` | Only in-window records | 36 records (3 hrs) | ~10,800 rows | "Which timepoints?" |
+# MAGIC
+# MAGIC **Bidirectional variant — `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py`:**
+# MAGIC The affected cohort is split into positive- and negative-bias subgroups via the `incident_direction` column (`positive` / `negative` for affected patients, `null` for clean). Counts above are unchanged; `incident_direction` is just a per-affected-patient label to filter MAE breakouts by direction.

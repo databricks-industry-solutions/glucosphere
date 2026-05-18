@@ -4,11 +4,19 @@ import requests
 
 app = Flask(__name__)
 
-# Static config (safe to read at startup)
+# Static config (safe to read at startup).
+# CATALOG_NAME + SCHEMA_NAME MUST be set in App/databricks/app.yaml (per-target env).
+# No fallback defaults — fail loudly at startup if missing so we don't silently
+# point at the wrong workspace.
 ENDPOINT_NAME = os.getenv('ENDPOINT_NAME', '')
 GENIE_SPACE_ID = os.getenv('GENIE_SPACE_ID', '')
-CATALOG_NAME  = os.getenv('CATALOG_NAME', 'ws_ward_pixels_catalog')
-SCHEMA_NAME   = os.getenv('SCHEMA_NAME',  'glucosphere')
+CATALOG_NAME  = os.getenv('CATALOG_NAME', '')
+SCHEMA_NAME   = os.getenv('SCHEMA_NAME',  '')
+if not CATALOG_NAME or not SCHEMA_NAME:
+    raise RuntimeError(
+        f"CATALOG_NAME and SCHEMA_NAME must be set as env vars in app.yaml. "
+        f"Got CATALOG_NAME={CATALOG_NAME!r}, SCHEMA_NAME={SCHEMA_NAME!r}"
+    )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, 'static')
@@ -76,9 +84,11 @@ def execute_sql():
         if not DATABRICKS_TOKEN:
             return jsonify({'error': 'DATABRICKS_TOKEN not set'}), 500
 
-        # Substitute catalog/schema placeholders so queries work across workspaces
-        sql_query = sql_query.replace('ws_ward_pixels_catalog.glucosphere', f'{CATALOG_NAME}.{SCHEMA_NAME}')
-        sql_query = sql_query.replace('hls_glucosphere.cgm', f'{CATALOG_NAME}.{SCHEMA_NAME}')
+        # NOTE: We deliberately do NOT do any catalog/schema substitution here.
+        # The React side fetches catalog/schema from /api/config and builds queries
+        # with ${catalog}.${schema} template literals — fully resolved client-side
+        # before the POST. Keeping the SQL pass-through preserves a single source
+        # of truth for catalog/schema (the app.yaml env vars surfaced by /api/config).
 
         mcp_sql_url = f"{DATABRICKS_HOST}/api/2.0/mcp/sql"
         

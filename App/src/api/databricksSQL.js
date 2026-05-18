@@ -1,5 +1,11 @@
 // Databricks DBSQL MCP Server API Client
 // Based on: https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp
+//
+// All SQL queries in this file fetch catalog/schema from getConfig() (which calls
+// the Flask /api/config endpoint sourced from app.yaml env vars). NEVER hardcode
+// catalog/schema names inline — keeps the app portable across workspaces.
+
+import { getConfig } from './config';
 
 /**
  * Execute a SQL query via Databricks DBSQL MCP server
@@ -53,8 +59,9 @@ export async function executeSQLQuery(query) {
  * @returns {Promise<number>} Count of distinct devices
  */
 export async function getDistinctDeviceCount() {
-  const query = 'SELECT COUNT(DISTINCT device_id) as device_count FROM ws_ward_pixels_catalog.glucosphere.silver_patient_registry';
-  
+  const { catalog, schema } = await getConfig();
+  const query = `SELECT COUNT(DISTINCT device_id) as device_count FROM ${catalog}.${schema}.silver_patient_registry`;
+
   try {
     const result = await executeSQLQuery(query);
     
@@ -91,12 +98,13 @@ export async function getDistinctDeviceCount() {
  */
 export async function getDeviceHeatmapData() {
   // CGM schema: count ONLY out-of-range readings by device type and firmware
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       device_model as device_type, 
       CAST(firmware_version AS STRING) as firmware_version,
       COUNT(*) as out_of_range_events 
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings 
+    FROM ${catalog}.${schema}.gold_patient_device_readings 
     WHERE glucose_out_of_range = 1
     GROUP BY device_model, firmware_version
     ORDER BY device_model, firmware_version
@@ -145,16 +153,17 @@ export async function getDeviceHeatmapData() {
  */
 export async function getOutOfRangeDevices() {
   // CGM schema: use gold_patient_device_readings (has all data in one table)
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       device_id,
-      TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings)) as minutes_since_last_reading,
+      TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM ${catalog}.${schema}.gold_patient_device_readings)) as minutes_since_last_reading,
       patient_id,
       device_model as device_type,
       CAST(firmware_version AS STRING) as firmware_version,
       glucose as glucose_value
     FROM 
-      ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      ${catalog}.${schema}.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
     ORDER BY time DESC
     LIMIT 50
@@ -207,6 +216,7 @@ export async function getOutOfRangeDevices() {
 export async function getDevicePatternAlerts() {
   // CGM schema: aggregate from gold_patient_device_readings (no pre-aggregated table available)
   // Lower threshold from 1000 to 10 due to smaller dataset in CGM schema
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       device_model as device_type,
@@ -216,7 +226,7 @@ export async function getDevicePatternAlerts() {
       COUNT(*) as total_events,
       ROUND(AVG(CASE WHEN glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
       COUNT(DISTINCT DATE(time)) as days_tracked
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     GROUP BY device_model, firmware_version, region
     HAVING SUM(glucose_out_of_range) > 10
     ORDER BY avg_oor_rate_pct DESC

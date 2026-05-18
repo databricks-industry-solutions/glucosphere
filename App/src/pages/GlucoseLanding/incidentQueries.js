@@ -1,5 +1,10 @@
 // Incident Analysis Queries for Landing Page Charts
+//
+// All SQL queries here fetch catalog/schema from getConfig() (Flask /api/config
+// sourced from app.yaml env vars). NEVER hardcode catalog/schema names inline.
+
 import { executeSQLQuery } from '../../api/databricksSQL';
+import { getConfig } from '../../api/config';
 
 /**
  * Get incident impact data for MAE timeline chart
@@ -7,6 +12,7 @@ import { executeSQLQuery } from '../../api/databricksSQL';
  * with incident period highlighted
  */
 export async function getIncidentImpactData() {
+  const { catalog, schema } = await getConfig();
   const query = `
     WITH minute_data AS (
       SELECT 
@@ -14,7 +20,7 @@ export async function getIncidentImpactData() {
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         incident_type as incident_label,
         ABS(glucose_observed - glucose_true) + 5.0 as error_value
-      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 
@@ -81,6 +87,7 @@ export async function getIncidentImpactData() {
  * Shows device bias during incident periods
  */
 export async function getGlucoseTimelineData() {
+  const { catalog, schema } = await getConfig();
   const query = `
     WITH minute_data AS (
       SELECT 
@@ -89,7 +96,7 @@ export async function getGlucoseTimelineData() {
         glucose_observed as glucose_device,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         (glucose_observed - glucose_true) as device_bias
-      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 
@@ -156,6 +163,7 @@ export async function getGlucoseTimelineData() {
  * Returns key metrics about the incident (peak MAE, bias, duration, etc.)
  */
 export async function getIncidentSummary() {
+  const { catalog, schema } = await getConfig();
   const query = `
     WITH error_data AS (
       SELECT 
@@ -164,7 +172,7 @@ export async function getIncidentSummary() {
         (glucose_observed - glucose_true) as bias,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         incident_type
-      FROM ws_ward_pixels_catalog.glucosphere.pseudo_incident_7d_labeled
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
     SELECT 

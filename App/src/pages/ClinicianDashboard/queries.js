@@ -1,13 +1,18 @@
 // Clinician Dashboard Clinical Metrics - SQL Queries
 // Uses gold_patient_device_readings for real-time clinical data
+//
+// All SQL queries here fetch catalog/schema from getConfig() (Flask /api/config
+// sourced from app.yaml env vars). NEVER hardcode catalog/schema names inline.
 
 import { executeSQLQuery } from '../../api/databricksSQL';
+import { getConfig } from '../../api/config';
 
 /**
  * Get population-level clinical metrics (last 24h)
  * @returns {Promise<Object>} Clinical metrics object
  */
 export async function getPopulationMetrics() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       ROUND(AVG(glucose), 1) as avg_glucose,
@@ -22,10 +27,10 @@ export async function getPopulationMetrics() {
       ROUND(AVG(CASE WHEN glucose < 70 THEN 1 ELSE 0 END) * 100, 1) as pct_time_below_range,
       ROUND(AVG(CASE WHEN glucose > 180 THEN 1 ELSE 0 END) * 100, 1) as pct_time_above_range,
       COUNT(DISTINCT patient_id) as total_patients_monitored
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
   `;
   
@@ -74,6 +79,7 @@ export async function getPopulationMetrics() {
  * @returns {Promise<Object>} Insulin metrics object
  */
 export async function getInsulinMetrics() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       COUNT(CASE WHEN basal_present = 1 THEN 1 END) as basal_events,
@@ -81,10 +87,10 @@ export async function getInsulinMetrics() {
       COUNT(CASE WHEN carb_event = 1 THEN 1 END) as carb_events,
       ROUND(AVG(CASE WHEN basal_rate > 0 THEN basal_rate END), 2) as avg_basal_rate,
       ROUND(AVG(CASE WHEN bolus_volume_delivered > 0 THEN bolus_volume_delivered END), 2) as avg_bolus_volume
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
   `;
   
@@ -126,15 +132,16 @@ export async function getInsulinMetrics() {
  * @returns {Promise<Array>} Array of device models with counts
  */
 export async function getDeviceDistribution() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       device_model,
       COUNT(DISTINCT patient_id) as patient_count,
       COUNT(DISTINCT device_id) as device_count
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
     GROUP BY device_model
     ORDER BY patient_count DESC
@@ -179,14 +186,15 @@ export async function getDeviceDistribution() {
  * @returns {Promise<Array>} Array of regions with patient counts
  */
 export async function getRegionalDistribution() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT 
       region,
       COUNT(DISTINCT patient_id) as patient_count
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
     GROUP BY region
     ORDER BY patient_count DESC

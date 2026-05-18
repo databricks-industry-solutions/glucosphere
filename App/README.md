@@ -112,7 +112,9 @@ This will:
 
 ## Data Schema
 
-Primary table: `${CATALOG_NAME}.${SCHEMA_NAME}.gold_patient_device_readings` (currently `mmt_aws_usw2_catalog.glucosphere_dev.gold_patient_device_readings`; the app's Flask backend rewrites the JS-hardcoded `ws_ward_pixels_catalog.glucosphere` references at request time via env vars).
+Primary table: `${CATALOG_NAME}.${SCHEMA_NAME}.gold_patient_device_readings` (e.g. `mmt_aws_usw2_catalog.glucosphere_dev.gold_patient_device_readings` for the mmt_aws_usw2 target).
+
+The React app fetches catalog/schema from the Flask `GET /api/config` endpoint at startup (helper in `App/src/api/config.js`), then constructs queries via template literals `${catalog}.${schema}.<table>`. CATALOG_NAME + SCHEMA_NAME are sourced from `App/databricks/app.yaml` env vars per target — no inline hardcoding anywhere in `App/src/`.
 
 Key columns:
 - `device_id`, `patient_id`, `time`

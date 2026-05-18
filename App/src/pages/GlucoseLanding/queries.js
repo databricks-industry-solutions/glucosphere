@@ -1,19 +1,24 @@
 // Landing Page Metrics - SQL Queries
 // Uses CGM schema data for real-time metrics
+//
+// All SQL queries here fetch catalog/schema from getConfig() (Flask /api/config
+// sourced from app.yaml env vars). NEVER hardcode catalog/schema names inline.
 
 import { executeSQLQuery } from '../../api/databricksSQL';
+import { getConfig } from '../../api/config';
 
 /**
  * Get count of active patients (patients with readings in last 24h of available data)
  * @returns {Promise<number>} Count of active patients
  */
 export async function getActivePatients() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT COUNT(DISTINCT patient_id) as active_patients
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 24 HOUR 
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
   `;
   
@@ -48,12 +53,13 @@ export async function getActivePatients() {
  * @returns {Promise<number>} Count of online devices
  */
 export async function getDevicesOnline() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT COUNT(DISTINCT device_id) as devices_online
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE time >= (
       SELECT MAX(time) - INTERVAL 1 DAY
-      FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+      FROM ${catalog}.${schema}.gold_patient_device_readings
     )
   `;
   
@@ -88,13 +94,14 @@ export async function getDevicesOnline() {
  * @returns {Promise<number>} Count of high risk patients
  */
 export async function getHighRiskAlerts() {
+  const { catalog, schema } = await getConfig();
   const query = `
     SELECT COUNT(DISTINCT patient_id) as high_risk_patients
-    FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
       AND time >= (
         SELECT MAX(time) - INTERVAL 24 HOUR
-        FROM ws_ward_pixels_catalog.glucosphere.gold_patient_device_readings
+        FROM ${catalog}.${schema}.gold_patient_device_readings
       )
   `;
   

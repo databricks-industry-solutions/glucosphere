@@ -14,7 +14,7 @@
 # COMMAND ----------
 
 # DBTITLE 1, Parameters
-dbutils.widgets.text("CATALOG_NAME",       "ws_ward_pixels_catalog",     "Catalog")
+dbutils.widgets.text("CATALOG_NAME",       "",                            "Catalog (required — set by the bundle job; e.g. mmt_aws_usw2_catalog)")
 dbutils.widgets.text("SCHEMA_NAME",        "glucosphere",                "Schema")
 dbutils.widgets.text("APP_NAME",           "glucosphere-dashboard",      "App Name")
 dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name")
