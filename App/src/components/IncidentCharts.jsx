@@ -121,10 +121,25 @@ export function IncidentImpactChart() {
     })
     .join(' ');
 
-  // Find incident period for highlighting
-  const incidentData = validData.filter(d => d.incident_period === 1);
-  const incidentStart = incidentData.length > 0 ? xScale(incidentData[0].time) : 0;
-  const incidentEnd = incidentData.length > 0 ? xScale(incidentData[incidentData.length - 1].time) : 0;
+  // Find incident periods — there can be more than one contiguous block (two
+  // separate incidents at Day 2 and Day 5 in the mirror design). Group
+  // consecutive incident_period=1 rows so each one shades separately.
+  const incidentBlocks = (() => {
+    const blocks = [];
+    let inBlock = false;
+    let blockStart = null;
+    validData.forEach((d, idx) => {
+      if (d.incident_period === 1 && !inBlock) {
+        inBlock = true;
+        blockStart = d.time;
+      } else if (d.incident_period !== 1 && inBlock) {
+        inBlock = false;
+        blocks.push({ start: blockStart, end: validData[idx - 1].time });
+      }
+    });
+    if (inBlock) blocks.push({ start: blockStart, end: validData[validData.length - 1].time });
+    return blocks;
+  })();
 
   // Format date for x-axis labels
   const formatDate = (date) => {
@@ -170,19 +185,23 @@ export function IncidentImpactChart() {
       {/* SVG Chart */}
       <div className="overflow-x-auto">
         <svg width={chartWidth} height={chartHeight} className="mx-auto">
-          {/* Incident period highlight */}
-          {incidentStart > 0 && incidentEnd > 0 && (
+          {/* Incident period highlights — one rectangle per contiguous incident block.
+              With the two-window mirror design there are two separate incidents (Day 2
+              and Day 5); rendering each one separately avoids one big rect spanning
+              the gap between them. */}
+          {incidentBlocks.map((blk, i) => (
             <rect
-              x={incidentStart}
+              key={`mae-incident-${i}`}
+              x={xScale(blk.start)}
               y={padding.top}
-              width={incidentEnd - incidentStart}
+              width={Math.max(2, xScale(blk.end) - xScale(blk.start))}
               height={innerHeight}
               fill="rgb(248 113 113 / 0.1)"
               stroke="rgb(248 113 113 / 0.3)"
               strokeWidth="1"
               strokeDasharray="4 2"
             />
-          )}
+          ))}
 
           {/* Baseline MAE reference line */}
           {summary?.baseline_mae_30m && (
@@ -493,10 +512,25 @@ export function GlucoseTimelineChart() {
   // Horizontal zero baseline for visual reference (no bias)
   const zeroY = yScale(0);
 
-  // Find incident period for highlighting
-  const incidentData = validData.filter(d => d.incident_period === 1);
-  const incidentStart = incidentData.length > 0 ? xScale(incidentData[0].time) : 0;
-  const incidentEnd = incidentData.length > 0 ? xScale(incidentData[incidentData.length - 1].time) : 0;
+  // Find incident periods — same as the MAE chart: group consecutive incident_period=1
+  // rows so two-window incidents render as two separate shaded blocks (not one big
+  // box spanning the gap).
+  const incidentBlocks = (() => {
+    const blocks = [];
+    let inBlock = false;
+    let blockStart = null;
+    validData.forEach((d, idx) => {
+      if (d.incident_period === 1 && !inBlock) {
+        inBlock = true;
+        blockStart = d.time;
+      } else if (d.incident_period !== 1 && inBlock) {
+        inBlock = false;
+        blocks.push({ start: blockStart, end: validData[idx - 1].time });
+      }
+    });
+    if (inBlock) blocks.push({ start: blockStart, end: validData[validData.length - 1].time });
+    return blocks;
+  })();
 
   // Format date for x-axis labels
   const formatDate = (date) => {
@@ -542,19 +576,21 @@ export function GlucoseTimelineChart() {
       {/* SVG Chart */}
       <div className="overflow-x-auto">
         <svg width={chartWidth} height={chartHeight} className="mx-auto">
-          {/* Incident period highlight */}
-          {incidentStart > 0 && incidentEnd > 0 && (
+          {/* Incident period highlights — one rectangle per contiguous incident block.
+              Two-window mirror design renders each incident (Day 2 + Day 5) separately. */}
+          {incidentBlocks.map((blk, i) => (
             <rect
-              x={incidentStart}
+              key={`bias-incident-${i}`}
+              x={xScale(blk.start)}
               y={padding.top}
-              width={incidentEnd - incidentStart}
+              width={Math.max(2, xScale(blk.end) - xScale(blk.start))}
               height={innerHeight}
               fill="rgb(248 113 113 / 0.1)"
               stroke="rgb(248 113 113 / 0.3)"
               strokeWidth="1"
               strokeDasharray="4 2"
             />
-          )}
+          ))}
 
           {/* Y-axis */}
           <line
