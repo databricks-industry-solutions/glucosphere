@@ -649,13 +649,15 @@ print("Building features from incident data...")
 incident_labeled_tbl = f"{CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled" ### table for viz
 df = spark.table(incident_labeled_tbl)
 
-# Join with incident flags - drop has_incident from df first to avoid ambiguity
-# Pull `incident_direction` too so it flows into the feature dataframe for direction-
-# aware MAE breakouts downstream (#41 Option 3, 2026-05-17).
+# Join with incident flags. Drop has_incident AND incident_direction from df first
+# because BOTH columns exist on `pseudo_incident_7d` (left, via df) AND on
+# `pseudo_incident_7d_labeled` (right, via incident_info from pseudo_incident_tbl)
+# — Spark raises AMBIGUOUS_REFERENCE on the post-join select() otherwise.
+# Single source of truth: keep the copy from incident_info.
 incident_info = spark.table(pseudo_incident_tbl).select(
     "patient_id", "time", "has_incident", "incident_type", "incident_direction"
 )
-df = df.drop("has_incident").join(incident_info, ["patient_id", "time"], "inner")
+df = df.drop("has_incident", "incident_direction").join(incident_info, ["patient_id", "time"], "inner")
 
 # Add incident_active flag
 base_date = pd.Timestamp(cfg.demo_week_start)
