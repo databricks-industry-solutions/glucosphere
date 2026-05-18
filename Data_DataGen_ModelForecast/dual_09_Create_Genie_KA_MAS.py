@@ -229,6 +229,28 @@ _api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
     ),
     "instruction_type": "TEXT",
 })
+
+# Time-window interpretation instruction (2026-05-18). Demo data is a fixed
+# 7-day window so MAX(time) is NOT today's wall-clock — it's the latest point
+# in the demo dataset. Without this instruction Genie generates
+# `WHERE time >= NOW() - INTERVAL 24 HOUR` which returns 0 results because
+# the data is backdated. With this instruction Genie should generate
+# `WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`.
+_api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
+    "title": "Time Window Interpretation",
+    "content": (
+        "The data in this space is a fixed 7-day demo window. The most recent "
+        "timestamp in the data is NOT today's wall-clock time — it is the LATEST "
+        "point in the demo dataset. When a user asks for queries like "
+        "\"in the last 24 hours\", \"past 7 days\", \"recent\", or any relative "
+        "time window, ALWAYS interpret the window relative to MAX(time) in the "
+        "dataset, NOT relative to NOW(). Example: instead of "
+        "`WHERE time >= NOW() - INTERVAL 24 HOUR`, generate "
+        "`WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`. "
+        "This avoids returning 0 results because the demo data is backdated."
+    ),
+    "instruction_type": "TEXT",
+})
 print(f"Genie Space ID: {GENIE_SPACE_ID}")
 
 # COMMAND ----------

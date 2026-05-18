@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Stethoscope, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity } from 'lucide-react';
+import { Stethoscope, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity, Loader2 } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics } from './ClinicianDashboard/queries';
 
 export default function ClinicianDashboard() {
@@ -560,15 +560,26 @@ export default function ClinicianDashboard() {
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-32 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                 disabled={genieLoading}
               />
-              <button 
+              <button
                 onClick={handleGenieQuery}
                 disabled={genieLoading || !queryText.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
+                {genieLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                 {genieLoading ? 'Querying...' : 'Query'}
               </button>
             </div>
-            
+
+            {/* Visible status line when query is in flight — earlier the only
+                feedback was the button label flipping to "Querying...", which
+                wasn't clear enough that the query had actually been submitted. */}
+            {genieLoading && (
+              <div className="mb-4 flex items-center gap-2 text-xs text-cyan-300 font-mono bg-cyan-500/10 border border-cyan-500/30 rounded px-3 py-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Sending query to CGM Genie — this typically takes 3–10 seconds…</span>
+              </div>
+            )}
+
             <div className="mb-4">
               <p className="text-xs text-slate-500 mb-2">Suggested Queries:</p>
               <div className="grid grid-cols-2 gap-2">

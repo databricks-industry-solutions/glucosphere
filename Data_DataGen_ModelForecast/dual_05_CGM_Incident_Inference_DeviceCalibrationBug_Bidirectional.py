@@ -1178,42 +1178,41 @@ print(f"  Affected patients: {len(affected_agg)} hours")
 print(f"  Unaffected patients: {len(unaffected_agg)} hours")
 print()
 
-# Get incident period boundaries
-incident_hours = all_patients_agg[all_patients_agg["incident_active"] == 1]
-if len(incident_hours) > 0:
-    incident_start = incident_hours["hour"].min()
-    incident_end = incident_hours["hour"].max() + pd.Timedelta(hours=1)
-    incident_mid = incident_start + (incident_end - incident_start) / 2
+# Detect incident blocks (two-window mirror design — uses helper from Plot 1 cell)
+incident_blocks_2 = _incident_blocks_from(all_patients_agg)
 
 # Create figure with 3 subplots (vertical stack)
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
+def _per_block_annotate(ax, agg_df, blocks, color_box='yellow', label_prefix=''):
+    """Helper: draw one shaded rect + one yellow label per incident block."""
+    y_max = max(agg_df["mae_15m"].max(), agg_df["mae_30m"].max()) * 1.15
+    for _i, _blk in enumerate(blocks):
+        ax.axvspan(_blk["start"], _blk["end"], alpha=0.2, color='grey',
+                   label='Incident Period' if _i == 0 else None)
+        _blk_15m = _blk["rows"]["mae_15m"].max() if "mae_15m" in _blk["rows"].columns else 0
+        _blk_30m = _blk["rows"]["mae_30m"].max() if "mae_30m" in _blk["rows"].columns else 0
+        ax.annotate(
+            f'{label_prefix}Incident {_i+1}\n{_blk_15m:.0f} (15m)\n{_blk_30m:.0f} (30m) mg/dL',
+            xy=(_blk["mid"], _blk_15m),
+            xytext=(_blk["mid"], y_max * 0.88),
+            fontsize=8, fontweight='bold', ha='center', va='center',
+            bbox=dict(boxstyle='round,pad=0.4', facecolor=color_box, alpha=0.7, edgecolor='black', linewidth=1.2),
+            arrowprops=dict(arrowstyle='->', color='black', lw=1.5, connectionstyle='arc3,rad=0.0')
+        )
+
 # ------------------------
 # Plot 1: ALL PATIENTS (Fleet-wide average)
 # ------------------------
-ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_15m"], 
+ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_15m"],
          label="MAE 15m", linewidth=2, marker="o", markersize=4, color='blue')
-ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_30m"], 
+ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
-
-if len(incident_hours) > 0:
-    ax1.axvspan(incident_start, incident_end, alpha=0.2, color='grey', label='Incident Period')
+if incident_blocks_2:
     ax1.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
-    
-    # Calculate fleet-wide MAE during incident
+    _per_block_annotate(ax1, all_patients_agg, incident_blocks_2, label_prefix='Fleet ')
     fleet_incident_mae_15m = all_patients_agg[all_patients_agg["incident_active"] == 1]["mae_15m"].mean()
     fleet_incident_mae_30m = all_patients_agg[all_patients_agg["incident_active"] == 1]["mae_30m"].mean()
-    
-    # Add annotation
-    y_max = ax1.get_ylim()[1]
-    ax1.annotate(
-        f'Fleet-wide MAE:\n{fleet_incident_mae_15m:.1f} mg/dL (15m)\n{fleet_incident_mae_30m:.1f} mg/dL (30m)',
-        xy=(incident_mid, fleet_incident_mae_15m),
-        xytext=(all_patients_agg["hour"].max() - pd.Timedelta(days=1.5), y_max * 0.70),
-        fontsize=9, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-    )
 
 ax1.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax1.set_title("1. ALL PATIENTS (Fleet-wide Average) - Diluted Impact", fontsize=13, fontweight='bold')
@@ -1224,25 +1223,14 @@ ax1.set_ylim(0, max(all_patients_agg["mae_15m"].max(), all_patients_agg["mae_30m
 # ------------------------
 # Plot 2: AFFECTED PATIENTS ONLY
 # ------------------------
-ax2.plot(affected_agg["hour"], affected_agg["mae_15m"], 
+ax2.plot(affected_agg["hour"], affected_agg["mae_15m"],
          label="MAE 15m", linewidth=2, marker="o", markersize=4, color='blue')
-ax2.plot(affected_agg["hour"], affected_agg["mae_30m"], 
+ax2.plot(affected_agg["hour"], affected_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
-
-if len(incident_hours) > 0:
-    ax2.axvspan(incident_start, incident_end, alpha=0.2, color='grey', label='Incident Period')
+incident_blocks_2_affected = _incident_blocks_from(affected_agg)
+if incident_blocks_2_affected:
     ax2.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
-    
-    # Use impact analysis values for affected patients
-    y_max = ax2.get_ylim()[1]
-    ax2.annotate(
-        f'Affected patients MAE:\n{incident_mae_15m:.1f} mg/dL (15m)\n{incident_mae_30m:.1f} mg/dL (30m)',
-        xy=(incident_mid, incident_mae_15m * 0.85),
-        xytext=(affected_agg["hour"].max() - pd.Timedelta(days=1.5), incident_mae_15m * 0.70),
-        fontsize=9, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-    )
+    _per_block_annotate(ax2, affected_agg, incident_blocks_2_affected, label_prefix='Affected ')
 
 ax2.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) - True Incident Impact", fontsize=13, fontweight='bold')
@@ -1253,29 +1241,16 @@ ax2.set_ylim(0, max(affected_agg["mae_15m"].max(), affected_agg["mae_30m"].max()
 # ------------------------
 # Plot 3: UNAFFECTED PATIENTS ONLY
 # ------------------------
-ax3.plot(unaffected_agg["hour"], unaffected_agg["mae_15m"], 
+ax3.plot(unaffected_agg["hour"], unaffected_agg["mae_15m"],
          label="MAE 15m", linewidth=2, marker="o", markersize=4, color='blue')
-ax3.plot(unaffected_agg["hour"], unaffected_agg["mae_30m"], 
+ax3.plot(unaffected_agg["hour"], unaffected_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
-
-if len(incident_hours) > 0:
-    ax3.axvspan(incident_start, incident_end, alpha=0.2, color='grey', label='Incident Period')
+incident_blocks_2_unaffected = _incident_blocks_from(unaffected_agg)
+if incident_blocks_2_unaffected:
     ax3.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
-    
-    # Calculate unaffected MAE during incident period
-    unaffected_incident_mae_15m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_15m"].mean()
-    unaffected_incident_mae_30m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_30m"].mean()
-    
-    # Add annotation
-    y_max = ax3.get_ylim()[1]
-    ax3.annotate(
-        f'Unaffected patients MAE:\n{unaffected_incident_mae_15m:.1f} mg/dL (15m)\n{unaffected_incident_mae_30m:.1f} mg/dL (30m)',
-        xy=(incident_mid, unaffected_incident_mae_15m),
-        xytext=(unaffected_agg["hour"].max() - pd.Timedelta(days=1.5), y_max * 0.70),
-        fontsize=9, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgreen', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-    )
+    _per_block_annotate(ax3, unaffected_agg, incident_blocks_2_unaffected, color_box='lightgreen', label_prefix='Unaffected ')
+    unaffected_incident_mae_15m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_15m"].mean() if (unaffected_agg["incident_active"] == 1).any() else 0
+    unaffected_incident_mae_30m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_30m"].mean() if (unaffected_agg["incident_active"] == 1).any() else 0
 
 ax3.set_xlabel("Time", fontsize=12)
 ax3.set_ylabel("MAE (mg/dL)", fontsize=12)
@@ -1358,12 +1333,8 @@ print(f"  Affected patients: {len(affected_glucose)} hours")
 print(f"  Unaffected patients: {len(unaffected_glucose)} hours")
 print()
 
-# Get incident period boundaries
-incident_hours = all_patients_glucose[all_patients_glucose["incident_active"] == 1]
-if len(incident_hours) > 0:
-    incident_start = incident_hours["hour"].min()
-    incident_end = incident_hours["hour"].max() + pd.Timedelta(hours=1)
-    incident_mid = incident_start + (incident_end - incident_start) / 2
+# Detect contiguous incident blocks (handles two-window mirror design — Day 2 + Day 5)
+incident_blocks_3 = _incident_blocks_from(all_patients_glucose)
 
 # Create figure with 3 subplots (vertical stack)
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
@@ -1378,25 +1349,23 @@ ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_observed"],
          label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
          color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
 
-if len(incident_hours) > 0:
-    ax1.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
-    
-    # Calculate fleet-wide bias during incident
-    fleet_bias = all_patients_glucose[all_patients_glucose["incident_active"] == 1]["glucose_observed"].mean() - \
-                 all_patients_glucose[all_patients_glucose["incident_active"] == 1]["glucose_true"].mean()
-    
-    # Add annotation
-    incident_row = all_patients_glucose[all_patients_glucose["incident_active"] == 1].iloc[len(all_patients_glucose[all_patients_glucose["incident_active"] == 1])//2]
-    y_true = incident_row["glucose_true"]
-    y_obs = incident_row["glucose_observed"]
-    
+# Compute per-block fleet bias + one yellow label per incident
+fleet_bias = 0.0
+for _i, _blk in enumerate(incident_blocks_3):
+    ax1.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
+                label='Incident Period' if _i == 0 else None, zorder=1)
+    _blk_obs = _blk["rows"]["glucose_observed"].mean()
+    _blk_true = _blk["rows"]["glucose_true"].mean()
+    _blk_bias = _blk_obs - _blk_true
+    fleet_bias = _blk_bias  # last block wins for downstream print (best-effort)
+    _mid_row = _blk["rows"].iloc[len(_blk["rows"]) // 2]
     ax1.annotate(
-        f'+{fleet_bias:.1f} mg/dL\nfleet-wide bias',
-        xy=(incident_mid, (y_true + y_obs) / 2),
-        xytext=(incident_end + pd.Timedelta(hours=18), 120),
-        fontsize=10, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=-0.1')
+        f'Incident {_i+1}\n{_blk_bias:+.1f} mg/dL\nfleet-wide bias',
+        xy=(_blk["mid"], (_mid_row["glucose_true"] + _mid_row["glucose_observed"]) / 2),
+        xytext=(_blk["mid"], 175 if _blk_bias >= 0 else 95),
+        fontsize=8, fontweight='bold', ha='center', va='center',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
+        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
     )
 
 ax1.set_ylabel("Glucose (mg/dL)", fontsize=12)
@@ -1423,23 +1392,31 @@ ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed_negative"]
          linewidth=2.0, linestyle='-',
          color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
-if len(incident_hours) > 0:
-    ax2.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
-
-    # Get affected patient glucose during incident (for annotation arrow target)
-    incident_subset = affected_glucose[affected_glucose["incident_active"] == 1]
-    if len(incident_subset) > 0:
-        incident_row = incident_subset.iloc[len(incident_subset) // 2]
-        y_true = incident_row["glucose_true"]
-
-        ax2.annotate(
-            f'±{bias_magnitude:.0f} mg/dL\nbidirectional bias',
-            xy=(incident_mid, y_true),
-            xytext=(incident_end + pd.Timedelta(hours=18), 120),
-            fontsize=10, fontweight='bold', ha='center', va='center',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-            arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=-0.1')
-        )
+incident_blocks_3_affected = _incident_blocks_from(affected_glucose)
+for _i, _blk in enumerate(incident_blocks_3_affected):
+    ax2.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
+                label='Incident Period' if _i == 0 else None, zorder=1)
+    _mid_row = _blk["rows"].iloc[len(_blk["rows"]) // 2]
+    _y_true = _mid_row["glucose_true"]
+    # Direction: which cohort diverges from true at this block?
+    _pos = _mid_row.get("glucose_observed_positive")
+    _neg = _mid_row.get("glucose_observed_negative")
+    if pd.notna(_pos) and (pd.isna(_neg) or abs(_pos - _y_true) > abs(_neg - _y_true)):
+        _direction = "positive (over-reads)"
+        _sign = "+"
+        _annot_y = _y_true + bias_magnitude + 10
+    else:
+        _direction = "negative (under-reads)"
+        _sign = "-"
+        _annot_y = _y_true - bias_magnitude - 10
+    ax2.annotate(
+        f'Incident {_i+1}\n{_sign}{bias_magnitude:.0f} mg/dL\n{_direction}',
+        xy=(_blk["mid"], _y_true),
+        xytext=(_blk["mid"], _annot_y),
+        fontsize=8, fontweight='bold', ha='center', va='center',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
+        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
+    )
 
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
 ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) — ±{bias_magnitude:.0f} mg/dL Bidirectional Bias", fontsize=13, fontweight='bold')
@@ -1458,17 +1435,17 @@ ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_observed"],
          label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
          color="blue", marker="s", markersize=4, alpha=0.9, zorder=3)
 
-if len(incident_hours) > 0:
-    ax3.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
-    
-    # For unaffected patients, glucose_true and glucose_observed should be identical
+incident_blocks_3_unaffected = _incident_blocks_from(unaffected_glucose)
+for _i, _blk in enumerate(incident_blocks_3_unaffected):
+    ax3.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
+                label='Incident Period' if _i == 0 else None, zorder=1)
     ax3.annotate(
-        'No bias\n(device OK)',
-        xy=(incident_mid, 140),
-        xytext=(incident_end + pd.Timedelta(hours=18), 120),
-        fontsize=10, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgreen', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=-0.1')
+        f'Incident {_i+1}\nNo bias\n(device OK)',
+        xy=(_blk["mid"], 140),
+        xytext=(_blk["mid"], 175),
+        fontsize=8, fontweight='bold', ha='center', va='center',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='lightgreen', alpha=0.7, edgecolor='black', linewidth=1.2),
+        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
     )
 
 ax3.set_xlabel("Time", fontsize=12)
@@ -1511,47 +1488,71 @@ baseline_df = spark.table(f"{CATALOG_NAME}.{SCHEMA_NAME}.diabetes_data")
 baseline_sample = baseline_df.sample(False, 0.1, seed=cfg.seed).toPandas()
 baseline_glucose = baseline_sample['glucose'].dropna().values
 
-# Get clean period and incident period glucose
+# Get clean period and incident period glucose, plus per-cohort splits.
+# E3 (2026-05-18 tweak): split Incident into Incident-Positive (Day 2 +40
+# cohort) and Incident-Negative (Day 5 -40 cohort) so the direction-specific
+# distribution shifts are visible. Lumping them under one "Incident" class
+# hides the shift because positive and negative shifts partially cancel.
 clean_glucose = clean_period['glucose_observed'].values
 incident_glucose = incident_period['glucose_observed'].values
+if 'incident_direction' in incident_period.columns:
+    incident_pos_glucose = incident_period[incident_period['incident_direction'] == 'positive']['glucose_observed'].values
+    incident_neg_glucose = incident_period[incident_period['incident_direction'] == 'negative']['glucose_observed'].values
+else:
+    incident_pos_glucose = np.array([])
+    incident_neg_glucose = np.array([])
 
 print(f"\nSample sizes:")
 print(f"   Baseline: {len(baseline_glucose):,} points")
 print(f"   Clean period: {len(clean_glucose):,} points")
-print(f"   Incident period: {len(incident_glucose):,} points")
+print(f"   Incident period (all): {len(incident_glucose):,} points")
+print(f"   Incident period (+ cohort): {len(incident_pos_glucose):,} points")
+print(f"   Incident period (- cohort): {len(incident_neg_glucose):,} points")
 
 # Calculate distribution statistics
 print(f"\nDistribution Statistics:")
-print(f"\n                    Baseline    Clean       Incident    Shift")
+print(f"\n                    Baseline    Clean       Inc+         Inc-")
 print("-" * 80)
-print(f"Mean:               {baseline_glucose.mean():6.1f}      {clean_glucose.mean():6.1f}      {incident_glucose.mean():6.1f}      {incident_glucose.mean() - clean_glucose.mean():+6.1f}")
-print(f"Median:             {np.median(baseline_glucose):6.1f}      {np.median(clean_glucose):6.1f}      {np.median(incident_glucose):6.1f}      {np.median(incident_glucose) - np.median(clean_glucose):+6.1f}")
-print(f"Std:                {baseline_glucose.std():6.1f}      {clean_glucose.std():6.1f}      {incident_glucose.std():6.1f}      {incident_glucose.std() - clean_glucose.std():+6.1f}")
+print(f"Mean:               {baseline_glucose.mean():6.1f}      {clean_glucose.mean():6.1f}      "
+      f"{(incident_pos_glucose.mean() if len(incident_pos_glucose) else float('nan')):6.1f}      "
+      f"{(incident_neg_glucose.mean() if len(incident_neg_glucose) else float('nan')):6.1f}")
+print(f"Median:             {np.median(baseline_glucose):6.1f}      {np.median(clean_glucose):6.1f}      "
+      f"{(np.median(incident_pos_glucose) if len(incident_pos_glucose) else float('nan')):6.1f}      "
+      f"{(np.median(incident_neg_glucose) if len(incident_neg_glucose) else float('nan')):6.1f}")
+print(f"Std:                {baseline_glucose.std():6.1f}      {clean_glucose.std():6.1f}      "
+      f"{(incident_pos_glucose.std() if len(incident_pos_glucose) else float('nan')):6.1f}      "
+      f"{(incident_neg_glucose.std() if len(incident_neg_glucose) else float('nan')):6.1f}")
 
-baseline_hypo = (baseline_glucose < 70).sum() / len(baseline_glucose) * 100
-baseline_normal = ((baseline_glucose >= 70) & (baseline_glucose <= 180)).sum() / len(baseline_glucose) * 100
-baseline_hyper = (baseline_glucose > 180).sum() / len(baseline_glucose) * 100
+def _pct_buckets(arr):
+    if len(arr) == 0:
+        return 0.0, 0.0, 0.0
+    return (
+        (arr < 70).sum() / len(arr) * 100,
+        ((arr >= 70) & (arr <= 180)).sum() / len(arr) * 100,
+        (arr > 180).sum() / len(arr) * 100,
+    )
 
-clean_hypo = (clean_glucose < 70).sum() / len(clean_glucose) * 100
-clean_normal = ((clean_glucose >= 70) & (clean_glucose <= 180)).sum() / len(clean_glucose) * 100
-clean_hyper = (clean_glucose > 180).sum() / len(clean_glucose) * 100
+baseline_hypo, baseline_normal, baseline_hyper = _pct_buckets(baseline_glucose)
+clean_hypo, clean_normal, clean_hyper = _pct_buckets(clean_glucose)
+incident_hypo, incident_normal, incident_hyper = _pct_buckets(incident_glucose)
+inc_pos_hypo, inc_pos_normal, inc_pos_hyper = _pct_buckets(incident_pos_glucose)
+inc_neg_hypo, inc_neg_normal, inc_neg_hyper = _pct_buckets(incident_neg_glucose)
 
-incident_hypo = (incident_glucose < 70).sum() / len(incident_glucose) * 100
-incident_normal = ((incident_glucose >= 70) & (incident_glucose <= 180)).sum() / len(incident_glucose) * 100
-incident_hyper = (incident_glucose > 180).sum() / len(incident_glucose) * 100
+print(f"\nHypo (<70):         {baseline_hypo:6.1f}%     {clean_hypo:6.1f}%     {inc_pos_hypo:6.1f}%     {inc_neg_hypo:6.1f}%")
+print(f"Normal (70-180):    {baseline_normal:6.1f}%     {clean_normal:6.1f}%     {inc_pos_normal:6.1f}%     {inc_neg_normal:6.1f}%")
+print(f"Hyper (>180):       {baseline_hyper:6.1f}%     {clean_hyper:6.1f}%     {inc_pos_hyper:6.1f}%     {inc_neg_hyper:6.1f}%")
 
-print(f"\nHypo (<70):         {baseline_hypo:6.1f}%     {clean_hypo:6.1f}%     {incident_hypo:6.1f}%     {incident_hypo - clean_hypo:+6.1f}%")
-print(f"Normal (70-180):    {baseline_normal:6.1f}%     {clean_normal:6.1f}%     {incident_normal:6.1f}%     {incident_normal - clean_normal:+6.1f}%")
-print(f"Hyper (>180):       {baseline_hyper:6.1f}%     {clean_hyper:6.1f}%     {incident_hyper:6.1f}%     {incident_hyper - clean_hyper:+6.1f}%")
-
-# Create visualization
+# Create visualization — 4-class palette across all 4 subplots
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-# Plot 1: Overlaid histograms
+# Plot 1: Overlaid histograms — 4 classes
 ax1 = axes[0, 0]
 ax1.hist(baseline_glucose, bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='blue')
 ax1.hist(clean_glucose, bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='green')
-ax1.hist(incident_glucose, bins=80, alpha=0.4, label='Incident Period (+40 bias)', density=True, range=(40, 400), color='red')
+if len(incident_pos_glucose):
+    ax1.hist(incident_pos_glucose, bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
+if len(incident_neg_glucose):
+    ax1.hist(incident_neg_glucose, bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='purple')
 ax1.axvspan(40, 70, alpha=0.1, color='red')
 ax1.axvspan(70, 180, alpha=0.1, color='grey')
 ax1.axvspan(180, 400, alpha=0.1, color='yellow')
@@ -1559,73 +1560,103 @@ ax1.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax1.set_xlabel('Glucose (mg/dL)', fontsize=11)
 ax1.set_ylabel('Density', fontsize=11)
-ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident', fontsize=12, fontweight='bold')
-ax1.legend(loc='upper right', fontsize=10)
+ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold')
+ax1.legend(loc='upper right', fontsize=9)
 ax1.grid(True, alpha=0.3)
 
-# Plot 2: Distribution percentages (bar chart)
+# Plot 2: Distribution percentages — 4 bars per range
 ax2 = axes[0, 1]
 categories = ['Hypo\n(<70)', 'Normal\n(70-180)', 'Hyper\n(>180)']
 baseline_pcts = [baseline_hypo, baseline_normal, baseline_hyper]
 clean_pcts = [clean_hypo, clean_normal, clean_hyper]
-incident_pcts = [incident_hypo, incident_normal, incident_hyper]
+inc_pos_pcts = [inc_pos_hypo, inc_pos_normal, inc_pos_hyper]
+inc_neg_pcts = [inc_neg_hypo, inc_neg_normal, inc_neg_hyper]
 
 x = np.arange(len(categories))
-width = 0.25
+width = 0.2
 
-ax2.bar(x - width, baseline_pcts, width, label='Baseline', alpha=0.8, color='blue')
-ax2.bar(x, clean_pcts, width, label='Clean Period', alpha=0.8, color='green')
-ax2.bar(x + width, incident_pcts, width, label='Incident Period', alpha=0.8, color='red')
+ax2.bar(x - 1.5*width, baseline_pcts, width, label='Baseline', alpha=0.8, color='blue')
+ax2.bar(x - 0.5*width, clean_pcts, width, label='Clean Period', alpha=0.8, color='green')
+ax2.bar(x + 0.5*width, inc_pos_pcts, width, label='Inc + cohort', alpha=0.8, color='red')
+ax2.bar(x + 1.5*width, inc_neg_pcts, width, label='Inc − cohort', alpha=0.8, color='purple')
 ax2.set_ylabel('Percentage (%)', fontsize=11)
-ax2.set_title('Distribution by Glucose Range', fontsize=12, fontweight='bold')
+ax2.set_title('Distribution by Glucose Range (4-class direction split)', fontsize=12, fontweight='bold')
 ax2.set_xticks(x)
 ax2.set_xticklabels(categories)
-ax2.legend(fontsize=10)
+ax2.legend(fontsize=9)
 ax2.grid(True, alpha=0.3, axis='y')
 
-# Add percentage labels
-for i, (b, c, inc) in enumerate(zip(baseline_pcts, clean_pcts, incident_pcts)):
-    ax2.text(i - width, b + 1, f'{b:.1f}%', ha='center', fontsize=8)
-    ax2.text(i, c + 1, f'{c:.1f}%', ha='center', fontsize=8)
-    ax2.text(i + width, inc + 1, f'{inc:.1f}%', ha='center', fontsize=8)
+# Add percentage labels for all 4 series
+for i, (b, c, ip, in_) in enumerate(zip(baseline_pcts, clean_pcts, inc_pos_pcts, inc_neg_pcts)):
+    ax2.text(i - 1.5*width, b + 1, f'{b:.0f}%', ha='center', fontsize=7)
+    ax2.text(i - 0.5*width, c + 1, f'{c:.0f}%', ha='center', fontsize=7)
+    ax2.text(i + 0.5*width, ip + 1, f'{ip:.0f}%', ha='center', fontsize=7)
+    ax2.text(i + 1.5*width, in_ + 1, f'{in_:.0f}%', ha='center', fontsize=7)
 
-# Plot 3: Cumulative distribution
+# Plot 3: Cumulative distribution — 4 CDFs
 ax3 = axes[1, 0]
-baseline_sorted = np.sort(baseline_glucose)
-clean_sorted = np.sort(clean_glucose)
-incident_sorted = np.sort(incident_glucose)
-
-baseline_cdf = np.arange(1, len(baseline_sorted) + 1) / len(baseline_sorted)
-clean_cdf = np.arange(1, len(clean_sorted) + 1) / len(clean_sorted)
-incident_cdf = np.arange(1, len(incident_sorted) + 1) / len(incident_sorted)
-
-ax3.plot(baseline_sorted, baseline_cdf, label='Baseline', linewidth=2, color='blue')
-ax3.plot(clean_sorted, clean_cdf, label='Clean Period', linewidth=2, color='green')
-ax3.plot(incident_sorted, incident_cdf, label='Incident Period', linewidth=2, color='red')
+ax3.plot(np.sort(baseline_glucose), np.arange(1, len(baseline_glucose) + 1) / max(1, len(baseline_glucose)),
+         label='Baseline', linewidth=2, color='blue')
+ax3.plot(np.sort(clean_glucose), np.arange(1, len(clean_glucose) + 1) / max(1, len(clean_glucose)),
+         label='Clean Period', linewidth=2, color='green')
+if len(incident_pos_glucose):
+    ax3.plot(np.sort(incident_pos_glucose), np.arange(1, len(incident_pos_glucose) + 1) / max(1, len(incident_pos_glucose)),
+             label='Inc + cohort', linewidth=2, color='red')
+if len(incident_neg_glucose):
+    ax3.plot(np.sort(incident_neg_glucose), np.arange(1, len(incident_neg_glucose) + 1) / max(1, len(incident_neg_glucose)),
+             label='Inc − cohort', linewidth=2, color='purple')
 ax3.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax3.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax3.set_xlabel('Glucose (mg/dL)', fontsize=11)
 ax3.set_ylabel('Cumulative Probability', fontsize=11)
-ax3.set_title('Cumulative Distribution Function', fontsize=12, fontweight='bold')
-ax3.legend(fontsize=10)
+ax3.set_title('Cumulative Distribution Function (split by cohort)', fontsize=12, fontweight='bold')
+ax3.legend(fontsize=9)
 ax3.grid(True, alpha=0.3)
 ax3.set_xlim(40, 400)
 
-# Plot 4: Box plots
+# Plot 4: Box plots — 4 classes + E4 threshold visibility enhancements
 ax4 = axes[1, 1]
-box_data = [baseline_glucose, clean_glucose, incident_glucose]
-box_labels = ['Baseline', 'Clean\nPeriod', 'Incident\nPeriod']
-box_colors = ['blue', 'green', 'red']
+box_data = [baseline_glucose, clean_glucose]
+box_labels = ['Baseline', 'Clean\nPeriod']
+box_colors = ['blue', 'green']
+if len(incident_pos_glucose):
+    box_data.append(incident_pos_glucose)
+    box_labels.append('Inc +\ncohort')
+    box_colors.append('red')
+if len(incident_neg_glucose):
+    box_data.append(incident_neg_glucose)
+    box_labels.append('Inc −\ncohort')
+    box_colors.append('purple')
 
 bp = ax4.boxplot(box_data, labels=box_labels, patch_artist=True, widths=0.6)
 for patch, color in zip(bp['boxes'], box_colors):
     patch.set_facecolor(color)
     patch.set_alpha(0.6)
 
-ax4.axhline(y=70, color='red', linestyle='--', linewidth=1, alpha=0.5, label='Hypo threshold')
-ax4.axhline(y=180, color='orange', linestyle='--', linewidth=1, alpha=0.5, label='Hyper threshold')
+# E4 — bolder threshold zones so it's visually obvious which boxes cross hypo/hyper
+ax4.axhspan(0, 70, alpha=0.18, color='red', zorder=0)        # hypo zone
+ax4.axhspan(180, 500, alpha=0.18, color='orange', zorder=0)  # hyper zone
+ax4.axhline(y=70, color='red', linestyle='--', linewidth=1.5, alpha=0.8, label='Hypo threshold (<70)')
+ax4.axhline(y=180, color='orange', linestyle='--', linewidth=1.5, alpha=0.8, label='Hyper threshold (>180)')
+
+# Annotate the box that crosses thresholds furthest — Incident + cohort crosses
+# hyper; Incident − cohort crosses hypo. Helps the eye land on the right place.
+for _i, (_data, _lbl, _col) in enumerate(zip(box_data, box_labels, box_colors)):
+    if len(_data) == 0:
+        continue
+    _max = float(np.max(_data))
+    _min = float(np.min(_data))
+    if 'Inc +' in _lbl and _max > 180:
+        ax4.annotate(f'max {_max:.0f}', xy=(_i + 1, _max), xytext=(_i + 1, _max + 15),
+                     fontsize=7, ha='center', color='darkred',
+                     arrowprops=dict(arrowstyle='->', color='darkred', lw=0.8))
+    if 'Inc −' in _lbl and _min < 70:
+        ax4.annotate(f'min {_min:.0f}', xy=(_i + 1, _min), xytext=(_i + 1, _min - 15),
+                     fontsize=7, ha='center', color='darkred',
+                     arrowprops=dict(arrowstyle='->', color='darkred', lw=0.8))
+
 ax4.set_ylabel('Glucose (mg/dL)', fontsize=11)
-ax4.set_title('Glucose Distribution Box Plots', fontsize=12, fontweight='bold')
+ax4.set_title('Glucose Distribution Box Plots — hypo/hyper zones shaded', fontsize=12, fontweight='bold')
 ax4.grid(True, alpha=0.3, axis='y')
 ax4.legend(fontsize=9, loc='upper right')
 
