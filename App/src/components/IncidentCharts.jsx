@@ -75,8 +75,13 @@ export function IncidentImpactChart() {
     );
   }
   
-  const mae15Values = validData.map(d => d.mae_15m || 0);
-  const mae30Values = validData.map(d => d.mae_30m || 0);
+  // Bidirectional-aware: two distinct MAE lines
+  //   mae_fleet:    Fleet-wide MAE across all patients (diluted by 70% unaffected)
+  //   mae_affected: MAE filtered to affected patients only (true bias magnitude)
+  // Old code used d.mae_15m and d.mae_30m (which was just mae_15m × 1.2 —
+  // redundant). Now the two lines carry distinct information: fleet vs affected.
+  const mae15Values = validData.map(d => d.mae_fleet || 0);
+  const mae30Values = validData.map(d => d.mae_affected || 0);
   const timeValues = validData.map(d => new Date(d.time).getTime());
 
   const maxMAE = Math.max(...mae15Values, ...mae30Values, summary?.baseline_mae_30m || 10) * 1.1;
@@ -98,7 +103,7 @@ export function IncidentImpactChart() {
   const mae15Path = validData
     .map((d, i) => {
       const x = xScale(d.time);
-      const y = yScale(d.mae_15m || 0);
+      const y = yScale(d.mae_fleet || 0);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
@@ -106,7 +111,7 @@ export function IncidentImpactChart() {
   const mae30Path = validData
     .map((d, i) => {
       const x = xScale(d.time);
-      const y = yScale(d.mae_30m || 0);
+      const y = yScale(d.mae_affected || 0);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
@@ -292,7 +297,7 @@ export function IncidentImpactChart() {
             Time
           </text>
 
-          {/* MAE 30m line (orange) */}
+          {/* MAE Affected-only line (orange) — shows true device-error magnitude during incident (~45 mg/dL peak) */}
           <path
             d={mae30Path}
             fill="none"
@@ -301,7 +306,7 @@ export function IncidentImpactChart() {
             opacity="0.9"
           />
 
-          {/* MAE 15m line (blue) */}
+          {/* MAE Fleet-wide line (blue) — diluted by 70% unaffected patients (~17 mg/dL peak) */}
           <path
             d={mae15Path}
             fill="none"
@@ -314,12 +319,12 @@ export function IncidentImpactChart() {
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
             <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(59 130 246)" strokeWidth="2.5" />
             <text x="35" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE 15m
+              MAE — Fleet-wide (diluted across all patients)
             </text>
 
             <line x1="0" y1="20" x2="30" y2="20" stroke="rgb(251 146 60)" strokeWidth="2" />
             <text x="35" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE 30m
+              MAE — Affected patients only (true bias magnitude)
             </text>
 
             <rect x="0" y="35" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
@@ -340,8 +345,11 @@ export function IncidentImpactChart() {
 }
 
 /**
- * Glucose Timeline Chart - Shows actual vs device readings with bias
- * Similar to the bottom chart in the provided image
+ * Glucose Timeline Chart — signed device bias (observed − true) per direction
+ * cohort over time. Outside incident: both lines ≈ 0 (devices match true).
+ * Inside incident: positive cohort spikes to +bias_magnitude, negative drops
+ * to -bias_magnitude. Subtraction cancels diurnal glucose fluctuation, so the
+ * incident is the only visually prominent feature.
  */
 export function GlucoseTimelineChart() {
   const [data, setData] = useState([]);
@@ -412,20 +420,21 @@ export function GlucoseTimelineChart() {
     );
   }
   
-  // Bidirectional cohort split: device readings split by incident_direction.
-  // glucose_device_positive/negative can be null at minutes with no data in
-  // that cohort — filter those out for min/max + skip in path generation.
-  const glucoseActualValues = validData.map(d => d.glucose_actual || 0);
-  const glucoseDevicePositiveValues = validData.map(d => d.glucose_device_positive).filter(v => v != null);
-  const glucoseDeviceNegativeValues = validData.map(d => d.glucose_device_negative).filter(v => v != null);
+  // Delta view: render the signed device bias (observed − true) per cohort.
+  // Outside incident: both ≈ 0 (no bias). Inside: positive ≈ +bias_magnitude,
+  // negative ≈ -bias_magnitude. Diurnal glucose fluctuations cancel in the
+  // subtraction, so the incident is the only visually prominent feature.
+  const biasPositiveValues = validData.map(d => d.bias_positive).filter(v => v != null);
+  const biasNegativeValues = validData.map(d => d.bias_negative).filter(v => v != null);
   const timeValues = validData.map(d => new Date(d.time).getTime());
 
-  const allDeviceValues = [...glucoseDevicePositiveValues, ...glucoseDeviceNegativeValues];
-  // Extra top headroom (1.20×) leaves room for the in-chart legend at top-left
-  // so it doesn't overlap the data lines — particularly the negative-bias blue
-  // line which can run near the top of the data range outside the incident window.
-  const maxGlucose = Math.max(...glucoseActualValues, ...allDeviceValues) * 1.20;
-  const minGlucose = Math.min(...glucoseActualValues, ...allDeviceValues) * 0.95;
+  const allBiasValues = [...biasPositiveValues, ...biasNegativeValues];
+  // Symmetric y-axis around 0 so positive and negative cohorts are visually
+  // balanced. Pad to nearest 10 with at least ±55 minimum so the legend at
+  // top-left has headroom and the incident-window peaks aren't clipped.
+  const absMax = Math.max(...allBiasValues.map(v => Math.abs(v)), 50);
+  const maxGlucose = Math.ceil((absMax * 1.20) / 10) * 10;  // round up to nearest 10
+  const minGlucose = -maxGlucose;
   const minTime = Math.min(...timeValues);
   const maxTime = Math.max(...timeValues);
   const timeRange = maxTime - minTime;
@@ -440,19 +449,10 @@ export function GlucoseTimelineChart() {
     return chartHeight - padding.bottom - ((value - minGlucose) / (maxGlucose - minGlucose)) * innerHeight;
   };
 
-  // Create path data for glucose lines
-  const actualPath = validData
-    .map((d, i) => {
-      const x = xScale(d.time);
-      const y = yScale(d.glucose_actual || 0);
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-    })
-    .join(' ');
-
-  // Build two device paths — positive bias (cohort over-reads, line shifts UP
-  // during incident) and negative bias (cohort under-reads, line shifts DOWN).
-  // Skip null points (no data for that cohort at that minute) by breaking the
-  // path with an M command on the next valid point.
+  // Build two bias paths — bias_positive (red, ≈ 0 outside / ≈ +bias inside)
+  // and bias_negative (blue, ≈ 0 outside / ≈ -bias inside). Skip null points
+  // (no data for that cohort at that minute) by breaking the path with an M
+  // command on the next valid point.
   const buildPath = (yKey) => {
     let started = false;
     const segments = [];
@@ -470,8 +470,10 @@ export function GlucoseTimelineChart() {
     });
     return segments.join(' ');
   };
-  const devicePositivePath = buildPath('glucose_device_positive');
-  const deviceNegativePath = buildPath('glucose_device_negative');
+  const biasPositivePath = buildPath('bias_positive');
+  const biasNegativePath = buildPath('bias_negative');
+  // Horizontal zero baseline for visual reference (no bias)
+  const zeroY = yScale(0);
 
   // Find incident period for highlighting
   const incidentData = validData.filter(d => d.incident_period === 1);
@@ -512,10 +514,10 @@ export function GlucoseTimelineChart() {
       {/* Chart Title */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
-          Glucose Timeline: Actual vs Device Readings (±40 mg/dL Bidirectional Calibration Bias)
+          Device Calibration Bias Over Time (±40 mg/dL Bidirectional)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
-          Affected patient cohorts split by direction — half over-read (+40 mg/dL), half under-read (−40 mg/dL) during the incident window
+          Signed device bias (observed − true glucose) per direction cohort. Outside incident: both lines ≈ 0 (devices match true). Inside incident: positive cohort spikes to +40, negative drops to −40.
         </p>
       </div>
 
@@ -580,7 +582,7 @@ export function GlucoseTimelineChart() {
             transform={`rotate(-90 20 ${chartHeight / 2})`}
             fontFamily="monospace"
           >
-            Glucose (mg/dL)
+            Device Bias (mg/dL)
           </text>
 
           {/* X-axis */}
@@ -629,48 +631,60 @@ export function GlucoseTimelineChart() {
             Time
           </text>
 
-          {/* Device readings — positive-bias cohort (red, shifts UP during incident) */}
+          {/* Zero baseline (no bias reference) */}
+          <line
+            x1={padding.left}
+            y1={zeroY}
+            x2={chartWidth - padding.right}
+            y2={zeroY}
+            stroke="rgb(148 163 184)"
+            strokeWidth="1"
+            strokeDasharray="4 4"
+            opacity="0.6"
+          />
+          <text
+            x={chartWidth - padding.right + 5}
+            y={zeroY + 4}
+            fill="rgb(148 163 184)"
+            fontSize="10"
+            fontFamily="monospace"
+          >
+            no bias
+          </text>
+
+          {/* Positive-bias cohort bias (red, ≈ 0 outside / spikes to +40 inside incident) */}
           <path
-            d={devicePositivePath}
+            d={biasPositivePath}
             fill="none"
             stroke="rgb(239 68 68)"
             strokeWidth="2"
             opacity="0.9"
           />
 
-          {/* Device readings — negative-bias cohort (blue, shifts DOWN during incident) */}
+          {/* Negative-bias cohort bias (blue, ≈ 0 outside / drops to -40 inside incident) */}
           <path
-            d={deviceNegativePath}
+            d={biasNegativePath}
             fill="none"
             stroke="rgb(59 130 246)"
             strokeWidth="2"
             opacity="0.9"
           />
 
-          {/* Actual glucose line (green/ground truth — same for all cohorts) */}
-          <path
-            d={actualPath}
-            fill="none"
-            stroke="rgb(34 197 94)"
-            strokeWidth="2.5"
-            opacity="0.9"
-          />
-
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
-            <line x1="0" y1="0" x2="40" y2="0" stroke="rgb(34 197 94)" strokeWidth="2.5" />
+            <line x1="0" y1="0" x2="40" y2="0" stroke="rgb(239 68 68)" strokeWidth="2" />
             <text x="45" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Actual glucose (ground truth)
+              Positive bias cohort (over-reads — +40 during incident)
             </text>
 
-            <line x1="0" y1="20" x2="40" y2="20" stroke="rgb(239 68 68)" strokeWidth="2" />
+            <line x1="0" y1="20" x2="40" y2="20" stroke="rgb(59 130 246)" strokeWidth="2" />
             <text x="45" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — positive bias cohort (over-reads, +40 mg/dL)
+              Negative bias cohort (under-reads — −40 during incident)
             </text>
 
-            <line x1="0" y1="40" x2="40" y2="40" stroke="rgb(59 130 246)" strokeWidth="2" />
+            <line x1="0" y1="40" x2="40" y2="40" stroke="rgb(148 163 184)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
             <text x="45" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — negative bias cohort (under-reads, −40 mg/dL)
+              Zero bias (no calibration error)
             </text>
 
             <rect x="0" y="55" width="40" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />

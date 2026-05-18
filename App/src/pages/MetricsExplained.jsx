@@ -247,8 +247,8 @@ WHERE glucose_out_of_range = 1
 )
 SELECT 
   minute as time,
-  AVG(error_value) as mae_15m,
-  AVG(error_value) * 1.2 as mae_30m,
+  AVG(error_value) as mae_fleet,
+  AVG(CASE WHEN has_incident = 1 THEN error_value END) as mae_affected,
   MAX(incident_period) as incident_period,
   MAX(incident_label) as incident_label
 FROM minute_data
@@ -260,9 +260,10 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> ABS(glucose_observed - glucose_true) + 5.0 (baseline sensor noise)</li>
-                  <li>• <span className="font-mono text-blue-400">MAE 15m:</span> Average MAE calculated from minute-level readings</li>
-                  <li>• <span className="font-mono text-orange-400">MAE 30m:</span> MAE 15m * 1.2 (simulates longer window with more variance)</li>
+                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> ABS(glucose_observed - glucose_true) + 5.0 (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
+                  <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only ~30% are affected</li>
+                  <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to affected patients (has_incident = 1) — shows the TRUE device-error magnitude ~45 mg/dL during incident</li>
+                  <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
                   <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window)</li>
                   <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy - dashed line)</li>
                   <li>• <span className="font-mono text-violet-400">Peak MAE:</span> Maximum MAE during incident period (~45 mg/dL)</li>
@@ -272,8 +273,8 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Visual Elements:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="text-blue-400">Blue line:</span> MAE 15m</li>
-                  <li>• <span className="text-orange-400">Orange line:</span> MAE 30m</li>
+                  <li>• <span className="text-blue-400">Blue line:</span> MAE Fleet-wide (diluted across all patients — ~17 mg/dL peak)</li>
+                  <li>• <span className="text-orange-400">Orange line:</span> MAE Affected-only (true bias magnitude — ~45 mg/dL peak)</li>
                   <li>• <span className="text-slate-400">Gray shaded region:</span> Incident period (typically 3 hours)</li>
                   <li>• <span className="text-slate-400">Dashed line:</span> Baseline MAE reference</li>
                   <li>• <span className="text-yellow-400">Yellow callout:</span> Peak MAE spike value</li>
@@ -296,32 +297,32 @@ ORDER BY minute`}
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
             <div className="flex items-start justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-cyan-400 mb-1">Glucose Timeline: Actual vs Device Readings</h3>
-                <p className="text-xs text-slate-500 font-mono">Bottom chart - Device bias comparison</p>
+                <h3 className="text-lg font-semibold text-cyan-400 mb-1">Device Calibration Bias Over Time (±40 mg/dL Bidirectional)</h3>
+                <p className="text-xs text-slate-500 font-mono">Bottom chart - Signed bias delta per direction cohort</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">TIME SERIES</span>
             </div>
-            
+
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Compares ground truth glucose against biased device readings over the same 7-day window. The affected
-                  patient cohort is split bidirectionally — half the devices OVER-read (+40 mg/dL during incident, shown as
-                  red line shifting up) and half UNDER-read (−40 mg/dL, shown as blue line shifting down). Both directions
-                  are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE
-                  monitor in the top chart.
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. Outside the
+                  incident both lines sit at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the
+                  subtraction, so the incident is the only visually prominent feature. Inside the incident: the positive
+                  cohort spikes to +40 mg/dL (over-reads) and the negative cohort drops to −40 mg/dL (under-reads). Both
+                  directions are clinically relevant calibration failures and both are detected by the same direction-agnostic
+                  MAE monitor in the top chart.
                 </p>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`WITH minute_data AS (
   SELECT
     DATE_TRUNC('minute', time) as minute,
-    glucose_true,
-    glucose_observed,
+    (glucose_observed - glucose_true) as signed_bias,
     incident_direction,
     CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period
   FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
@@ -329,22 +330,21 @@ ORDER BY minute`}
 )
 SELECT
   minute as time,
-  AVG(glucose_true) as glucose_actual,
-  AVG(CASE WHEN incident_direction = 'positive' THEN glucose_observed END) as glucose_device_positive,
-  AVG(CASE WHEN incident_direction = 'negative' THEN glucose_observed END) as glucose_device_negative,
+  AVG(CASE WHEN incident_direction = 'positive' THEN signed_bias END) as bias_positive,
+  AVG(CASE WHEN incident_direction = 'negative' THEN signed_bias END) as bias_negative,
   MAX(incident_period) as incident_period
 FROM minute_data
 GROUP BY minute
 ORDER BY minute`}
                 </pre>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-green-400">Glucose Actual:</span> AVG(glucose_true) across all patients (ground truth from lab reference)</li>
-                  <li>• <span className="font-mono text-red-400">Device — positive bias cohort:</span> AVG(glucose_observed) WHERE incident_direction = 'positive' — patients whose devices OVER-read (+40 mg/dL during incident)</li>
-                  <li>• <span className="font-mono text-blue-400">Device — negative bias cohort:</span> AVG(glucose_observed) WHERE incident_direction = 'negative' — patients whose devices UNDER-read (−40 mg/dL during incident)</li>
+                  <li>• <span className="font-mono text-slate-300">signed_bias:</span> <span className="font-mono">glucose_observed − glucose_true</span> at every reading. Positive = device over-reads, negative = device under-reads. Subtraction cancels the diurnal glucose component, leaving pure device error.</li>
+                  <li>• <span className="font-mono text-red-400">bias_positive:</span> AVG(signed_bias) WHERE incident_direction = 'positive' — the cohort whose devices over-read by +40 mg/dL during incident. ≈ 0 outside incident, ≈ +40 inside.</li>
+                  <li>• <span className="font-mono text-blue-400">bias_negative:</span> AVG(signed_bias) WHERE incident_direction = 'negative' — the cohort whose devices under-read by −40 mg/dL during incident. ≈ 0 outside incident, ≈ −40 inside.</li>
                   <li>• <span className="font-mono text-amber-400">Direction split:</span> baseline_config.yaml `calibration_bias_direction_split` (default 0.5 = 50% positive / 50% negative)</li>
                 </ul>
               </div>
@@ -352,17 +352,25 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Visual Elements:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="text-green-400">Green line:</span> Actual glucose (ground truth — same for all cohorts)</li>
-                  <li>• <span className="text-red-400">Red line:</span> Positive-bias cohort device readings (shifts UP by ~+40 mg/dL during incident window)</li>
-                  <li>• <span className="text-blue-400">Blue line:</span> Negative-bias cohort device readings (shifts DOWN by ~−40 mg/dL during incident window)</li>
-                  <li>• <span className="text-slate-400">Gray shaded region:</span> Incident period (3 hours)</li>
+                  <li>• <span className="text-red-400">Red line:</span> Positive-bias cohort signed bias (≈ 0 outside / spikes to ≈ +40 mg/dL during incident)</li>
+                  <li>• <span className="text-blue-400">Blue line:</span> Negative-bias cohort signed bias (≈ 0 outside / drops to ≈ −40 mg/dL during incident)</li>
+                  <li>• <span className="text-slate-400">Dashed gray line:</span> Zero baseline — no calibration error (the "no bias" reference)</li>
+                  <li>• <span className="text-slate-400">Red shaded region:</span> Incident period (3 hours)</li>
+                  <li>• <span className="text-slate-400">Y-axis:</span> Symmetric around 0 (typically ±50 to ±60 mg/dL) — so positive and negative cohorts read at the same visual scale</li>
                 </ul>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">Why delta view instead of absolute glucose:</p>
+                <p className="text-sm text-slate-400">
+                  An earlier version plotted absolute device readings (glucose_observed) against ground truth (glucose_true). That was visually noisy because diurnal glucose swings (~80–200 mg/dL) dominated the y-axis, making the ±40 mg/dL incident hard to see — and the positive vs negative cohort lines naturally separated outside the incident due to random patient sampling differences, which was counter-intuitive. The signed-bias subtraction eliminates both problems: diurnal fluctuations cancel, cohort-composition differences cancel, and the only thing visible is the device error itself.
+                </p>
               </div>
 
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Clinical Significance:</p>
                 <p className="text-sm text-slate-400">
-                  A bidirectional calibration drift means SOME devices over-read (high glucose values shown) and OTHERS under-read (low values shown) — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode.
+                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (top chart) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
                 </p>
               </div>
               

@@ -7,26 +7,40 @@ import { executeSQLQuery } from '../../api/databricksSQL';
 import { getConfig } from '../../api/config';
 
 /**
- * Get incident impact data for MAE timeline chart
- * Returns time series data showing MAE (Mean Absolute Error) over time
- * with incident period highlighted
+ * Get incident impact data for MAE timeline chart.
+ *
+ * Returns time-series MAE data with TWO comparison lines:
+ *   - mae_fleet:    AVG(|observed - true|) across ALL patients — fleet-wide.
+ *                   Diluted: only ~30% are affected so peak ~17 mg/dL.
+ *   - mae_affected: AVG(|observed - true|) across affected patients only
+ *                   (has_incident = 1). Shows the REAL device-error magnitude
+ *                   during the incident — peaks ~45 mg/dL (close to the ±40
+ *                   injected bias + baseline noise).
+ *
+ * The dilution gap (45 → 17) is the load-bearing storytelling number:
+ * fleet-wide averaging masks the per-device severity, motivating
+ * patient-level / direction-aware monitoring.
+ *
+ * Previous version returned mae_15m + mae_30m where mae_30m was just
+ * mae_15m × 1.2 — redundant. Now both lines carry distinct information.
  */
 export async function getIncidentImpactData() {
   const { catalog, schema } = await getConfig();
   const query = `
     WITH minute_data AS (
-      SELECT 
+      SELECT
         DATE_TRUNC('minute', time) as minute,
+        has_incident,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
         incident_type as incident_label,
         ABS(glucose_observed - glucose_true) + 5.0 as error_value
       FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
       WHERE time IS NOT NULL
     )
-    SELECT 
+    SELECT
       minute as time,
-      AVG(error_value) as mae_15m,
-      AVG(error_value) * 1.2 as mae_30m,
+      AVG(error_value) as mae_fleet,
+      AVG(CASE WHEN has_incident = 1 THEN error_value END) as mae_affected,
       MAX(incident_period) as incident_period,
       MAX(incident_label) as incident_label
     FROM minute_data
@@ -57,10 +71,20 @@ export async function getIncidentImpactData() {
               return null;
             }
             
+            // mae_affected can be null at minutes when no affected patient
+            // had a reading (rare in practice). Treat null as 0 for plotting
+            // so the line stays connected.
+            const parseOrZero = (v) => {
+              if (v == null) return 0;
+              const s = v.string_value;
+              if (s == null || s === '') return 0;
+              const n = parseFloat(s);
+              return isNaN(n) ? 0 : n;
+            };
             return {
               time: timeStr, // Keep as string, will be parsed in chart
-              mae_15m: parseFloat(row.values[1].string_value) || 0,
-              mae_30m: parseFloat(row.values[2].string_value) || 0,
+              mae_fleet: parseOrZero(row.values[1]),
+              mae_affected: parseOrZero(row.values[2]),
               incident_period: parseInt(row.values[3].string_value, 10) || 0,
               incident_label: row.values[4].string_value || 'Unknown'
             };
@@ -83,24 +107,26 @@ export async function getIncidentImpactData() {
 }
 
 /**
- * Get glucose timeline data comparing actual vs device readings,
- * split by incident_direction so the bidirectional bias is visible.
+ * Get glucose timeline data — DELTA / BIAS view.
+ *
+ * Returns the signed device bias (observed − true) per direction cohort
+ * instead of absolute glucose values. This is more intuitive and visually
+ * dramatic for two reasons:
+ *
+ *   1. Diurnal glucose fluctuations cancel in the subtraction — outside the
+ *      incident window, bias ≈ 0 for both cohorts. No more confusing
+ *      cohort-composition baselines (where positive cohort's absolute glucose
+ *      happens to sit below negative cohort's due to random patient sampling).
+ *   2. The incident pops visually — y-axis is bias mg/dL with range ~[-60, +60];
+ *      positive cohort shoots to +40, negative drops to -40 during incident.
  *
  * Returns 4 columns:
  *   - time
- *   - glucose_actual: AVG ground truth across ALL patients
- *   - glucose_device_positive: AVG observed glucose across patients
- *       whose incident_direction = 'positive' (cohort that over-reads
- *       during incident — line shifts UP from actual)
- *   - glucose_device_negative: AVG observed glucose across patients
- *       whose incident_direction = 'negative' (cohort that under-reads
- *       — line shifts DOWN from actual)
+ *   - bias_positive: AVG(observed − true) over positive-direction cohort
+ *                    (≈ 0 outside incident, ≈ +bias_magnitude inside)
+ *   - bias_negative: AVG(observed − true) over negative-direction cohort
+ *                    (≈ 0 outside incident, ≈ -bias_magnitude inside)
  *   - incident_period: 1 inside the incident window, 0 outside
- *
- * Pre-bidirectional behavior averaged signed device_bias across all
- * affected patients, which canceled to ~0 when split was 50/50, making
- * the incident invisible on the chart. Splitting by direction preserves
- * the visual story.
  */
 export async function getGlucoseTimelineData() {
   const { catalog, schema } = await getConfig();
@@ -108,8 +134,7 @@ export async function getGlucoseTimelineData() {
     WITH minute_data AS (
       SELECT
         DATE_TRUNC('minute', time) as minute,
-        glucose_true,
-        glucose_observed,
+        (glucose_observed - glucose_true) as signed_bias,
         incident_direction,
         CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period
       FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
@@ -117,9 +142,8 @@ export async function getGlucoseTimelineData() {
     )
     SELECT
       minute as time,
-      AVG(glucose_true) as glucose_actual,
-      AVG(CASE WHEN incident_direction = 'positive' THEN glucose_observed END) as glucose_device_positive,
-      AVG(CASE WHEN incident_direction = 'negative' THEN glucose_observed END) as glucose_device_negative,
+      AVG(CASE WHEN incident_direction = 'positive' THEN signed_bias END) as bias_positive,
+      AVG(CASE WHEN incident_direction = 'negative' THEN signed_bias END) as bias_negative,
       MAX(incident_period) as incident_period
     FROM minute_data
     GROUP BY minute
@@ -139,7 +163,7 @@ export async function getGlucoseTimelineData() {
           structuredContent.result.data_array.length > 0) {
         
         const rows = structuredContent.result.data_array.map(row => {
-          if (row.values && row.values.length >= 5) {
+          if (row.values && row.values.length >= 4) {
             const timeStr = row.values[0].string_value;
             const timeDate = new Date(timeStr);
 
@@ -149,9 +173,8 @@ export async function getGlucoseTimelineData() {
               return null;
             }
 
-            // Parse with null-safe handling — glucose_device_positive/negative
-            // can be null at minutes where no patient in that cohort had a
-            // reading (unlikely with 1000-patient dataset, but defensive).
+            // Parse with null-safe handling — bias_positive/negative can be null
+            // at minutes where no patient in that cohort had a reading.
             const parseOrNull = (v) => {
               if (v == null) return null;
               const s = v.string_value;
@@ -162,10 +185,9 @@ export async function getGlucoseTimelineData() {
 
             return {
               time: timeStr,
-              glucose_actual: parseOrNull(row.values[1]) || 0,
-              glucose_device_positive: parseOrNull(row.values[2]),
-              glucose_device_negative: parseOrNull(row.values[3]),
-              incident_period: parseInt(row.values[4].string_value, 10) || 0
+              bias_positive: parseOrNull(row.values[1]),
+              bias_negative: parseOrNull(row.values[2]),
+              incident_period: parseInt(row.values[3].string_value, 10) || 0
             };
           }
           return null;
