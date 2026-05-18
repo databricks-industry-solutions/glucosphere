@@ -339,18 +339,6 @@ export function IncidentImpactChart() {
             opacity="0.9"
           />
 
-          {/* Downsampled markers — ~30 per series across the 7-day window, less bar-like rendering */}
-          {(() => {
-            const markerEveryN = Math.max(1, Math.floor(validData.length / 30));
-            return validData.filter((_, i) => i % markerEveryN === 0).map((d, i) => (
-              <g key={`mae-mk-${i}`}>
-                <circle cx={xScale(d.time)} cy={yScale(d.mae_fleet || 0)} r="2.5"
-                        fill="rgb(59 130 246)" stroke="rgb(59 130 246)" />
-                <rect x={xScale(d.time) - 2.5} y={yScale(d.mae_affected || 0) - 2.5} width="5" height="5"
-                      fill="rgb(251 146 60)" stroke="rgb(251 146 60)" />
-              </g>
-            ));
-          })()}
 
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
@@ -724,24 +712,6 @@ export function GlucoseTimelineChart() {
             opacity="0.9"
           />
 
-          {/* Downsampled markers — ~30 per series across the 7-day window, less bar-like rendering */}
-          {(() => {
-            const markerEveryN = Math.max(1, Math.floor(validData.length / 30));
-            return validData.filter((_, i) => i % markerEveryN === 0).map((d, i) => (
-              <g key={`bias-mk-${i}`}>
-                {d.bias_positive != null && (
-                  <rect x={xScale(d.time) - 2.5} y={yScale(d.bias_positive) - 2.5} width="5" height="5"
-                        fill="rgb(239 68 68)" stroke="rgb(239 68 68)" />
-                )}
-                {d.bias_negative != null && (
-                  <polygon
-                    points={`${xScale(d.time)},${yScale(d.bias_negative) - 3} ${xScale(d.time) - 3},${yScale(d.bias_negative) + 2.5} ${xScale(d.time) + 3},${yScale(d.bias_negative) + 2.5}`}
-                    fill="rgb(59 130 246)" stroke="rgb(59 130 246)"
-                  />
-                )}
-              </g>
-            ));
-          })()}
 
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
