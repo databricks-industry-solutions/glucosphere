@@ -1,16 +1,16 @@
 command: ["python", "app.py"]
 env:
-  # ENDPOINT_NAME and GENIE_SPACE_ID are resolved at app startup via valueFrom
-  # against the resource blocks below (Databricks Apps platform pattern).
-  # render_app_yaml.py no longer rewrites these env values — it only updates
-  # the resource block names/ids, which is the single source of truth.
+  # All env vars use plain `value:` — `valueFrom: <resource-name>` was tried
+  # but the app object's `resources` field came back empty after deploy
+  # (verified via /api/2.0/apps/glucosphere-dashboard on 2026-05-18), so
+  # valueFrom references can't resolve → ENDPOINT_NAME and GENIE_SPACE_ID
+  # came up empty at runtime, causing 500 errors from Clinical Analysis
+  # and Genie Natural-Language Query panels. Hardcoded IDs work reliably.
+  # render_app_yaml.py rewrites these per-target.
   - name: ENDPOINT_NAME
-    valueFrom: mas-endpoint
+    value: "mas-94acba91-endpoint"
   - name: GENIE_SPACE_ID
-    valueFrom: genie-space
-  # CATALOG_NAME and SCHEMA_NAME stay as plain `value:` — Databricks Apps
-  # doesn't expose a `valueFrom` resource type for UC catalogs/schemas, so
-  # these still need per-target customization via render_app_yaml.py.
+    value: "01f150850a66184ba68fb1b26f092287"
   - name: CATALOG_NAME
     value: "mmt_aws_usw2_catalog"
   - name: SCHEMA_NAME

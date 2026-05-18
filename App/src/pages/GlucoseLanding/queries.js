@@ -90,8 +90,67 @@ export async function getDevicesOnline() {
 }
 
 /**
- * Get count of high risk alerts (patients with out-of-range readings in recent window)
- * @returns {Promise<number>} Count of high risk patients
+ * Get count of patients with at least one device-bias-induced incident in
+ * the last 7 days. Cumulative count tied directly to the device-bias story —
+ * answers "how many patients had calibration bug events this week?"
+ *
+ * @returns {Promise<number>} Count of distinct patients with incident_type
+ *   set (i.e., a device-bias incident was active for them) in the last 7d
+ */
+export async function getIncidentAffectedPatients() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT COUNT(DISTINCT patient_id) as incident_affected
+    FROM ${catalog}.${schema}.gold_patient_device_readings
+    WHERE event_type IS NOT NULL
+      AND event_type NOT IN ('in_range')
+      AND time >= (
+        SELECT MAX(time) - INTERVAL 7 DAY
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
+      AND patient_id IN (
+        SELECT DISTINCT patient_id
+        FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+        WHERE incident_direction IS NOT NULL
+      )
+  `;
+
+  try {
+    const result = await executeSQLQuery(query);
+    if (result && result.result && result.result.structuredContent) {
+      const structuredContent = result.result.structuredContent;
+      if (structuredContent.result &&
+          structuredContent.result.data_array &&
+          structuredContent.result.data_array.length > 0) {
+        const firstRow = structuredContent.result.data_array[0];
+        if (firstRow.values && firstRow.values.length > 0) {
+          const count = parseInt(firstRow.values[0].string_value, 10);
+          console.log('✅ Device-incident-affected patients (past 7d):', count);
+          return count;
+        }
+      }
+    }
+    console.warn('Could not parse incident_affected from response:', result);
+    return 0;
+  } catch (error) {
+    console.error('Failed to get incident-affected patients:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get count of out-of-range patients in the last 3-hour rolling window.
+ *
+ * 3h matches an incident-window length so a live incident shifts the count
+ * clearly above the natural baseline. With a 24h window the natural diabetic
+ * OOR baseline dominates (~943 patients) and an incident only nudges it
+ * slightly. 3h gives a baseline of ~495 patients during clean periods and
+ * an expected ~800 (baseline + 300-patient cohort) during an active
+ * incident — a usable signal-to-noise ratio for a fleet operator's
+ * live monitoring tile.
+ *
+ * @returns {Promise<number>} Count of patients with at least one OOR
+ *   reading in the last 3 hours of data
  */
 export async function getHighRiskAlerts() {
   const { catalog, schema } = await getConfig();
@@ -100,7 +159,7 @@ export async function getHighRiskAlerts() {
     FROM ${catalog}.${schema}.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
       AND time >= (
-        SELECT MAX(time) - INTERVAL 24 HOUR
+        SELECT MAX(time) - INTERVAL 3 HOUR
         FROM ${catalog}.${schema}.gold_patient_device_readings
       )
   `;

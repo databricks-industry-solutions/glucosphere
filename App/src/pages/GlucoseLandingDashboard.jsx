@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen } from 'lucide-react';
-import { getActivePatients, getDevicesOnline, getHighRiskAlerts } from './GlucoseLanding/queries';
+import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
 // Clipboard import available if Care Management is restored
 
@@ -12,29 +12,32 @@ export default function GlucoseLandingDashboard() {
   const [activePatients, setActivePatients] = useState(null);
   const [devicesOnline, setDevicesOnline] = useState(null);
   const [highRiskAlerts, setHighRiskAlerts] = useState(null);
+  const [incidentAffected, setIncidentAffected] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
-  
+
   // Fetch real metrics from CGM schema
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
         setMetricsLoading(true);
-        const [patients, devices, alerts] = await Promise.all([
+        const [patients, devices, alerts, incidentCount] = await Promise.all([
           getActivePatients(),
           getDevicesOnline(),
-          getHighRiskAlerts()
+          getHighRiskAlerts(),
+          getIncidentAffectedPatients()
         ]);
-        
+
         setActivePatients(patients);
         setDevicesOnline(devices);
         setHighRiskAlerts(alerts);
+        setIncidentAffected(incidentCount);
       } catch (error) {
         console.error('Failed to fetch landing page metrics:', error);
       } finally {
         setMetricsLoading(false);
       }
     };
-    
+
     fetchMetrics();
   }, []);
 
@@ -110,24 +113,30 @@ export default function GlucoseLandingDashboard() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Hero Metrics */}
-        <div className="grid grid-cols-3 gap-4 mb-12">
-          <MetricCard 
+        <div className="grid grid-cols-4 gap-4 mb-12">
+          <MetricCard
             label="Active Patients"
             value={metricsLoading ? '...' : (activePatients !== null ? activePatients.toLocaleString() : 'N/A')}
             subtitle="last 24h"
             sparkline={[65, 68, 70, 73, 71, 75, 78]}
           />
-          <MetricCard 
+          <MetricCard
             label="Devices Online"
             value={metricsLoading ? '...' : (devicesOnline !== null ? devicesOnline.toLocaleString() : 'N/A')}
             subtitle="active now"
             sparkline={[98, 99, 99, 98, 99, 100, 99]}
           />
-          <MetricCard 
+          <MetricCard
             label="High-Risk Alerts"
             value={metricsLoading ? '...' : (highRiskAlerts !== null ? highRiskAlerts.toLocaleString() : 'N/A')}
-            subtitle="last 24h"
+            subtitle="last 3h"
             sparkline={[55, 52, 50, 48, 51, 49, 47]}
+          />
+          <MetricCard
+            label="Device-Incident-Affected"
+            value={metricsLoading ? '...' : (incidentAffected !== null ? incidentAffected.toLocaleString() : 'N/A')}
+            subtitle="past 7d"
+            sparkline={[0, 0, 300, 300, 300, 600, 600]}
           />
         </div>
 

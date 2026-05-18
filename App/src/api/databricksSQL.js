@@ -153,18 +153,27 @@ export async function getDeviceHeatmapData() {
  */
 export async function getOutOfRangeDevices() {
   // CGM schema: use gold_patient_device_readings (has all data in one table)
+  // Time filter: only readings in the last 3-hour rolling window — matches
+  // incident-window length and the "live state" framing of the rest of the
+  // dashboard. Without this filter the panel was returning the 50 most-recent
+  // OOR rows from the full 7-day window, which gave an inconsistent
+  // implicit time scope.
   const { catalog, schema } = await getConfig();
   const query = `
-    SELECT 
+    SELECT
       device_id,
       TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM ${catalog}.${schema}.gold_patient_device_readings)) as minutes_since_last_reading,
       patient_id,
       device_model as device_type,
       CAST(firmware_version AS STRING) as firmware_version,
       glucose as glucose_value
-    FROM 
+    FROM
       ${catalog}.${schema}.gold_patient_device_readings
     WHERE glucose_out_of_range = 1
+      AND time >= (
+        SELECT MAX(time) - INTERVAL 3 HOUR
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
     ORDER BY time DESC
     LIMIT 50
   `;
