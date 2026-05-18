@@ -446,7 +446,12 @@ for label, ws, we in [("Window 1", window1_start_ts, window1_end_ts),
     else:
         print(f"   ✅ {label} is within data timerange")
 
-# Select mutually exclusive cohorts (deterministic by seed)
+# Select cohorts with DEVICE-MODEL correlation (2026-05-18, #61 tweak F):
+# Demo story: certain device models have a calibration-bias bug. Positive
+# cohort is drawn preferentially from {Alpha, Gamma} (positive-bias models);
+# negative cohort from {Beta, Delta} (negative-bias models); Epsilon + Zeta
+# stay clean (control models). This makes the device-OOR table tie back to
+# specific device_model values rather than being uncorrelated with model.
 all_patients = pseudo_clean.select("patient_id").distinct()
 total_patients = all_patients.count()
 n1 = int(total_patients * cfg.incident_pct)
@@ -456,27 +461,70 @@ bias_magnitude = getattr(cfg, 'calibration_bias_magnitude_mgdl', cfg.calibration
 window1_signed_bias = +bias_magnitude
 window2_signed_bias = -bias_magnitude if window2_direction == 'negative' else +bias_magnitude
 
-# Rank patients by a single deterministic shuffle so cohort 1 takes the first n1 and
-# cohort 2 takes the next n2 (mutually exclusive by construction).
-from pyspark.sql import Window as _W
-_shuffle_window = _W.orderBy(F.rand(seed=cfg.seed))
-_ranked = all_patients.withColumn("_rank", F.row_number().over(_shuffle_window))
+# Pull patient → device_model mapping from raw_patient_registry (source of
+# truth — the same parquet that silver_patient_registry reads from). Falls
+# back to a deterministic random shuffle if the volume path isn't available
+# at runtime (e.g., on a fresh workspace where raw data hasn't landed yet).
+POS_POOL_MODELS = ['Alpha', 'Gamma']
+NEG_POOL_MODELS = ['Beta', 'Delta']
+_RAW_REGISTRY_PATH = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/raw_patient_registry/"
+_device_model_join_available = False
+try:
+    _patient_models = (spark.read.format("parquet").load(_RAW_REGISTRY_PATH)
+        .select("patient_id", "device_model").distinct())
+    _patient_models.count()  # force materialization to surface read errors here
+    _device_model_join_available = True
+    print(f"\n✅ Loaded device_model mapping from {_RAW_REGISTRY_PATH}")
+except Exception as _e:
+    print(f"\n⚠️  Could not load device_model from raw_patient_registry ({type(_e).__name__}: {str(_e)[:120]})")
+    print(f"   → Falling back to random cohort assignment (device_model uncorrelated with bias direction)")
 
-cohort1 = (_ranked.filter(F.col("_rank") <= F.lit(n1))
-  .withColumn("incident_direction", F.lit(window1_direction))
-  .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
-  .withColumn("incident_window_idx", F.lit(1))
-  .withColumn("has_incident", F.lit(1))
-  .drop("_rank")
-)
-cohort2 = (_ranked.filter((F.col("_rank") > F.lit(n1)) & (F.col("_rank") <= F.lit(n1 + n2)))
-  .withColumn("incident_direction", F.lit(window2_direction))
-  .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
-  .withColumn("incident_window_idx", F.lit(2))
-  .withColumn("has_incident", F.lit(1))
-  .drop("_rank")
-)
-incident_patients = cohort1.unionByName(cohort2)
+if _device_model_join_available:
+    _all_with_model = all_patients.join(_patient_models, "patient_id", "left")
+    _pos_pool = _all_with_model.where(F.col("device_model").isin(POS_POOL_MODELS))
+    _neg_pool = _all_with_model.where(F.col("device_model").isin(NEG_POOL_MODELS))
+
+    cohort1 = (_pos_pool
+      .orderBy(F.rand(seed=cfg.seed))
+      .limit(n1)
+      .select("patient_id")
+      .withColumn("incident_direction", F.lit(window1_direction))
+      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
+      .withColumn("incident_window_idx", F.lit(1))
+      .withColumn("has_incident", F.lit(1))
+    )
+    cohort2 = (_neg_pool
+      .orderBy(F.rand(seed=cfg.seed + 1))
+      .limit(n2)
+      .select("patient_id")
+      .withColumn("incident_direction", F.lit(window2_direction))
+      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
+      .withColumn("incident_window_idx", F.lit(2))
+      .withColumn("has_incident", F.lit(1))
+    )
+    incident_patients = cohort1.unionByName(cohort2)
+    print(f"   Positive cohort drawn from {POS_POOL_MODELS}")
+    print(f"   Negative cohort drawn from {NEG_POOL_MODELS}")
+else:
+    # Fallback: original deterministic shuffle, mutually exclusive cohorts
+    from pyspark.sql import Window as _W
+    _shuffle_window = _W.orderBy(F.rand(seed=cfg.seed))
+    _ranked = all_patients.withColumn("_rank", F.row_number().over(_shuffle_window))
+    cohort1 = (_ranked.filter(F.col("_rank") <= F.lit(n1))
+      .withColumn("incident_direction", F.lit(window1_direction))
+      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
+      .withColumn("incident_window_idx", F.lit(1))
+      .withColumn("has_incident", F.lit(1))
+      .drop("_rank")
+    )
+    cohort2 = (_ranked.filter((F.col("_rank") > F.lit(n1)) & (F.col("_rank") <= F.lit(n1 + n2)))
+      .withColumn("incident_direction", F.lit(window2_direction))
+      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
+      .withColumn("incident_window_idx", F.lit(2))
+      .withColumn("has_incident", F.lit(1))
+      .drop("_rank")
+    )
+    incident_patients = cohort1.unionByName(cohort2)
 
 # Legacy variable for back-compat with downstream prints/expected-impact math
 n_incident_patients = n1 + n2
@@ -955,14 +1003,31 @@ fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 ax1.plot(hourly_agg["hour"], hourly_agg["mae_15m"], label="MAE 15m", linewidth=2, marker="o", markersize=4)
 ax1.plot(hourly_agg["hour"], hourly_agg["mae_30m"], label="MAE 30m", linewidth=2, marker="s", markersize=4)
 
-# Shade incident period (GREY)
-incident_hours = hourly_agg[hourly_agg["incident_active"] == 1]
-if len(incident_hours) > 0:
-    incident_start = incident_hours["hour"].min()
-    incident_end = incident_hours["hour"].max() + pd.Timedelta(hours=1)
-    incident_mid = incident_start + (incident_end - incident_start) / 2
-    
-    ax1.axvspan(incident_start, incident_end, alpha=0.2, color='grey', label='Incident Period')
+# Detect contiguous incident blocks — two-window mirror design has TWO
+# separate incidents (Day 2 + Day 5), so we need one shaded rect + one yellow
+# label per incident instead of one big rect + one summary label.
+def _incident_blocks_from(df, time_col="hour", active_col="incident_active", gap_threshold_hours=2):
+    """Group consecutive rows with active_col==1 into blocks. Returns list of dicts."""
+    active_rows = df[df[active_col] == 1].sort_values(time_col).copy()
+    if len(active_rows) == 0:
+        return []
+    active_rows["_gap"] = active_rows[time_col].diff() > pd.Timedelta(hours=gap_threshold_hours)
+    active_rows["_block"] = active_rows["_gap"].cumsum()
+    blocks = []
+    for _bid, _blk in active_rows.groupby("_block"):
+        bs = _blk[time_col].min()
+        be = _blk[time_col].max() + pd.Timedelta(hours=1)
+        blocks.append({"start": bs, "end": be, "mid": bs + (be - bs) / 2, "rows": _blk})
+    return blocks
+
+incident_blocks_1 = _incident_blocks_from(hourly_agg)
+
+# Shade each incident period separately (one rectangle per block)
+for _i, _blk in enumerate(incident_blocks_1):
+    ax1.axvspan(_blk["start"], _blk["end"], alpha=0.2, color='grey',
+                label='Incident Period' if _i == 0 else None)
+
+if incident_blocks_1:
     ax1.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
 
 ax1.set_ylabel("MAE (mg/dL)", fontsize=12)
@@ -971,28 +1036,26 @@ ax1.legend(loc='upper left')
 ax1.grid(True, alpha=0.3)
 ax1.set_ylim(0, max(hourly_agg["mae_15m"].max(), hourly_agg["mae_30m"].max()) * 1.1)
 
-# Add yellow box annotation AFTER ylim is set
-if len(incident_hours) > 0:
-    # Get the actual y-axis limits after they're set
+# Yellow box annotation per incident — positioned ABOVE each spike so each
+# label is near its own incident rather than lumped together.
+if incident_blocks_1:
     y_min_ax1, y_max_ax1 = ax1.get_ylim()
-    annotation_y = y_max_ax1 * 0.70  # 70% up from bottom
-    annotation_x = hourly_agg["hour"].max() - pd.Timedelta(days=1.5)  # Right side
-    
-    # Target point for arrow (incident spike)
-    target_y = max(incident_mae_15m, incident_mae_30m) * 0.85
-    
-    # Add yellow box with arrow pointing to incident
-    ax1.annotate(
-        f'MAE during incident:\n{incident_mae_15m:.1f} mg/dL (15m)\n{incident_mae_30m:.1f} mg/dL (30m)',
-        xy=(incident_mid, target_y),  # Arrow points here
-        xytext=(annotation_x, annotation_y),  # Box positioned here
-        fontsize=9,
-        fontweight='bold',
-        ha='center',
-        va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-    )
+    for _i, _blk in enumerate(incident_blocks_1):
+        _blk_peak_15m = _blk["rows"]["mae_15m"].max() if "mae_15m" in _blk["rows"].columns else 0
+        _blk_peak_30m = _blk["rows"]["mae_30m"].max() if "mae_30m" in _blk["rows"].columns else 0
+        _target_y = max(_blk_peak_15m, _blk_peak_30m) * 0.85
+
+        ax1.annotate(
+            f'Incident {_i+1}\n{_blk_peak_15m:.0f} (15m)\n{_blk_peak_30m:.0f} (30m) mg/dL',
+            xy=(_blk["mid"], _target_y),
+            xytext=(_blk["mid"], y_max_ax1 * 0.88),
+            fontsize=8,
+            fontweight='bold',
+            ha='center',
+            va='center',
+            bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
+            arrowprops=dict(arrowstyle='->', color='black', lw=1.5, connectionstyle='arc3,rad=0.0')
+        )
 
 # Plot 2: Glucose Timeline (bidirectional)
 # GREEN = True glucose (actual baseline)
@@ -1007,33 +1070,41 @@ ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed_negative"],
          label=f"Device — negative bias cohort (-{bias_magnitude:.0f} mg/dL)",
          linewidth=2.0, linestyle='-', color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
-# Shade incident period (GREY) + annotation
-if len(incident_hours) > 0:
-    ax2.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
+# Shade each incident period + per-incident yellow label (above each spike).
+# Window 1 (positive cohort) gets label "+N mg/dL"; Window 2 (negative cohort)
+# gets label "-N mg/dL" — derived from the block's middle-row signed bias.
+for _i, _blk in enumerate(incident_blocks_1):
+    ax2.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
+                label='Incident Period' if _i == 0 else None, zorder=1)
 
-    # Position yellow box to the RIGHT of incident period at fixed Y
-    annotation_y = 120
-    annotation_x = incident_end + pd.Timedelta(hours=18)
+    # Pick a representative row for arrow target (middle of block)
+    _mid_idx = len(_blk["rows"]) // 2
+    _row = _blk["rows"].iloc[_mid_idx]
+    _y_true = _row["glucose_true"]
+    _pos = _row.get("glucose_observed_positive")
+    _neg = _row.get("glucose_observed_negative")
 
-    # Pick the middle incident hour for the arrow target
-    incident_subset = hourly_agg[hourly_agg["incident_active"] == 1]
-    if len(incident_subset) > 0:
-        incident_row = incident_subset.iloc[len(incident_subset) // 2]
-        y_true = incident_row["glucose_true"]
-        # Target between positive and negative observed lines (mid-spread)
-        target_y = y_true
+    # Determine direction by looking at which observed cohort diverges from true
+    if pd.notna(_pos) and abs(_pos - _y_true) > abs((_neg or _y_true) - _y_true):
+        _direction = "positive"
+        _sign = "+"
+        _annot_y = _y_true + bias_magnitude + 10
+    else:
+        _direction = "negative"
+        _sign = "-"
+        _annot_y = _y_true - bias_magnitude - 10
 
-        ax2.annotate(
-            f'±{bias_magnitude:.0f} mg/dL\nbidirectional bias',
-            xy=(incident_mid, target_y),
-            xytext=(annotation_x, annotation_y),
-            fontsize=10,
-            fontweight='bold',
-            ha='center',
-            va='center',
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-            arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-        )
+    ax2.annotate(
+        f'Incident {_i+1}\n{_sign}{bias_magnitude:.0f} mg/dL\n({_direction} cohort)',
+        xy=(_blk["mid"], _y_true),
+        xytext=(_blk["mid"], _annot_y),
+        fontsize=8,
+        fontweight='bold',
+        ha='center',
+        va='center',
+        bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
+        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, connectionstyle='arc3,rad=0.0')
+    )
 
 ax2.set_xlabel("Time", fontsize=12)
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
