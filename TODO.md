@@ -1,5 +1,20 @@
 # TODO — Glucosphere dual-baseline work
 
+## Remaining plan-commits (after C.1-C.6 closed 2026-05-16)
+
+- [ ] **Commit D — distribution comparison across the 3 baseline modes (NEXT, ~30 min + test).**
+  New notebook `Data_DataGen_ModelForecast/dual_02_compare_baseline_modes.py` (~150-250 LOC). Runs all three modes + emits a side-by-side comparison: row counts, patient counts, glucose stats (mean/median/std/percentiles), hypo/normal/hyper percentages, histograms, KS-test for distribution similarity. Demo value + regression catcher.
+
+- [x] **Commit E — hygiene + valueFrom + smoke checklist (CLOSED 2026-05-18).** Three batched items:
+  1. ~~`valueFrom` conversion in `app.yaml`~~ — **REVERTED 2026-05-18 (`8942f4d`)**. `valueFrom: <resource-name>` did not resolve at runtime because the app object's `resources` field came back empty after `bundle deploy` (verified via `/api/2.0/apps/glucosphere-dashboard`). ENDPOINT_NAME and GENIE_SPACE_ID came up empty → 500 errors from Clinical Analysis + Genie panels. Reverted to plain `value:` with hardcoded IDs; `render_app_yaml.py` updated to rewrite the env var value alongside the resource block. Resources block stays declared for SP permissions but no longer load-bearing for env-var resolution.
+  2. Stale-doc cleanup — partially done in subsequent commits.
+  3. App smoke-test checklist in DEPLOY.md — see DEPLOY.md Step 11 (added in commit `590b724`).
+
+- [ ] **Commit F — restore Lakebase per v0.1 architecture (~half-day).**
+  Lakebase = Databricks-managed Postgres (autoscale tier: scale-to-zero, branching, instant restore). v0.1 architecture diagram shows it between silver/gold Delta and the App layer; not currently implemented. Declare as DABs resource on `mmt_aws_usw2` + wire Flask to read/write certain state from Lakebase where OLTP latency matters. **Use case TBD at kickoff:** clinician interaction state / real-time alert cache / app OLTP / demo showcase. Effort: bundle resource config (~30 min) + Lakebase provisioning (~15 min) + Flask wiring (~1-2 hr) + tangible demo (~30 min).
+
+
+
 > **End-of-session 2026-05-15 ~3:30am note:** Primary branch shifted from
 > `feature/dual-baseline-hls-amer` → `feature/dual-baseline-mmt-aws-usw2`
 > (decision made, not yet executed). Reason: fe-vm-hls-amer App cap blocks
@@ -33,7 +48,7 @@
   - [ ] **C.3** — implement `table` mode. Widgets: `SOURCE_MODE=table`, `SOURCE_CATALOG`, `SOURCE_SCHEMA`, `SOURCE_TABLE` (codex C1 — parameterize, don't hardcode). Fail-fast if not provided. (~30 LOC)
   - [ ] **C.4** (optional) — port subset of `03_extract_baselineTS_EDAcheck.py` (1,266 LOC, mostly EDA viz) to emit `baseline_timeseries` + `baseline_windows_metadata` QC tables. Recovers EDA value lost on cleanup; not downstream-required.
 - [ ] **Commit D** — validation: row counts + glucose distribution across all 3 modes (synthetic / table / download); possibly also a `02_ai_data_validation.py`
-- [ ] **Commit E** — repo hygiene + deferred `valueFrom` conversion in `app.yaml` + app smoke-test checklist + stale-doc cleanup (`App/README.md`, accidentally-committed `.vite/deps/*`, stale notebook widget defaults, stale markdown comment at `05_..py:1733`)
+- [x] **Commit E** — repo hygiene + ~~deferred `valueFrom` conversion~~ (reverted 2026-05-18, see above) + app smoke-test checklist + stale-doc cleanup (`App/README.md`, accidentally-committed `.vite/deps/*`, stale notebook widget defaults, stale markdown comment at `05_..py:1733`)
 - [ ] **Commit F** — restore Lakebase per v0.1 architecture (`Data_DataGen_ModelForecast/assets/architecture_0.1.png`); autoscale tier; declared as bundle resource on `hls_amer`
 
 ## Gates (blocking forward progress)

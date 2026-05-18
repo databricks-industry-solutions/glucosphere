@@ -9,13 +9,14 @@
 # MAGIC → MAE breakouts. MAE summary print breaks out by direction (both should be ~equal, proving
 # MAGIC direction-agnostic anomaly detection).
 # MAGIC
-# MAGIC Implemented (#41 Option 3):
+# MAGIC Implemented (2026-05-18 two-window mirror design, supersedes #41 Option 3):
 # MAGIC
-# MAGIC 1. ✅ Read `cfg.calibration_bias_magnitude_mgdl` + `cfg.calibration_bias_direction_split` from config
-# MAGIC    (with safe fallback to legacy `cfg.calibration_bias_mgdl` if new params absent).
-# MAGIC 2. ✅ Split `affected_patients` deterministically into pos/neg groups; apply signed bias via
-# MAGIC    `signed_bias_mgdl` column (+magnitude or -magnitude).
-# MAGIC 3. ✅ `incident_direction` ∈ {'positive', 'negative', 'none'} added to schema; propagates into
+# MAGIC 1. ✅ Two incident windows on MUTUALLY EXCLUSIVE cohorts driven by device_model:
+# MAGIC    Window 1 (Day 2, +bias_magnitude) draws from {Alpha, Gamma}; Window 2 (Day 5,
+# MAGIC    -bias_magnitude) draws from {Beta, Delta}. Epsilon + Zeta stay unaffected.
+# MAGIC    Direction-bias is decided BY WINDOW (not by within-cohort split), so plots show
+# MAGIC    two distinct spike events at different x-positions without cancellation.
+# MAGIC 2. ✅ `incident_direction` ∈ {'positive', 'negative', 'none'} added to schema; propagates into
 # MAGIC    feature dataframe through the incident_info join. `incident_bias_mgdl` now stores the SIGNED
 # MAGIC    value (downstream consumers can `ABS()` if they need magnitude).
 # MAGIC 4. ✅ Visualization: 3-panel "all/affected/unaffected" — affected panel now shows TWO device lines
@@ -40,11 +41,12 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## Incident Scenario
-# MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bidirectional systematic bias** (positive cohort over-reads, negative cohort under-reads — split is `cfg.calibration_bias_direction_split`, default 0.5)
-# MAGIC * **Timing:** Day 2, 2:00 PM - 5:00 PM (3-hour window)
-# MAGIC * **Affected:** 30% of patients (300 out of 1000)
-# MAGIC * **Impact:** MAE increases from **3.8 mg/dL → 38.3 mg/dL** (920% degradation)
+# MAGIC ## Incident Scenario (two-window mirror design, 2026-05-18)
+# MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bias across two SEPARATE incident windows on DIFFERENT cohorts** (Window 1: +bias on Alpha/Gamma devices; Window 2: -bias on Beta/Delta devices). Replaces the earlier within-window 50/50 split which canceled visually.
+# MAGIC * **Window 1:** Day 2, 2:00 PM - 5:00 PM (3-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
+# MAGIC * **Window 2:** Day 5, 10:00 AM - 1:00 PM (3-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
+# MAGIC * **Affected total:** ~60% of fleet across both windows (300 + 300 of 1000, mutually exclusive)
+# MAGIC * **Impact:** MAE peaks ~37 mg/dL for affected patients during each window (vs ~5.8 mg/dL clean baseline)
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -76,7 +78,7 @@
 # MAGIC
 # MAGIC **Setup (Cells 3-7):** Install packages, configure widgets, load YAML config, define tables, import libraries
 # MAGIC
-# MAGIC **Data Preparation (Cells 8-11):** Load clean data → Define incident window → Inject ±40 mg/dL bidirectional bias (split cohort positive/negative) → Add prediction labels
+# MAGIC **Data Preparation (Cells 8-11):** Load clean data → Define TWO incident windows (Day 2 +bias on Alpha/Gamma cohort, Day 5 -bias on Beta/Delta cohort) → Inject signed bias per cohort during their respective window → Add prediction labels
 # MAGIC
 # MAGIC **Inference & Analysis (Cells 12-18):** Load clean models → Run inference on incident data → Analyze MAE degradation → Visualize impact (3-panel MAE + 3-panel glucose timelines) → Distribution analysis → Summary statistics
 # MAGIC
@@ -1233,7 +1235,7 @@ if incident_blocks_2_affected:
     _per_block_annotate(ax2, affected_agg, incident_blocks_2_affected, label_prefix='Affected ')
 
 ax2.set_ylabel("MAE (mg/dL)", fontsize=12)
-ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) - True Incident Impact", fontsize=13, fontweight='bold')
+ax2.set_title(f"2. AFFECTED PATIENTS ONLY (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet across two windows) - True Incident Impact", fontsize=13, fontweight='bold')
 ax2.legend(loc='upper left', fontsize=10)
 ax2.grid(True, alpha=0.3)
 ax2.set_ylim(0, max(affected_agg["mae_15m"].max(), affected_agg["mae_30m"].max()) * 1.15)
@@ -1254,7 +1256,7 @@ if incident_blocks_2_unaffected:
 
 ax3.set_xlabel("Time", fontsize=12)
 ax3.set_ylabel("MAE (mg/dL)", fontsize=12)
-ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY ({(1-cfg.incident_pct)*100:.0f}% of fleet) - Stable Performance", fontsize=13, fontweight='bold')
+ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - Stable Performance", fontsize=13, fontweight='bold')
 ax3.legend(loc='upper left', fontsize=10)
 ax3.grid(True, alpha=0.3)
 ax3.set_ylim(0, max(unaffected_agg["mae_15m"].max(), unaffected_agg["mae_30m"].max()) * 1.15)
@@ -1265,7 +1267,7 @@ plt.show()
 print("[SUCCESS] 3-panel MAE comparison complete!")
 print(f"\nKey Insights:")
 print(f"   1. Fleet-wide (all patients): MAE ~{fleet_incident_mae_15m:.1f} mg/dL during incident")
-print(f"      → Diluted by {(1-cfg.incident_pct)*100:.0f}% unaffected patients")
+print(f"      → Diluted by ~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% unaffected patients (Epsilon + Zeta models)")
 print(f"   2. Affected patients: MAE ~{incident_mae_15m:.1f} mg/dL during incident")
 print(f"      → True impact of ±{bias_magnitude:.0f} mg/dL bidirectional calibration bias (over-reading OR under-reading per cohort)")
 print(f"   3. Unaffected patients: MAE ~{unaffected_incident_mae_15m:.1f} mg/dL (stable)")
@@ -1419,7 +1421,7 @@ for _i, _blk in enumerate(incident_blocks_3_affected):
     )
 
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) — ±{bias_magnitude:.0f} mg/dL Bidirectional Bias", fontsize=13, fontweight='bold')
+ax2.set_title(f"2. AFFECTED PATIENTS ONLY (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Alpha/Gamma +bias on Day 2; Beta/Delta -bias on Day 5)", fontsize=12, fontweight='bold')
 ax2.legend(loc='upper left', fontsize=10)
 ax2.grid(True, alpha=0.3)
 ax2.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
@@ -1450,7 +1452,7 @@ for _i, _blk in enumerate(incident_blocks_3_unaffected):
 
 ax3.set_xlabel("Time", fontsize=12)
 ax3.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY ({(1-cfg.incident_pct)*100:.0f}% of fleet) - No Device Bug", fontsize=13, fontweight='bold')
+ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - No Device Bug", fontsize=12, fontweight='bold')
 ax3.legend(loc='upper left', fontsize=10)
 ax3.grid(True, alpha=0.3)
 ax3.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
@@ -1730,10 +1732,10 @@ print(f"   Start: {incident_start_ts}")
 print(f"   End: {incident_end_ts}")
 print(f"   Duration: {cfg.incident_duration_min} minutes ({cfg.incident_duration_min/60:.1f} hours)")
 
-print(f"\nAffected Population:")
+print(f"\nAffected Population (two-window mirror design):")
 print(f"   Total patients: 1000")
-print(f"   Incident patients: {feat_sample[feat_sample['has_incident']==1]['patient_id'].nunique()} ({cfg.incident_pct*100:.0f}%)")
-print(f"   Clean patients: {feat_sample[feat_sample['has_incident']==0]['patient_id'].nunique()} ({(1-cfg.incident_pct)*100:.0f}%)")
+print(f"   Incident patients (any window): {feat_sample[feat_sample['has_incident']==1]['patient_id'].nunique()} (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}%)")
+print(f"   Clean patients (Epsilon/Zeta): {feat_sample[feat_sample['has_incident']==0]['patient_id'].nunique()} (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}%)")
 
 print(f"\nDevice Issue:")
 print(f"   Type: Calibration bias")
@@ -1746,7 +1748,7 @@ print("="*80)
 print(f"\nEven an excellent model (5.8 mg/dL MAE) fails catastrophically")
 print(f"when device calibration is compromised. During the 3-hour incident:")
 print(f"\n  * MAE increased from {clean_mae_15m:.1f} to {incident_mae_15m:.1f} mg/dL ({degradation_pct_15m:.0f}% worse)")
-print(f"  * {cfg.incident_pct*100:.0f}% of patients affected")
+print(f"  * ~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of patients affected across both incident windows")
 print(f"  * Performance returned to normal after incident ended")
 print(f"\n[CRITICAL] This demonstrates the critical importance of:")
 print(f"  1. Real-time device quality monitoring")

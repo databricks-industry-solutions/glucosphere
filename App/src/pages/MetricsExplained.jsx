@@ -307,12 +307,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. Outside the
-                  incident both lines sit at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the
-                  subtraction, so the incident is the only visually prominent feature. Inside the incident: the positive
-                  cohort spikes to +40 mg/dL (over-reads) and the negative cohort drops to −40 mg/dL (under-reads). Both
-                  directions are clinically relevant calibration failures and both are detected by the same direction-agnostic
-                  MAE monitor in the top chart.
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor in the top chart.
                 </p>
               </div>
 
@@ -345,7 +340,7 @@ ORDER BY minute`}
                   <li>• <span className="font-mono text-slate-300">signed_bias:</span> <span className="font-mono">glucose_observed − glucose_true</span> at every reading. Positive = device over-reads, negative = device under-reads. Subtraction cancels the diurnal glucose component, leaving pure device error.</li>
                   <li>• <span className="font-mono text-red-400">bias_positive:</span> AVG(signed_bias) WHERE incident_direction = 'positive' — the cohort whose devices over-read by +40 mg/dL during incident. ≈ 0 outside incident, ≈ +40 inside.</li>
                   <li>• <span className="font-mono text-blue-400">bias_negative:</span> AVG(signed_bias) WHERE incident_direction = 'negative' — the cohort whose devices under-read by −40 mg/dL during incident. ≈ 0 outside incident, ≈ −40 inside.</li>
-                  <li>• <span className="font-mono text-amber-400">Direction split:</span> baseline_config.yaml `calibration_bias_direction_split` (default 0.5 = 50% positive / 50% negative)</li>
+                  <li>• <span className="font-mono text-amber-400">Direction mechanism:</span> two-window mirror design — Window 1 (Day 2) injects +bias on Alpha/Gamma device cohort (~300 patients); Window 2 (Day 5) injects -bias on Beta/Delta device cohort (~300 patients). The `calibration_bias_direction_split` setting is now 1.0 (unidirectional per window) since direction is decided BY WINDOW, not within-cohort split.</li>
                 </ul>
               </div>
 
