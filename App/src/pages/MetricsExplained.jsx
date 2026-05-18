@@ -306,9 +306,11 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Compares ground truth glucose values against biased device readings over the same 7-day window. 
-                  During the incident period, the device consistently reports higher values due to a calibration failure, 
-                  demonstrating the real-world impact of the device error.
+                  Compares ground truth glucose against biased device readings over the same 7-day window. The affected
+                  patient cohort is split bidirectionally — half the devices OVER-read (+40 mg/dL during incident, shown as
+                  red line shifting up) and half UNDER-read (−40 mg/dL, shown as blue line shifting down). Both directions
+                  are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE
+                  monitor in the top chart.
                 </p>
               </div>
               
@@ -316,21 +318,21 @@ ORDER BY minute`}
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`WITH minute_data AS (
-  SELECT 
+  SELECT
     DATE_TRUNC('minute', time) as minute,
-    glucose_true as glucose_actual,
-    glucose_observed as glucose_device,
-    CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
-    (glucose_observed - glucose_true) as device_bias
+    glucose_true,
+    glucose_observed,
+    incident_direction,
+    CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period
   FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
   WHERE time IS NOT NULL
 )
-SELECT 
+SELECT
   minute as time,
-  AVG(glucose_actual) as glucose_actual,
-  AVG(glucose_device) as glucose_device,
-  MAX(incident_period) as incident_period,
-  AVG(device_bias) as device_bias
+  AVG(glucose_true) as glucose_actual,
+  AVG(CASE WHEN incident_direction = 'positive' THEN glucose_observed END) as glucose_device_positive,
+  AVG(CASE WHEN incident_direction = 'negative' THEN glucose_observed END) as glucose_device_negative,
+  MAX(incident_period) as incident_period
 FROM minute_data
 GROUP BY minute
 ORDER BY minute`}
@@ -340,29 +342,27 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-green-400">Glucose Actual:</span> glucose_true (ground truth from lab reference)</li>
-                  <li>• <span className="font-mono text-red-400">Glucose Device:</span> glucose_observed (what the CGM device reported)</li>
-                  <li>• <span className="font-mono text-amber-400">Device Bias:</span> glucose_observed - glucose_true (positive = device reads high)</li>
-                  <li>• <span className="font-mono text-rose-400">Max Bias:</span> Maximum bias during incident period (shown in callout)</li>
+                  <li>• <span className="font-mono text-green-400">Glucose Actual:</span> AVG(glucose_true) across all patients (ground truth from lab reference)</li>
+                  <li>• <span className="font-mono text-red-400">Device — positive bias cohort:</span> AVG(glucose_observed) WHERE incident_direction = 'positive' — patients whose devices OVER-read (+40 mg/dL during incident)</li>
+                  <li>• <span className="font-mono text-blue-400">Device — negative bias cohort:</span> AVG(glucose_observed) WHERE incident_direction = 'negative' — patients whose devices UNDER-read (−40 mg/dL during incident)</li>
+                  <li>• <span className="font-mono text-amber-400">Direction split:</span> baseline_config.yaml `calibration_bias_direction_split` (default 0.5 = 50% positive / 50% negative)</li>
                 </ul>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Visual Elements:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="text-green-400">Green line:</span> Actual glucose (ground truth)</li>
-                  <li>• <span className="text-red-400">Red line:</span> Device readings (biased during incident)</li>
-                  <li>• <span className="text-slate-400">Gray shaded region:</span> Incident period</li>
-                  <li>• <span className="text-yellow-400">Yellow callout:</span> Device bias magnitude (e.g., +40 mg/dL)</li>
+                  <li>• <span className="text-green-400">Green line:</span> Actual glucose (ground truth — same for all cohorts)</li>
+                  <li>• <span className="text-red-400">Red line:</span> Positive-bias cohort device readings (shifts UP by ~+40 mg/dL during incident window)</li>
+                  <li>• <span className="text-blue-400">Blue line:</span> Negative-bias cohort device readings (shifts DOWN by ~−40 mg/dL during incident window)</li>
+                  <li>• <span className="text-slate-400">Gray shaded region:</span> Incident period (3 hours)</li>
                 </ul>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Clinical Significance:</p>
                 <p className="text-sm text-slate-400">
-                  A +40 mg/dL bias means the device consistently reports glucose values 40 mg/dL higher than actual. 
-                  This could lead to incorrect insulin dosing decisions. For example, if actual glucose is 100 mg/dL 
-                  but the device shows 140 mg/dL, a patient might take unnecessary corrective insulin.
+                  A bidirectional calibration drift means SOME devices over-read (high glucose values shown) and OTHERS under-read (low values shown) — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode.
                 </p>
               </div>
               
@@ -412,7 +412,7 @@ SELECT
   MAX(CASE WHEN incident_period = 1 THEN mae ELSE 0 END) as peak_mae_30m,
   5.8 as baseline_mae_15m,
   5.8 as baseline_mae_30m,
-  MAX(CASE WHEN incident_period = 1 THEN bias ELSE 0 END) as max_device_bias,
+  MAX(CASE WHEN incident_period = 1 THEN ABS(bias) ELSE 0 END) as max_device_bias,
   MIN(CASE WHEN incident_period = 1 THEN time ELSE NULL END) as incident_start,
   MAX(CASE WHEN incident_period = 1 THEN time ELSE NULL END) as incident_end,
   MAX(incident_type) as incident_description
@@ -425,7 +425,7 @@ FROM error_data`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-cyan-400">peak_mae_15m/30m:</span> Highest MAE during incident</li>
                   <li>• <span className="font-mono text-cyan-400">baseline_mae_15m/30m:</span> Average MAE outside incident</li>
-                  <li>• <span className="font-mono text-amber-400">max_device_bias:</span> Maximum bias value during incident</li>
+                  <li>• <span className="font-mono text-amber-400">max_device_bias:</span> Maximum bias MAGNITUDE during incident — uses ABS() so it captures the worst calibration drift in either direction (positive or negative)</li>
                   <li>• <span className="font-mono text-slate-400">incident_start/end:</span> Incident time window</li>
                   <li>• <span className="font-mono text-slate-400">incident_description:</span> Type of incident (e.g., "Device Calibration Failure")</li>
                 </ul>
@@ -695,7 +695,7 @@ LIMIT 50`}
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-slate-800 text-center text-xs text-slate-500">
           <p>All metrics are calculated in real-time from Databricks Unity Catalog via DBSQL MCP Server</p>
-          <p className="mt-1 font-mono">Schema: ${catalog}.${schema}</p>
+          <p className="mt-1 font-mono">Schema: {catalog}.{schema}</p>
         </div>
       </main>
     </div>

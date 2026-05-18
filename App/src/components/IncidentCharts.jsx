@@ -412,12 +412,17 @@ export function GlucoseTimelineChart() {
     );
   }
   
+  // Bidirectional cohort split: device readings split by incident_direction.
+  // glucose_device_positive/negative can be null at minutes with no data in
+  // that cohort — filter those out for min/max + skip in path generation.
   const glucoseActualValues = validData.map(d => d.glucose_actual || 0);
-  const glucoseDeviceValues = validData.map(d => d.glucose_device || 0);
+  const glucoseDevicePositiveValues = validData.map(d => d.glucose_device_positive).filter(v => v != null);
+  const glucoseDeviceNegativeValues = validData.map(d => d.glucose_device_negative).filter(v => v != null);
   const timeValues = validData.map(d => new Date(d.time).getTime());
 
-  const maxGlucose = Math.max(...glucoseActualValues, ...glucoseDeviceValues) * 1.05;
-  const minGlucose = Math.min(...glucoseActualValues, ...glucoseDeviceValues) * 0.95;
+  const allDeviceValues = [...glucoseDevicePositiveValues, ...glucoseDeviceNegativeValues];
+  const maxGlucose = Math.max(...glucoseActualValues, ...allDeviceValues) * 1.05;
+  const minGlucose = Math.min(...glucoseActualValues, ...allDeviceValues) * 0.95;
   const minTime = Math.min(...timeValues);
   const maxTime = Math.max(...timeValues);
   const timeRange = maxTime - minTime;
@@ -441,13 +446,29 @@ export function GlucoseTimelineChart() {
     })
     .join(' ');
 
-  const devicePath = validData
-    .map((d, i) => {
+  // Build two device paths — positive bias (cohort over-reads, line shifts UP
+  // during incident) and negative bias (cohort under-reads, line shifts DOWN).
+  // Skip null points (no data for that cohort at that minute) by breaking the
+  // path with an M command on the next valid point.
+  const buildPath = (yKey) => {
+    let started = false;
+    const segments = [];
+    validData.forEach((d) => {
+      const v = d[yKey];
+      if (v == null) {
+        // Break the line on null — next valid point starts a fresh segment.
+        started = false;
+        return;
+      }
       const x = xScale(d.time);
-      const y = yScale(d.glucose_device || 0);
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-    })
-    .join(' ');
+      const y = yScale(v);
+      segments.push(`${started ? 'L' : 'M'} ${x} ${y}`);
+      started = true;
+    });
+    return segments.join(' ');
+  };
+  const devicePositivePath = buildPath('glucose_device_positive');
+  const deviceNegativePath = buildPath('glucose_device_negative');
 
   // Find incident period for highlighting
   const incidentData = validData.filter(d => d.incident_period === 1);
@@ -488,11 +509,10 @@ export function GlucoseTimelineChart() {
       {/* Chart Title */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
-          Glucose Timeline: Actual vs Device Readings
-          {summary?.max_device_bias && ` (+${summary.max_device_bias.toFixed(1)} mg/dL Bias During Incident)`}
+          Glucose Timeline: Actual vs Device Readings (±40 mg/dL Bidirectional Calibration Bias)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
-          Comparison of ground truth glucose vs biased device readings
+          Affected patient cohorts split by direction — half over-read (+40 mg/dL), half under-read (−40 mg/dL) during the incident window
         </p>
       </div>
 
@@ -606,16 +626,25 @@ export function GlucoseTimelineChart() {
             Time
           </text>
 
-          {/* Device readings line (red/biased) */}
+          {/* Device readings — positive-bias cohort (red, shifts UP during incident) */}
           <path
-            d={devicePath}
+            d={devicePositivePath}
             fill="none"
             stroke="rgb(239 68 68)"
             strokeWidth="2"
             opacity="0.9"
           />
 
-          {/* Actual glucose line (green/ground truth) */}
+          {/* Device readings — negative-bias cohort (blue, shifts DOWN during incident) */}
+          <path
+            d={deviceNegativePath}
+            fill="none"
+            stroke="rgb(59 130 246)"
+            strokeWidth="2"
+            opacity="0.9"
+          />
+
+          {/* Actual glucose line (green/ground truth — same for all cohorts) */}
           <path
             d={actualPath}
             fill="none"
@@ -633,12 +662,17 @@ export function GlucoseTimelineChart() {
 
             <line x1="0" y1="20" x2="40" y2="20" stroke="rgb(239 68 68)" strokeWidth="2" />
             <text x="45" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device readings (biased during incident)
+              Device — positive bias cohort (over-reads, +40 mg/dL)
             </text>
 
-            <rect x="0" y="35" width="40" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
+            <line x1="0" y1="40" x2="40" y2="40" stroke="rgb(59 130 246)" strokeWidth="2" />
             <text x="45" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident Period
+              Device — negative bias cohort (under-reads, −40 mg/dL)
+            </text>
+
+            <rect x="0" y="55" width="40" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
+            <text x="45" y="64" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
+              Incident Period (3h)
             </text>
           </g>
 
