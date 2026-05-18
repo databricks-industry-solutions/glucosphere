@@ -26,15 +26,23 @@ dev:
   bolus_mult_hi: 1.1
   incident_pct: 0.3
   calibration_bias_mgdl: 40.0                # kept for backwards-compat with original 05_*.py runtime backup
-  # Bidirectional incident params (2026-05-17, #41 Option 3 — consumed by dual_05_*_Bidirectional.py):
+  # Two-incident mirror design (2026-05-18 — consumed by dual_05_*_Bidirectional.py):
+  # Window 1 is the original buildathon-main +40 incident (Day 2 14:00-17:00, 30% of fleet).
+  # Window 2 mirrors it on Day 5 10:00-13:00 with -40 bias on a DIFFERENT 30% cohort
+  # (mutually exclusive from Window 1), so plots show two clearly distinct spikes at
+  # different x-positions without any direction-split cancellation.
   calibration_bias_magnitude_mgdl: 40.0      # absolute bias size (same value as legacy calibration_bias_mgdl)
-  calibration_bias_direction_split: 0.5      # fraction of affected cohort getting POSITIVE bias; rest get NEGATIVE.
-                                             # 1.0 = unidirectional positive (matches legacy 05_*.py behavior);
-                                             # 0.5 = symmetric bidirectional (recommended for demo);
-                                             # 0.0 = unidirectional negative.
+  calibration_bias_direction_split: 1.0      # WITHIN window 1 only — kept at 1.0 (all-positive) now that
+                                             # we have a dedicated negative-direction window 2.
   incident_start_day: 2
   incident_start_hour: 14
   incident_duration_min: 180
+  # Second (mirror) incident window — opposite direction, different cohort:
+  second_incident_pct: 0.3                   # 30% of fleet (mutually exclusive from window 1's 30%)
+  second_incident_start_day: 5               # Day 5 = 2026-01-10
+  second_incident_start_hour: 10             # 10:00 AM (different time-of-day from window 1's 14:00)
+  second_incident_duration_min: 180          # 3 hours (matches window 1)
+  second_incident_direction: negative        # 'negative' = -bias_magnitude, 'positive' = +bias_magnitude
   demo_week_start: '2026-01-05'
   lags: 12
   roll_windows:

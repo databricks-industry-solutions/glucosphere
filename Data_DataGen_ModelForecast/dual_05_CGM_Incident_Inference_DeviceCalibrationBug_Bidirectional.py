@@ -403,121 +403,150 @@ print(f"\nData timerange (from YAML):")
 print(f"   demo_week_start: {demo_week_start}")
 print(f"   Expected data: {demo_week_start} to {pd.Timestamp(demo_week_start) + pd.Timedelta(days=7)}")
 
-# Calculate incident window
+# Calculate TWO incident windows (mirror design, 2026-05-18):
+#   Window 1: original buildathon-main +bias_magnitude incident (Day 2 14:00-17:00)
+#   Window 2: mirror -bias_magnitude incident (Day 5 10:00-13:00) on a DIFFERENT cohort
+# Each window is UNIDIRECTIONAL on its own cohort, so plots show two clearly distinct
+# spikes at different x-positions without cancellation. Cohorts are mutually exclusive
+# (no patient is in both windows).
 base_date = pd.Timestamp(demo_week_start)
-incident_start_ts = base_date + pd.Timedelta(days=cfg.incident_start_day, hours=cfg.incident_start_hour)
-incident_end_ts = incident_start_ts + pd.Timedelta(minutes=cfg.incident_duration_min)
 
-print(f"\nIncident Window:")
-print(f"   Start: {incident_start_ts}")
-print(f"   End: {incident_end_ts}")
+# --- Window 1 ---
+window1_start_ts = base_date + pd.Timedelta(days=cfg.incident_start_day, hours=cfg.incident_start_hour)
+window1_end_ts = window1_start_ts + pd.Timedelta(minutes=cfg.incident_duration_min)
+window1_direction = "positive"     # buildathon-main convention: +40 over-read
+
+# --- Window 2 (mirror) ---
+window2_start_ts = base_date + pd.Timedelta(days=cfg.second_incident_start_day, hours=cfg.second_incident_start_hour)
+window2_end_ts = window2_start_ts + pd.Timedelta(minutes=cfg.second_incident_duration_min)
+window2_direction = getattr(cfg, 'second_incident_direction', 'negative')  # 'negative' = -40 under-read
+
+# Back-compat aliases for any downstream code that still references the single-window vars
+incident_start_ts = window1_start_ts
+incident_end_ts = window1_end_ts
+
+print(f"\nIncident Window 1 (positive cohort, +bias):")
+print(f"   Start: {window1_start_ts}")
+print(f"   End: {window1_end_ts}")
 print(f"   Duration: {cfg.incident_duration_min} minutes ({cfg.incident_duration_min/60:.1f} hours)")
+print(f"\nIncident Window 2 (mirror, negative cohort, -bias):")
+print(f"   Start: {window2_start_ts}")
+print(f"   End: {window2_end_ts}")
+print(f"   Duration: {cfg.second_incident_duration_min} minutes ({cfg.second_incident_duration_min/60:.1f} hours)")
 
-# Verify incident window is within data timerange
+# Verify both windows are within data timerange
 data_start = pd.Timestamp(demo_week_start)
 data_end = data_start + pd.Timedelta(days=7)
-if incident_start_ts < data_start or incident_end_ts > data_end:
-    print(f"\n⚠️  WARNING: Incident window is OUTSIDE data timerange!")
-    print(f"   Data: {data_start} to {data_end}")
-    print(f"   Incident: {incident_start_ts} to {incident_end_ts}")
-else:
-    print(f"   ✅ Incident window is within data timerange")
+for label, ws, we in [("Window 1", window1_start_ts, window1_end_ts),
+                       ("Window 2", window2_start_ts, window2_end_ts)]:
+    if ws < data_start or we > data_end:
+        print(f"\n⚠️  WARNING: {label} is OUTSIDE data timerange!")
+        print(f"   Data: {data_start} to {data_end}")
+        print(f"   {label}: {ws} to {we}")
+    else:
+        print(f"   ✅ {label} is within data timerange")
 
-# Select patients for incident (random fraction = cfg.incident_pct)
+# Select mutually exclusive cohorts (deterministic by seed)
 all_patients = pseudo_clean.select("patient_id").distinct()
 total_patients = all_patients.count()
-n_incident_patients = int(total_patients * cfg.incident_pct)
+n1 = int(total_patients * cfg.incident_pct)
+n2 = int(total_patients * getattr(cfg, 'second_incident_pct', cfg.incident_pct))
 
-# Bidirectional split (#41 Option 3, 2026-05-17): cfg.calibration_bias_direction_split is
-# the fraction of affected cohort that gets POSITIVE bias; rest get NEGATIVE. Defaults to
-# 0.5 (symmetric bidirectional). 1.0 = legacy single-direction (matches old 05_*.py).
-# 0.0 = all negative. Bias magnitude comes from cfg.calibration_bias_magnitude_mgdl
-# (new param, 2026-05-17); legacy cfg.calibration_bias_mgdl retained for the unchanged
-# backup notebook in 05_*.py.
-direction_split = getattr(cfg, 'calibration_bias_direction_split', 1.0)
 bias_magnitude = getattr(cfg, 'calibration_bias_magnitude_mgdl', cfg.calibration_bias_mgdl)
-n_positive = int(n_incident_patients * direction_split)
-n_negative = n_incident_patients - n_positive
+window1_signed_bias = +bias_magnitude
+window2_signed_bias = -bias_magnitude if window2_direction == 'negative' else +bias_magnitude
 
-# Pick affected cohort (deterministic by seed)
-_incident_cohort = (all_patients
-  .orderBy(F.rand(seed=cfg.seed))
-  .limit(n_incident_patients)
-)
-
-# Split deterministically into pos/neg groups by patient_id order within cohort.
-# Deterministic AND splits the cohort cleanly. The randomness of "which patients" is in
-# the .orderBy(rand(seed)) above; the pos/neg assignment is then deterministic within the
-# already-randomized cohort.
+# Rank patients by a single deterministic shuffle so cohort 1 takes the first n1 and
+# cohort 2 takes the next n2 (mutually exclusive by construction).
 from pyspark.sql import Window as _W
-_rank_window = _W.orderBy("patient_id")
-incident_patients = (_incident_cohort
-  .withColumn("_rank", F.row_number().over(_rank_window))
-  .withColumn(
-    "incident_direction",
-    F.when(F.col("_rank") <= F.lit(n_positive), F.lit("positive")).otherwise(F.lit("negative"))
-  )
-  .withColumn(
-    "signed_bias_mgdl",
-    F.when(F.col("incident_direction") == "positive", F.lit(bias_magnitude))
-     .otherwise(F.lit(-bias_magnitude))
-  )
+_shuffle_window = _W.orderBy(F.rand(seed=cfg.seed))
+_ranked = all_patients.withColumn("_rank", F.row_number().over(_shuffle_window))
+
+cohort1 = (_ranked.filter(F.col("_rank") <= F.lit(n1))
+  .withColumn("incident_direction", F.lit(window1_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
+  .withColumn("incident_window_idx", F.lit(1))
   .withColumn("has_incident", F.lit(1))
   .drop("_rank")
 )
+cohort2 = (_ranked.filter((F.col("_rank") > F.lit(n1)) & (F.col("_rank") <= F.lit(n1 + n2)))
+  .withColumn("incident_direction", F.lit(window2_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
+  .withColumn("incident_window_idx", F.lit(2))
+  .withColumn("has_incident", F.lit(1))
+  .drop("_rank")
+)
+incident_patients = cohort1.unionByName(cohort2)
 
-print(f"\nAffected Patients (bidirectional split #41 Option 3):")
+# Legacy variable for back-compat with downstream prints/expected-impact math
+n_incident_patients = n1 + n2
+
+print(f"\nAffected Patients (two-window mirror design, 2026-05-18):")
 print(f"   Total patients:               {total_patients}")
-print(f"   Incident patients:            {n_incident_patients} ({cfg.incident_pct*100:.0f}%)")
-print(f"     Positive bias (+{bias_magnitude} mg/dL): {n_positive} patients ({direction_split*100:.0f}% of cohort)")
-print(f"     Negative bias (-{bias_magnitude} mg/dL): {n_negative} patients ({(1-direction_split)*100:.0f}% of cohort)")
-print(f"   Clean patients:               {total_patients - n_incident_patients} ({(1-cfg.incident_pct)*100:.0f}%)")
-print(f"   Bias direction split:         direction_split={direction_split}  (1.0=legacy unidir; 0.5=symmetric)")
+print(f"   Window 1 cohort (+{bias_magnitude} mg/dL, Day {cfg.incident_start_day}): {n1} patients ({cfg.incident_pct*100:.0f}%)")
+print(f"   Window 2 cohort ({window2_signed_bias:+.0f} mg/dL, Day {cfg.second_incident_start_day}): {n2} patients ({getattr(cfg, 'second_incident_pct', cfg.incident_pct)*100:.0f}%)")
+print(f"   Clean patients (no incident): {total_patients - n_incident_patients} ({(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}%)")
+print(f"   Cohorts are mutually exclusive — no patient appears in both windows.")
 
-# Calculate expected impact
+# Calculate expected impact across both windows
 points_per_patient = pseudo_clean.count() / total_patients
-points_in_window = cfg.incident_duration_min / 5  # 5-min cadence
-affected_points = int(n_incident_patients * points_in_window)
+points_in_window1 = cfg.incident_duration_min / 5  # 5-min cadence
+points_in_window2 = cfg.second_incident_duration_min / 5
+affected_points = int(n1 * points_in_window1 + n2 * points_in_window2)
 
-print(f"\nExpected Impact:")
+print(f"\nExpected Impact (both windows combined):")
 print(f"   Timepoints per patient: ~{points_per_patient:.0f}")
-print(f"   Timepoints in incident window: ~{points_in_window:.0f} per patient")
+print(f"   Affected timepoints in window 1: ~{int(n1 * points_in_window1):,}")
+print(f"   Affected timepoints in window 2: ~{int(n2 * points_in_window2):,}")
 print(f"   Total affected timepoints: ~{affected_points:,}")
 print(f"   % of total data: {affected_points / pseudo_clean.count() * 100:.2f}%")
 
-print(f"\n[SUCCESS] Incident patients selected")
+print(f"\n[SUCCESS] Two-window incident cohorts selected")
 
 # COMMAND ----------
 
 # DBTITLE 1,Inject calibration bias into glucose_observed
 # ------------------------
-# Inject calibration bias during incident window
+# Inject calibration bias during incident windows (two-window mirror design, 2026-05-18)
 # glucose_true stays unchanged (ground truth)
-# glucose_observed gets ±40 mg/dL bidirectional bias during incident (signed bias_mgdl varies per patient by incident_direction)
+# glucose_observed += signed_bias_mgdl during the patient's own incident window
+#   Cohort 1 (positive, +bias_magnitude) is biased during window 1
+#   Cohort 2 (negative, -bias_magnitude) is biased during window 2
 # ------------------------
 
-print("Injecting calibration bias (bidirectional #41 Option 3)...")
-print(f"   Magnitude:       {bias_magnitude} mg/dL")
-print(f"   Direction split: {direction_split*100:.0f}% positive / {(1-direction_split)*100:.0f}% negative")
-print(f"   Affected:        {cfg.incident_pct*100:.0f}% of patients during incident window\n")
+print("Injecting calibration bias (two-window mirror design)...")
+print(f"   Magnitude:           {bias_magnitude} mg/dL")
+print(f"   Window 1 ({window1_direction}, +bias): {window1_start_ts} → {window1_end_ts}  (cohort 1: {n1} patients)")
+print(f"   Window 2 ({window2_direction}, -bias): {window2_start_ts} → {window2_end_ts}  (cohort 2: {n2} patients)")
+print(f"   Cohorts are mutually exclusive — each patient is in at most one window.\n")
 
 # Drop has_incident from pseudo_clean to avoid ambiguity, then join incident_patients
-# (which now also carries `incident_direction` and `signed_bias_mgdl` per-patient).
+# (which carries `incident_direction`, `signed_bias_mgdl`, and `incident_window_idx`
+# per-patient — distinct values for cohort 1 vs cohort 2).
 pseudo_with_flag = pseudo_clean.drop("has_incident").join(
     incident_patients,
     "patient_id",
     "left"
-).fillna({"has_incident": 0})
+).fillna({"has_incident": 0, "incident_window_idx": 0})
 
-# Build the in-window mask once (shared across multiple withColumn calls).
-_in_window = (
-    (F.col("has_incident") == 1) &
-    (F.col("time") >= F.lit(incident_start_ts)) &
-    (F.col("time") < F.lit(incident_end_ts))
+# Per-window in-window mask: a row is "in window" if the patient's cohort matches the
+# window AND the row's time is inside that window's [start, end). Cohorts are mutually
+# exclusive so a row is in at most one window.
+_in_window_1 = (
+    (F.col("incident_window_idx") == 1) &
+    (F.col("time") >= F.lit(window1_start_ts)) &
+    (F.col("time") < F.lit(window1_end_ts))
 )
+_in_window_2 = (
+    (F.col("incident_window_idx") == 2) &
+    (F.col("time") >= F.lit(window2_start_ts)) &
+    (F.col("time") < F.lit(window2_end_ts))
+)
+_in_window = _in_window_1 | _in_window_2
 
-# Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the incident window.
-# signed_bias_mgdl is +magnitude for positive-direction patients, -magnitude for negative.
+# Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the patient's incident
+# window. signed_bias_mgdl is +magnitude for cohort 1 (window 1), -magnitude for cohort 2
+# (window 2 mirror) — set at cohort selection time above.
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
     F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
@@ -526,11 +555,16 @@ pseudo_incident = pseudo_with_flag.withColumn(
     "incident_type",
     F.when(_in_window, F.lit("calibration_bias")).otherwise(F.lit(None).cast("string"))
 ).withColumn(
+    # Per-patient incident window — points to window 1 for cohort 1, window 2 for cohort 2.
     "incident_start_time",
-    F.when(F.col("has_incident") == 1, F.lit(incident_start_ts)).otherwise(F.lit(None).cast("timestamp"))
+    F.when(F.col("incident_window_idx") == 1, F.lit(window1_start_ts))
+     .when(F.col("incident_window_idx") == 2, F.lit(window2_start_ts))
+     .otherwise(F.lit(None).cast("timestamp"))
 ).withColumn(
     "incident_end_time",
-    F.when(F.col("has_incident") == 1, F.lit(incident_end_ts)).otherwise(F.lit(None).cast("timestamp"))
+    F.when(F.col("incident_window_idx") == 1, F.lit(window1_end_ts))
+     .when(F.col("incident_window_idx") == 2, F.lit(window2_end_ts))
+     .otherwise(F.lit(None).cast("timestamp"))
 ).withColumn(
     # Stores the SIGNED value (+magnitude or -magnitude). Downstream consumers can take
     # ABS() if they want magnitude. Pairs with `incident_direction` enum for explicit
@@ -543,7 +577,7 @@ pseudo_incident = pseudo_with_flag.withColumn(
 pseudo_incident = pseudo_incident.withColumn(
     "incident_direction",
     F.when(F.col("has_incident") == 1, F.col("incident_direction")).otherwise(F.lit(None).cast("string"))
-).drop("signed_bias_mgdl")  # drop the intermediate column; incident_bias_mgdl carries the signed value
+).drop("signed_bias_mgdl", "incident_window_idx")  # drop intermediate columns; incident_bias_mgdl + incident_direction carry the signal
 
 # Save incident data
 pseudo_incident.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(pseudo_incident_tbl)
@@ -659,16 +693,30 @@ incident_info = spark.table(pseudo_incident_tbl).select(
 )
 df = df.drop("has_incident", "incident_direction").join(incident_info, ["patient_id", "time"], "inner")
 
-# Add incident_active flag
+# Add incident_active flag — TWO windows (2026-05-18 mirror design):
+# A row is incident_active if the patient's cohort matches the window AND the row's time
+# is inside that window. Cohort 1 (positive direction) maps to window 1; cohort 2
+# (negative direction) maps to window 2. Cohorts are mutually exclusive so incident_active
+# is 1 in exactly one window per patient.
 base_date = pd.Timestamp(cfg.demo_week_start)
-incident_start_ts = base_date + pd.Timedelta(days=cfg.incident_start_day, hours=cfg.incident_start_hour)
-incident_end_ts = incident_start_ts + pd.Timedelta(minutes=cfg.incident_duration_min)
+window1_start_ts = base_date + pd.Timedelta(days=cfg.incident_start_day, hours=cfg.incident_start_hour)
+window1_end_ts = window1_start_ts + pd.Timedelta(minutes=cfg.incident_duration_min)
+window2_start_ts = base_date + pd.Timedelta(days=cfg.second_incident_start_day, hours=cfg.second_incident_start_hour)
+window2_end_ts = window2_start_ts + pd.Timedelta(minutes=cfg.second_incident_duration_min)
+# Back-compat aliases for any older references later in the notebook
+incident_start_ts = window1_start_ts
+incident_end_ts = window1_end_ts
 
 df = df.withColumn(
     "incident_active",
-    ((F.col("has_incident") == 1) &
-     (F.col("time") >= F.lit(incident_start_ts)) &
-     (F.col("time") < F.lit(incident_end_ts))).cast("int")
+    (((F.col("incident_direction") == F.lit("positive")) &
+      (F.col("time") >= F.lit(window1_start_ts)) &
+      (F.col("time") < F.lit(window1_end_ts)))
+     |
+     ((F.col("incident_direction") == F.lit("negative")) &
+      (F.col("time") >= F.lit(window2_start_ts)) &
+      (F.col("time") < F.lit(window2_end_ts)))
+    ).cast("int")
 )
 
 # Build features (same as clean model)

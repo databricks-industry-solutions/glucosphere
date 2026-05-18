@@ -261,7 +261,12 @@ Error generating stack: `+i.message+`
     SELECT
       minute as time,
       AVG(error_value) as mae_fleet,
-      AVG(CASE WHEN has_incident = 1 THEN error_value END) as mae_affected,
+      -- mae_affected uses incident_period (per-time-window) instead of has_incident
+      -- (per-patient). With the two-window mirror design, has_incident=1 includes BOTH
+      -- cohorts at all times — averaging over them dilutes the spike. incident_period=1
+      -- only fires during each patient's OWN window, so this averages only patients
+      -- whose devices are currently failing → ~+/-45 mg/dL peaks at the two windows.
+      AVG(CASE WHEN incident_period = 1 THEN error_value END) as mae_affected,
       MAX(incident_period) as incident_period,
       MAX(incident_label) as incident_label
     FROM minute_data

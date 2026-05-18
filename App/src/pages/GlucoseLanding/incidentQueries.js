@@ -11,18 +11,20 @@ import { getConfig } from '../../api/config';
  *
  * Returns time-series MAE data with TWO comparison lines:
  *   - mae_fleet:    AVG(|observed - true|) across ALL patients — fleet-wide.
- *                   Diluted: only ~30% are affected so peak ~17 mg/dL.
- *   - mae_affected: AVG(|observed - true|) across affected patients only
- *                   (has_incident = 1). Shows the REAL device-error magnitude
- *                   during the incident — peaks ~45 mg/dL (close to the ±40
- *                   injected bias + baseline noise).
+ *                   Diluted: only ~30% are affected per window so peak ~17 mg/dL.
+ *   - mae_affected: AVG(|observed - true|) across patients whose OWN incident
+ *                   window is currently active (incident_period = 1). Peaks
+ *                   ~45 mg/dL at each window (close to the ±40 injected bias
+ *                   plus baseline noise).
  *
  * The dilution gap (45 → 17) is the load-bearing storytelling number:
  * fleet-wide averaging masks the per-device severity, motivating
  * patient-level / direction-aware monitoring.
  *
- * Previous version returned mae_15m + mae_30m where mae_30m was just
- * mae_15m × 1.2 — redundant. Now both lines carry distinct information.
+ * With the two-window mirror design (2026-05-18), this chart shows two
+ * distinct spike events: a +40 incident on Day 2 14:00-17:00 (cohort 1)
+ * and a -40 incident on Day 5 10:00-13:00 (cohort 2). MAE is direction-
+ * agnostic (ABS) so both spikes peak at the same ~45 mg/dL magnitude.
  */
 export async function getIncidentImpactData() {
   const { catalog, schema } = await getConfig();
@@ -40,7 +42,12 @@ export async function getIncidentImpactData() {
     SELECT
       minute as time,
       AVG(error_value) as mae_fleet,
-      AVG(CASE WHEN has_incident = 1 THEN error_value END) as mae_affected,
+      -- mae_affected uses incident_period (per-time-window) instead of has_incident
+      -- (per-patient). With the two-window mirror design, has_incident=1 includes BOTH
+      -- cohorts at all times — averaging over them dilutes the spike. incident_period=1
+      -- only fires during each patient's OWN window, so this averages only patients
+      -- whose devices are currently failing → ~+/-45 mg/dL peaks at the two windows.
+      AVG(CASE WHEN incident_period = 1 THEN error_value END) as mae_affected,
       MAX(incident_period) as incident_period,
       MAX(incident_label) as incident_label
     FROM minute_data
