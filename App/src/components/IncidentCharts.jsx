@@ -421,7 +421,10 @@ export function GlucoseTimelineChart() {
   const timeValues = validData.map(d => new Date(d.time).getTime());
 
   const allDeviceValues = [...glucoseDevicePositiveValues, ...glucoseDeviceNegativeValues];
-  const maxGlucose = Math.max(...glucoseActualValues, ...allDeviceValues) * 1.05;
+  // Extra top headroom (1.20×) leaves room for the in-chart legend at top-left
+  // so it doesn't overlap the data lines — particularly the negative-bias blue
+  // line which can run near the top of the data range outside the incident window.
+  const maxGlucose = Math.max(...glucoseActualValues, ...allDeviceValues) * 1.20;
   const minGlucose = Math.min(...glucoseActualValues, ...allDeviceValues) * 0.95;
   const minTime = Math.min(...timeValues);
   const maxTime = Math.max(...timeValues);

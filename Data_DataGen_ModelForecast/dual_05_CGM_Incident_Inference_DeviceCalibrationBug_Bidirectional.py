@@ -18,8 +18,8 @@
 # MAGIC 3. ✅ `incident_direction` ∈ {'positive', 'negative', 'none'} added to schema; propagates into
 # MAGIC    feature dataframe through the incident_info join. `incident_bias_mgdl` now stores the SIGNED
 # MAGIC    value (downstream consumers can `ABS()` if they need magnitude).
-# MAGIC 4. ⏳ Visualization: 3-panel "all/affected/unaffected" still 3-panel — 4-panel upgrade deferred
-# MAGIC    as follow-up commit (won't break demo; existing viz still works, just doesn't break out
+# MAGIC 4. ✅ Visualization: 3-panel "all/affected/unaffected" — affected panel now shows TWO device lines
+# MAGIC    (red positive cohort + blue negative cohort) instead of one signed-average that canceled.
 # MAGIC    direction). See follow-up task; could be folded into #47 helper extract.
 # MAGIC 5. ✅ MAE summary print breaks out by `incident_direction` (positive vs negative groups).
 # MAGIC
@@ -36,12 +36,12 @@
 # MAGIC # CGM Incident Simulation - Device Calibration Bug
 # MAGIC
 # MAGIC ## Purpose
-# MAGIC Demonstrate how a **device calibration bug** (+40 mg/dL bias) causes catastrophic model failure, even for high-performing models (5.8 mg/dL baseline MAE).
+# MAGIC Demonstrate how a **bidirectional device calibration bug** (±40 mg/dL bias, half over-reading half under-reading) causes catastrophic model failure, even for high-performing models (5.8 mg/dL baseline MAE).
 # MAGIC
 # MAGIC ---
 # MAGIC
 # MAGIC ## Incident Scenario
-# MAGIC * **Bug Type:** Device calibration error causing **+40 mg/dL systematic bias**
+# MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bidirectional systematic bias** (positive cohort over-reads, negative cohort under-reads — split is `cfg.calibration_bias_direction_split`, default 0.5)
 # MAGIC * **Timing:** Day 2, 2:00 PM - 5:00 PM (3-hour window)
 # MAGIC * **Affected:** 30% of patients (300 out of 1000)
 # MAGIC * **Impact:** MAE increases from **3.8 mg/dL → 38.3 mg/dL** (920% degradation)
@@ -62,7 +62,7 @@
 # MAGIC * `hls_glucosphere.cgm.pseudo_clean_7d` - Clean baseline data (from baseline notebook)
 # MAGIC
 # MAGIC **Output:**
-# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d` - Data with +40 mg/dL bias injected
+# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d` - Data with ±40 mg/dL bidirectional bias injected
 # MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d_labeled` - Incident data with prediction labels
 # MAGIC * `hls_glucosphere.cgm.fleet_forecast_incident` - Fleet-wide predictions (demo table)
 # MAGIC
@@ -76,7 +76,7 @@
 # MAGIC
 # MAGIC **Setup (Cells 3-7):** Install packages, configure widgets, load YAML config, define tables, import libraries
 # MAGIC
-# MAGIC **Data Preparation (Cells 8-11):** Load clean data → Define incident window → Inject +40 mg/dL bias → Add prediction labels
+# MAGIC **Data Preparation (Cells 8-11):** Load clean data → Define incident window → Inject ±40 mg/dL bidirectional bias (split cohort positive/negative) → Add prediction labels
 # MAGIC
 # MAGIC **Inference & Analysis (Cells 12-18):** Load clean models → Run inference on incident data → Analyze MAE degradation → Visualize impact (3-panel MAE + 3-panel glucose timelines) → Distribution analysis → Summary statistics
 # MAGIC
@@ -102,7 +102,7 @@
 # MAGIC **Key visualizations:**
 # MAGIC * Cell 14: MAE spike during incident (affected patients show ~38 mg/dL MAE)
 # MAGIC * Cell 15: 3-panel MAE comparison (all vs affected vs unaffected patients)
-# MAGIC * Cell 16: 3-panel glucose timeline (shows +40 mg/dL bias in affected patients)
+# MAGIC * Cell 16: 3-panel glucose timeline (shows ±40 mg/dL bidirectional bias in affected patients — red over-reads, blue under-reads)
 # MAGIC * Cell 17: Glucose distribution analysis
 # MAGIC
 # MAGIC **Demo table:** `hls_glucosphere.cgm.fleet_forecast_incident` (Cell 22)
@@ -493,7 +493,7 @@ print(f"\n[SUCCESS] Incident patients selected")
 # ------------------------
 # Inject calibration bias during incident window
 # glucose_true stays unchanged (ground truth)
-# glucose_observed gets +40 mg/dL bias during incident
+# glucose_observed gets ±40 mg/dL bidirectional bias during incident (signed bias_mgdl varies per patient by incident_direction)
 # ------------------------
 
 print("Injecting calibration bias (bidirectional #41 Option 3)...")
@@ -843,13 +843,23 @@ timeline_data = timeline_data.sort_values("time")
 # Aggregate by hour for cleaner visualization
 timeline_data["hour"] = pd.to_datetime(timeline_data["time"]).dt.floor("H")
 
-# CRITICAL FIX: Separate aggregation for incident vs clean periods
-# During incident: only aggregate affected patients (has_incident=1)
-# During clean: aggregate all patients
+# Aggregation strategy (bidirectional-aware):
+#   - During clean period: aggregate all patients (no bias yet, devices read correctly).
+#   - During incident period: aggregate ONLY affected patients (has_incident=1) — and
+#     SPLIT them by incident_direction into positive/negative observed series, because
+#     a signed AVG across both directions cancels (50% × +40 + 50% × -40 = 0). Two
+#     separate series exposes the direction-aware bias visually.
+# Include incident_direction in timeline_data so we can split.
+timeline_data = feat_sample[["time", "incident_active", "has_incident", "incident_direction",
+                              "mae_15m", "mae_30m", "glucose_true", "glucose_observed"]].copy()
+timeline_data = timeline_data.sort_values("time")
+timeline_data["hour"] = pd.to_datetime(timeline_data["time"]).dt.floor("H")
+
 clean_data = timeline_data[timeline_data['incident_active'] == 0]
 incident_data = timeline_data[(timeline_data['incident_active'] == 1) & (timeline_data['has_incident'] == 1)]
 
-# Aggregate clean period (all patients)
+# Aggregate clean period (all patients). During clean, observed ≈ true (no bias),
+# so positive/negative cohorts effectively have the same observed signal.
 clean_agg = clean_data.groupby("hour").agg({
     "mae_15m": "mean",
     "mae_30m": "mean",
@@ -857,15 +867,26 @@ clean_agg = clean_data.groupby("hour").agg({
     "glucose_true": "mean",
     "glucose_observed": "mean"
 }).reset_index()
+clean_agg["glucose_observed_positive"] = clean_agg["glucose_observed"]
+clean_agg["glucose_observed_negative"] = clean_agg["glucose_observed"]
 
-# Aggregate incident period (ONLY affected patients)
+# Aggregate incident period (affected patients only) — base columns
 incident_agg = incident_data.groupby("hour").agg({
     "mae_15m": "mean",
     "mae_30m": "mean",
     "incident_active": "max",
     "glucose_true": "mean",
-    "glucose_observed": "mean"
+    "glucose_observed": "mean"  # signed avg — kept for compat; positive/negative are the load-bearing series
 }).reset_index()
+
+# Split observed by incident_direction
+positive_obs = (incident_data[incident_data["incident_direction"] == "positive"]
+                .groupby("hour")["glucose_observed"].mean().reset_index()
+                .rename(columns={"glucose_observed": "glucose_observed_positive"}))
+negative_obs = (incident_data[incident_data["incident_direction"] == "negative"]
+                .groupby("hour")["glucose_observed"].mean().reset_index()
+                .rename(columns={"glucose_observed": "glucose_observed_negative"}))
+incident_agg = incident_agg.merge(positive_obs, on="hour", how="left").merge(negative_obs, on="hour", how="left")
 
 # Combine: use incident_agg for incident hours, clean_agg for clean hours
 hourly_agg = pd.concat([clean_agg, incident_agg]).sort_values("hour").reset_index(drop=True)
@@ -925,43 +946,50 @@ if len(incident_hours) > 0:
         arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
     )
 
-# Plot 2: Glucose Timeline
-# GREEN = True glucose (actual baseline - stays constant)
-# RED = Observed glucose (device reading - spikes UP +40 mg/dL during incident)
-ax2.plot(hourly_agg["hour"], hourly_agg["glucose_true"], label="True glucose (actual baseline)", 
+# Plot 2: Glucose Timeline (bidirectional)
+# GREEN = True glucose (actual baseline)
+# RED  = Positive-bias cohort device readings (over-reads — spikes UP +bias_magnitude during incident)
+# BLUE = Negative-bias cohort device readings (under-reads — drops DOWN -bias_magnitude during incident)
+ax2.plot(hourly_agg["hour"], hourly_agg["glucose_true"], label="True glucose (actual baseline)",
          linewidth=2.5, linestyle='-', color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
-ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed"], label="Observed glucose (device reading)", 
-         linewidth=2.5, linestyle='-', color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
+ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed_positive"],
+         label=f"Device — positive bias cohort (+{bias_magnitude:.0f} mg/dL)",
+         linewidth=2.0, linestyle='-', color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
+ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed_negative"],
+         label=f"Device — negative bias cohort (-{bias_magnitude:.0f} mg/dL)",
+         linewidth=2.0, linestyle='-', color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
-# Shade incident period (GREY)
+# Shade incident period (GREY) + annotation
 if len(incident_hours) > 0:
     ax2.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
-    
-    # Get incident glucose values for arrow target
-    incident_row = hourly_agg[hourly_agg["incident_active"] == 1].iloc[len(hourly_agg[hourly_agg["incident_active"] == 1])//2]
-    y_true = incident_row["glucose_true"]
-    y_obs = incident_row["glucose_observed"]
-    
-    # Position yellow box to the RIGHT of incident period at 120 mg/dL
-    annotation_y = 120  # Fixed at 120 mg/dL on y-axis
-    annotation_x = incident_end + pd.Timedelta(hours=18)  # To the right of incident (0.75 days after)
-    
-    # Add yellow box with arrow pointing to the gap between lines
-    ax2.annotate(
-        f'+{cfg.calibration_bias_mgdl:.0f} mg/dL\nbias',
-        xy=(incident_mid, (y_true + y_obs) / 2),  # Arrow points to middle of gap
-        xytext=(annotation_x, annotation_y),  # Box positioned here
-        fontsize=10,
-        fontweight='bold',
-        ha='center',
-        va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
-    )
+
+    # Position yellow box to the RIGHT of incident period at fixed Y
+    annotation_y = 120
+    annotation_x = incident_end + pd.Timedelta(hours=18)
+
+    # Pick the middle incident hour for the arrow target
+    incident_subset = hourly_agg[hourly_agg["incident_active"] == 1]
+    if len(incident_subset) > 0:
+        incident_row = incident_subset.iloc[len(incident_subset) // 2]
+        y_true = incident_row["glucose_true"]
+        # Target between positive and negative observed lines (mid-spread)
+        target_y = y_true
+
+        ax2.annotate(
+            f'±{bias_magnitude:.0f} mg/dL\nbidirectional bias',
+            xy=(incident_mid, target_y),
+            xytext=(annotation_x, annotation_y),
+            fontsize=10,
+            fontweight='bold',
+            ha='center',
+            va='center',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
+            arrowprops=dict(arrowstyle='->', color='black', lw=2, connectionstyle='arc3,rad=0.3')
+        )
 
 ax2.set_xlabel("Time", fontsize=12)
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax2.set_title(f"Glucose Timeline: Device Reads +{cfg.calibration_bias_mgdl:.0f} mg/dL HIGH During Incident", fontsize=14, fontweight='bold')
+ax2.set_title(f"Glucose Timeline: ±{bias_magnitude:.0f} mg/dL Bidirectional Calibration Bias During Incident", fontsize=14, fontweight='bold')
 ax2.legend(loc='upper left')
 ax2.grid(True, alpha=0.3)
 ax2.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
@@ -973,12 +1001,15 @@ plt.show()
 print("[SUCCESS] Visualization complete!")
 print(f"\nThe plot clearly shows:")
 print(f"   1. MAE is stable at ~5.8 mg/dL during clean periods")
-print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 3-hour incident")
+print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 3-hour incident (direction-agnostic — ABS captures both cohorts)")
 print(f"   3. MAE returns to ~5.8 mg/dL after incident ends")
 print(f"   4. GREEN line (true glucose) = stable baseline throughout")
-print(f"   5. RED line (observed) spikes +{cfg.calibration_bias_mgdl:.0f} mg/dL ABOVE green during incident")
-print(f"   6. Outside incident: both lines overlap (device reads correctly)")
-print(f"\nThis demonstrates the critical impact of device calibration bugs!")
+print(f"   5. RED line (positive cohort) spikes +{bias_magnitude:.0f} mg/dL ABOVE green during incident (over-reading)")
+print(f"   6. BLUE line (negative cohort) drops -{bias_magnitude:.0f} mg/dL BELOW green during incident (under-reading)")
+print(f"   7. Outside incident: all three lines overlap (devices read correctly)")
+print(f"\nThis demonstrates the critical impact of bidirectional device calibration bugs!")
+print(f"Both over- and under-reading drifts are clinically dangerous (in opposite ways)")
+print(f"but both are detected by the same direction-agnostic MAE monitor.")
 
 # COMMAND ----------
 
@@ -1142,7 +1173,7 @@ print(f"\nKey Insights:")
 print(f"   1. Fleet-wide (all patients): MAE ~{fleet_incident_mae_15m:.1f} mg/dL during incident")
 print(f"      → Diluted by {(1-cfg.incident_pct)*100:.0f}% unaffected patients")
 print(f"   2. Affected patients: MAE ~{incident_mae_15m:.1f} mg/dL during incident")
-print(f"      → True impact of +{cfg.calibration_bias_mgdl:.0f} mg/dL calibration bias")
+print(f"      → True impact of ±{bias_magnitude:.0f} mg/dL bidirectional calibration bias (over-reading OR under-reading per cohort)")
 print(f"   3. Unaffected patients: MAE ~{unaffected_incident_mae_15m:.1f} mg/dL (stable)")
 print(f"      → No device bug, normal performance maintained")
 print(f"\nThis demonstrates why patient-level monitoring is critical!")
@@ -1154,34 +1185,48 @@ print(f"Fleet-wide metrics can hide serious issues affecting subsets of patients
 # ------------------------
 # Glucose Timeline Comparison: 3 Separate Views
 # 1. All patients (fleet-wide average)
-# 2. Affected patients only (shows +40 mg/dL bias)
+# 2. Affected patients only — bidirectional split (positive cohort over-reads, negative under-reads)
 # 3. Unaffected patients only (stable baseline)
 # ------------------------
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-print("Creating 3-panel glucose timeline comparison...\n")
+print("Creating 3-panel glucose timeline comparison (bidirectional-aware)...\n")
 
-# Prepare timeline data with glucose values
-timeline_data = feat_sample[["time", "incident_active", "has_incident", "glucose_true", "glucose_observed"]].copy()
+# Prepare timeline data with glucose values + incident_direction (for bidirectional split)
+timeline_data = feat_sample[["time", "incident_active", "has_incident", "incident_direction",
+                              "glucose_true", "glucose_observed"]].copy()
 timeline_data = timeline_data.sort_values("time")
 timeline_data["hour"] = pd.to_datetime(timeline_data["time"]).dt.floor("H")
 
-# 1. All patients aggregation (fleet-wide)
+# 1. All patients aggregation (fleet-wide) — signed avg deliberately, this PANEL'S story
+# is "fleet-wide averages mask both dilution AND bidirectional cancellation"
 all_patients_glucose = timeline_data.groupby("hour").agg({
     "glucose_true": "mean",
     "glucose_observed": "mean",
     "incident_active": "max"
 }).reset_index()
 
-# 2. Affected patients only (has_incident=1)
-affected_glucose = timeline_data[timeline_data['has_incident'] == 1].groupby("hour").agg({
+# 2. Affected patients only (has_incident=1) — SPLIT BY DIRECTION
+# Signed AVG across positive+negative cohorts cancels (50% × +40 + 50% × -40 = 0).
+# Split into separate positive/negative series to expose the bidirectional bias visually.
+affected_data = timeline_data[timeline_data['has_incident'] == 1]
+affected_glucose = affected_data.groupby("hour").agg({
     "glucose_true": "mean",
-    "glucose_observed": "mean",
+    "glucose_observed": "mean",  # kept for compat; positive/negative are load-bearing
     "incident_active": "max"
 }).reset_index()
+affected_positive_obs = (affected_data[affected_data["incident_direction"] == "positive"]
+                          .groupby("hour")["glucose_observed"].mean().reset_index()
+                          .rename(columns={"glucose_observed": "glucose_observed_positive"}))
+affected_negative_obs = (affected_data[affected_data["incident_direction"] == "negative"]
+                          .groupby("hour")["glucose_observed"].mean().reset_index()
+                          .rename(columns={"glucose_observed": "glucose_observed_negative"}))
+affected_glucose = (affected_glucose
+                    .merge(affected_positive_obs, on="hour", how="left")
+                    .merge(affected_negative_obs, on="hour", how="left"))
 
-# 3. Unaffected patients only (has_incident=0)
+# 3. Unaffected patients only (has_incident=0) — no bias, observed == true
 unaffected_glucose = timeline_data[timeline_data['has_incident'] == 0].groupby("hour").agg({
     "glucose_true": "mean",
     "glucose_observed": "mean",
@@ -1243,34 +1288,42 @@ ax1.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
 ax1.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 # ------------------------
-# Plot 2: AFFECTED PATIENTS ONLY
+# Plot 2: AFFECTED PATIENTS ONLY — bidirectional split
+# Three lines: green True + red positive cohort + blue negative cohort
+# (Same color convention as the React Glucose Timeline chart in IncidentCharts.jsx)
 # ------------------------
-ax2.plot(affected_glucose["hour"], affected_glucose["glucose_true"], 
-         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-', 
+ax2.plot(affected_glucose["hour"], affected_glucose["glucose_true"],
+         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-',
          color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
-ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed"], 
-         label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
+ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed_positive"],
+         label=f"Device — positive bias cohort (+{bias_magnitude:.0f} mg/dL, over-reads)",
+         linewidth=2.0, linestyle='-',
          color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
+ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed_negative"],
+         label=f"Device — negative bias cohort (-{bias_magnitude:.0f} mg/dL, under-reads)",
+         linewidth=2.0, linestyle='-',
+         color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
 if len(incident_hours) > 0:
     ax2.axvspan(incident_start, incident_end, alpha=0.15, color='grey', label='Incident Period', zorder=1)
-    
-    # Get affected patient glucose during incident
-    incident_row = affected_glucose[affected_glucose["incident_active"] == 1].iloc[len(affected_glucose[affected_glucose["incident_active"] == 1])//2]
-    y_true = incident_row["glucose_true"]
-    y_obs = incident_row["glucose_observed"]
-    
-    ax2.annotate(
-        f'+{cfg.calibration_bias_mgdl:.0f} mg/dL\nbias',
-        xy=(incident_mid, (y_true + y_obs) / 2),
-        xytext=(incident_end + pd.Timedelta(hours=18), 120),
-        fontsize=10, fontweight='bold', ha='center', va='center',
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
-        arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=-0.1')
-    )
+
+    # Get affected patient glucose during incident (for annotation arrow target)
+    incident_subset = affected_glucose[affected_glucose["incident_active"] == 1]
+    if len(incident_subset) > 0:
+        incident_row = incident_subset.iloc[len(incident_subset) // 2]
+        y_true = incident_row["glucose_true"]
+
+        ax2.annotate(
+            f'±{bias_magnitude:.0f} mg/dL\nbidirectional bias',
+            xy=(incident_mid, y_true),
+            xytext=(incident_end + pd.Timedelta(hours=18), 120),
+            fontsize=10, fontweight='bold', ha='center', va='center',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.5),
+            arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=-0.1')
+        )
 
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) - Full +{cfg.calibration_bias_mgdl:.0f} mg/dL Bias", fontsize=13, fontweight='bold')
+ax2.set_title(f"2. AFFECTED PATIENTS ONLY ({cfg.incident_pct*100:.0f}% of fleet) — ±{bias_magnitude:.0f} mg/dL Bidirectional Bias", fontsize=13, fontweight='bold')
 ax2.legend(loc='upper left', fontsize=10)
 ax2.grid(True, alpha=0.3)
 ax2.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
@@ -1312,12 +1365,15 @@ plt.show()
 
 print("[SUCCESS] 3-panel glucose timeline comparison complete!")
 print(f"\nKey Insights:")
-print(f"   1. Fleet-wide: Bias diluted to ~{fleet_bias:.1f} mg/dL (averaged across all patients)")
-print(f"   2. Affected patients: Full +{cfg.calibration_bias_mgdl:.0f} mg/dL bias during incident")
-print(f"      → RED line spikes {cfg.calibration_bias_mgdl:.0f} mg/dL above GREEN baseline")
+print(f"   1. Fleet-wide: Signed bias averages to ~{fleet_bias:.1f} mg/dL — DILUTION (only 30% affected)")
+print(f"      AND bidirectional CANCELLATION (positive + negative cancel) both hide the issue.")
+print(f"   2. Affected patients: ±{bias_magnitude:.0f} mg/dL bidirectional bias during incident")
+print(f"      → RED line (positive cohort) spikes +{bias_magnitude:.0f} mg/dL ABOVE GREEN (over-reading)")
+print(f"      → BLUE line (negative cohort) drops -{bias_magnitude:.0f} mg/dL BELOW GREEN (under-reading)")
 print(f"   3. Unaffected patients: No bias, lines overlap (device working correctly)")
-print(f"\nThis shows why patient-level monitoring is critical!")
-print(f"Fleet-wide averages can mask serious device issues affecting patient subsets.")
+print(f"\nThis shows why patient-level + direction-aware monitoring is critical!")
+print(f"Fleet-wide signed averages mask BOTH dilution and bidirectional cancellation —")
+print(f"the platform's MAE monitor uses ABS so it catches both directions in the aggregate.")
 
 # COMMAND ----------
 
@@ -1466,7 +1522,8 @@ print(f"   Mean shift: {clean_glucose.mean() - baseline_glucose.mean():+.1f} mg/
 print(f"   Distribution match: {'[OK] Good' if abs(clean_glucose.mean() - baseline_glucose.mean()) < 5 else '[WARNING] Check'}")
 
 print(f"\nIncident Period vs Clean Period:")
-print(f"   Mean shift: {incident_glucose.mean() - clean_glucose.mean():+.1f} mg/dL (expected: +{cfg.calibration_bias_mgdl})")
+print(f"   Mean shift (signed avg): {incident_glucose.mean() - clean_glucose.mean():+.1f} mg/dL")
+print(f"   With bidirectional split (50/50 default), signed avg cancels to ~0; per-cohort magnitude is ±{bias_magnitude} mg/dL")
 print(f"   Hypo reduction: {incident_hypo - clean_hypo:+.1f}% (bias shifts distribution up)")
 print(f"   Hyper increase: {incident_hyper - clean_hyper:+.1f}% (more high glucose readings)")
 
@@ -1530,7 +1587,7 @@ print(f"   Clean patients: {feat_sample[feat_sample['has_incident']==0]['patient
 
 print(f"\nDevice Issue:")
 print(f"   Type: Calibration bias")
-print(f"   Magnitude: +{cfg.calibration_bias_mgdl} mg/dL systematic error")
+print(f"   Magnitude: ±{bias_magnitude} mg/dL bidirectional systematic error (positive + negative cohorts)")
 print(f"   Impact: {degradation_pct_15m:.0f}% MAE increase")
 
 print("\n" + "="*80)
@@ -1683,7 +1740,7 @@ else:
         print(f"   Clean model MAE:    {clean_period_comp['mae_15m_clean'].mean():.2f} mg/dL (15m) | {clean_period_comp['mae_30m_clean'].mean():.2f} mg/dL (30m)")
         print(f"   Incident model MAE: {clean_period_comp['mae_15m_incident'].mean():.2f} mg/dL (15m) | {clean_period_comp['mae_30m_incident'].mean():.2f} mg/dL (30m)")
         
-        print(f"\nINCIDENT PERIOD (+{cfg.calibration_bias_mgdl} mg/dL bias):")
+        print(f"\nINCIDENT PERIOD (±{bias_magnitude} mg/dL bidirectional bias):")
         print(f"   Clean model MAE:    {incident_period_comp['mae_15m_clean'].mean():.2f} mg/dL (15m) | {incident_period_comp['mae_30m_clean'].mean():.2f} mg/dL (30m)")
         print(f"   Incident model MAE: {incident_period_comp['mae_15m_incident'].mean():.2f} mg/dL (15m) | {incident_period_comp['mae_30m_incident'].mean():.2f} mg/dL (30m)")
         
