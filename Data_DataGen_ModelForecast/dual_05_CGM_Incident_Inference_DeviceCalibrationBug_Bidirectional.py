@@ -1183,6 +1183,14 @@ print()
 # Detect incident blocks (two-window mirror design — uses helper from Plot 1 cell)
 incident_blocks_2 = _incident_blocks_from(all_patients_agg)
 
+# Default summary stats so downstream prints (line ~1296+) always have these
+# defined even when a cohort has no incident-active rows (unaffected cohort is
+# the obvious case — by construction it never has incident_active=1).
+fleet_incident_mae_15m = 0.0
+fleet_incident_mae_30m = 0.0
+unaffected_incident_mae_15m = 0.0
+unaffected_incident_mae_30m = 0.0
+
 # Create figure with 3 subplots (vertical stack)
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
