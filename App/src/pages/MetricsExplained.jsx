@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
-import fig4DistributionPng from '../assets/fig4_distribution_comparison_4panel.png';
+// fig4 PNG is served at runtime from UC Volume via Flask /uc-assets/ route
+// (App/databricks/app.py:serve_uc_asset). No vite-bundled static copy needed —
+// the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/landing_zone/dual_05_assets/
+// and the App fetches it live. Refresh PNG = rerun the pipeline; no rebuild needed.
+const FIG4_UC_PATH = '/uc-assets/dual_05_assets/fig4_distribution_comparison_4panel.png';
 
 export default function MetricsExplained() {
   const navigate = useNavigate();
@@ -346,7 +350,7 @@ ORDER BY minute`}
               </div>
               <div className="my-4">
                 <img
-                  src={fig4DistributionPng}
+                  src={FIG4_UC_PATH}
                   alt="4-panel glucose distribution comparison: baseline (darkgray), clean period (mediumturquoise), Inc+ cohort (red, over-reads), Inc- cohort (blue, under-reads). Histograms, bar chart, CDF, and box plot show how each incident direction shifts the distribution and how the shift maps to hypo/hyper threshold crossings."
                   className="w-full rounded-lg border border-slate-800 bg-slate-950/50"
                 />

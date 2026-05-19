@@ -456,6 +456,38 @@ def serve_assets(filename):
     print(f"[DEBUG] Serving asset: {filename} from {assets_dir}")
     return send_from_directory(assets_dir, filename)
 
+@app.route('/uc-assets/<path:filename>')
+def serve_uc_asset(filename):
+    """Serve PNG/JPG assets directly from UC Volume at runtime.
+
+    Path is interpreted relative to /Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/.
+    Eliminates the need to `fs cp` notebook-generated PNGs into the repo before
+    vite build — the App fetches them live from UC Volume. Pipeline reruns
+    overwrite the UC Volume file; this route serves the latest with no-cache.
+
+    Example: <img src="/uc-assets/dual_05_assets/fig4_distribution_comparison_4panel.png">
+    Resolves to: /Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/landing_zone/dual_05_assets/fig4_distribution_comparison_4panel.png
+    """
+    host, token = get_auth()
+    if not token:
+        return jsonify({'error': 'DATABRICKS_TOKEN not available'}), 500
+    full_path = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/{filename}"
+    url = f"{host}/api/2.0/fs/files{full_path}"
+    print(f"[UC-ASSET] Fetching {full_path}")
+    resp = requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=30)
+    if resp.status_code != 200:
+        print(f"[UC-ASSET] Failed: {resp.status_code} {resp.text[:200]}")
+        return jsonify({'error': f'UC asset not found: {full_path}', 'status': resp.status_code}), resp.status_code
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    mime = {
+        'png':  'image/png',
+        'jpg':  'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'svg':  'image/svg+xml',
+        'webp': 'image/webp',
+    }.get(ext, 'application/octet-stream')
+    return resp.content, 200, {'Content-Type': mime, 'Cache-Control': 'no-cache'}
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_spa(path):
