@@ -1672,20 +1672,26 @@ print("")  # blank line — visual separator between stats table and 4-panel fig
 print("")
 
 # Create visualization — 4-class palette across all 4 subplots.
-# Temporarily override matplotlib text/label/tick colors to white so the
-# resulting PNG (saved with transparent background below) renders readably
-# on the dark React app theme (glucosphere-dashboard is dark-only as of
-# 2026-05-19). Restored after plt.show() below. If a light-theme toggle is
+# Temporarily override OUTSIDE-the-axes text colors (subplot titles, axis
+# labels, tick labels, axes edges) to white so the resulting PNG (saved
+# with transparent background below) renders readably on the dark React
+# app theme (glucosphere-dashboard is dark-only as of 2026-05-19).
+# IMPORTANT: do NOT override `text.color` (the GLOBAL text color) — that
+# would also force legend text + ax.text() value labels (e.g. bar-chart
+# percentage annotations) to white, which fails because legend boxes have
+# default white background + bar value labels sit on colored bars. Those
+# INSIDE-the-axes text elements stay default-black via the unchanged
+# rcParams. Restored after plt.show() below. If a light-theme toggle is
 # ever added, drop this override OR use bbox-backed text for theme-agnostic
 # readability. NOTE: wrapping plt.subplots() in `plt.style.context(...)` is
-# NOT sufficient — text colors are read at render time (set_title / xlabel
-# / etc.), which happens AFTER the style context would have exited; need
-# the rcParams override to span the whole figure-construction block.
+# NOT sufficient — these rcParams are read at render time (set_title /
+# xlabel / etc.), which happens AFTER a style context would have exited;
+# need the rcParams override to span the whole figure-construction block.
 _DUAL05_FIG4_RCPARAMS_SAVED = {k: plt.rcParams[k] for k in (
-    'text.color', 'axes.labelcolor', 'xtick.color', 'ytick.color',
+    'axes.labelcolor', 'xtick.color', 'ytick.color',
     'axes.edgecolor', 'axes.titlecolor')}
 plt.rcParams.update({
-    'text.color': 'white', 'axes.labelcolor': 'white',
+    'axes.labelcolor': 'white',
     'xtick.color': 'white', 'ytick.color': 'white',
     'axes.edgecolor': 'white', 'axes.titlecolor': 'white',
 })
@@ -1707,7 +1713,7 @@ ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax1.set_xlabel('Glucose (mg/dL)', fontsize=11)
 ax1.set_ylabel('Density', fontsize=11)
 ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold')
-ax1.legend(loc='upper right', fontsize=9)
+# Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).
 ax1.grid(True, alpha=0.3)
 
 # Plot 2: Distribution percentages — 4 bars per range
@@ -1729,7 +1735,7 @@ ax2.set_ylabel('Percentage (%)', fontsize=11)
 ax2.set_title('Distribution by Glucose Range (4-class direction split)', fontsize=12, fontweight='bold')
 ax2.set_xticks(x)
 ax2.set_xticklabels(categories)
-ax2.legend(fontsize=9)
+# Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).
 ax2.grid(True, alpha=0.3, axis='y')
 
 # Add percentage labels for all 4 series
@@ -1756,7 +1762,10 @@ ax3.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax3.set_xlabel('Glucose (mg/dL)', fontsize=11)
 ax3.set_ylabel('Cumulative Probability', fontsize=11)
 ax3.set_title('Cumulative Distribution Function (split by cohort)', fontsize=12, fontweight='bold')
-ax3.legend(fontsize=9)
+# Per-axis legend removed — single combined legend is built below, AFTER ax4
+# exists (ax4 = axes[1, 1] is set up in the next block; the combined-legend
+# builder needs both ax1 + ax4 to be fully populated with labeled artists
+# before calling get_legend_handles_labels()).
 ax3.grid(True, alpha=0.3)
 ax3.set_xlim(40, 400)
 
@@ -1806,7 +1815,24 @@ for _i, (_data, _lbl, _col) in enumerate(zip(box_data, box_labels, box_colors)):
 ax4.set_ylabel('Glucose (mg/dL)', fontsize=11)
 ax4.set_title('Glucose Distribution Box Plots — hypo/hyper zones shaded', fontsize=12, fontweight='bold')
 ax4.grid(True, alpha=0.3, axis='y')
-ax4.legend(fontsize=9, loc='upper right')
+# Per-axis legend removed — hypo/hyper threshold handles (label= on the axhline
+# calls above) are still discoverable via ax4.get_legend_handles_labels() and
+# get picked up by the combined-legend builder on ax3 below.
+
+# Combined legend for the whole 4-panel figure — parked in ax3's empty lower-right
+# quadrant (CDFs saturate to y=1 by ~250-300 mg/dL, leaving the high-x/low-y region
+# free). Pulls handles from ax1 (4 cohort entries with descriptive +40/-40 labels)
+# plus ax4 (the 2 threshold-line entries — hypo <70 / hyper >180). Per-axis legends
+# on ax1/ax2/ax4 are intentionally suppressed to reduce visual clutter. Must run
+# AFTER ax4 is fully built (axhline label= calls populated its handles).
+_combined_h, _combined_l = [], []
+for _ax in (ax1, ax4):
+    _h, _l = _ax.get_legend_handles_labels()
+    for _hi, _li in zip(_h, _l):
+        if _li not in _combined_l:
+            _combined_h.append(_hi)
+            _combined_l.append(_li)
+ax3.legend(_combined_h, _combined_l, loc='lower right', fontsize=8, framealpha=0.7)
 
 plt.tight_layout()
 # Save PNG asset for MetricsExplained "How MAE alerts are triggered" section.
