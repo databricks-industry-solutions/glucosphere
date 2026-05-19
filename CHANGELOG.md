@@ -21,65 +21,37 @@ dated history captures work in progress / planned work.
 
 ### Planned
 
-- **#69 — Full repo branch cleanup audit** (new 2026-05-19) — holistic sweep:
-  for each top-level file, assess (a) relevance to current branch state,
-  (b) upstream dependencies, (c) downstream dependencies,
-  (d) staleness markers (TODOs, dated references, removed-notebook mentions).
-  Pairs with #46/#50/#53 docs work. Half-day to full-day effort.
-- **#42 — Lakebase F kickoff** (alert state cache integration, ~4 hr) — alerts +
-  alert_transitions tables on workspace-scoped Lakebase Autoscaling instance;
-  Flask wiring; React Open Alerts panel as `#56` follow-up. Design landed
-  earlier in week (see `ref_notes/2026-05-16_lakebase-f-kickoff-design.md`).
-- **#39 — Standalone catalog cutover** (`mmt_aws_usw2_catalog` →
-  `mmt_aws_usw2`) — manual playbook test; includes schema-naming decision
-  (`glucosphere_dev` → `glucosphere`?). Validates cutover playbook for the
-  eventual fe-vm-hls-amer rollout.
-- **#43 — Deploy template** (`glucosphere.deploy.yaml` +
-  `scripts/deploy_glucosphere.py`) — one-command fresh-workspace bootstrap.
-  Captures patterns from #41/#42/#39.
-- **#48 — Renumber + rename notebooks for clean execution-order convention**
-  (POST #43) — pairs naturally with #43 deploy-template work. Re-apply the
-  notebook-rename playbook captured at
-  `ref_notes/2026-05-18_notebook-rename-playbook.md` (used 2026-05-18 for
-  dual_* prefix on 04/05/06/10). Bigger pass: re-numbering execution-order
-  prefixes across all notebooks for new-reader clarity.
-- **fe-vm-hls-amer catalog rollout** — applies cutover playbook + deploy
-  template once that workspace's 100/100 app quota is unblocked (admin SP
-  cleanup of cross-workspace SP entanglement still pending in parent
-  workspace).
-- **#68 — Verify synthetic baseline path end-to-end** —
-  `bundle deploy --var "baseline_source=synthetic"` against a sandbox schema
-  (NOT live `glucosphere_dev`); confirm `condition_task` dispatch + spot-check
-  incident plots + React charts; drop sandbox after. Synthetic path hasn't
-  been re-validated since v9 palette + two-incident mirror landed (last
-  validation 2026-05-15).
-- **#64 — Markdown audit + cleanup sweep** across `dual_*` notebook
-  `# MAGIC %md` cells (post-bidirectional + post-palette + post-rename).
-  Targets the human-readable narrative inside notebooks for review quality.
-- **#46 — Rewrite `Data_DataGen_ModelForecast/README.md`** to reflect
-  cleanup-branch state + `dual_*` notebooks (current text references deleted
-  `01_download_data.py` / `02_parseNcombine_processed_data.py` /
-  `03_extract_baselineTS_EDAcheck.py`).
-- **#47 — Extract shared incident-sim helper** (followup to #41 Option 3) —
-  consolidate duplicated logic between `dual_05_*_Bidirectional.py` and
-  `dual_05_*_SingleIncident.py` siblings.
-- **#49 — Upgrade Figure 2 (MAE) / Figure 3 (Glucose Timeline) to 4-panel
-  direction-breakout** — current 3-panel views (all / affected / unaffected)
-  could split affected into +bias / −bias for direction-specific signal.
-- **#50 — Add demo usage / deployment instructions for end users** — pairs
-  with #46 README rewrite.
-- **#53 — Incorporate Lakebase positioning into README + demo docs** —
-  lands once #42 implementation is live so docs match what the app actually
-  does. Pairs with #46/#50.
-- **#58 — Send fe-vm Variant E follow-up** to unblock app quota +
-  Lakebase enablement on fe-vm-hls-amer.
+#### Demo features (sequenced)
+
+- **#42 — Lakebase F kickoff** (~4 hr) — alerts + alert_transitions tables on workspace-scoped Lakebase Autoscaling instance; Flask wiring; React Open Alerts panel as `#56` follow-up. Design landed earlier in week (`ref_notes/2026-05-16_lakebase-f-kickoff-design.md`).
+- **#68 — Verify synthetic baseline path end-to-end** — `bundle deploy --var "baseline_source=synthetic"` against a sandbox; confirm `condition_task` dispatch + spot-check incident plots + React charts; drop sandbox after. Synthetic path not re-validated since v9 palette + two-incident mirror landed 2026-05-18.
+- **#47 — Extract shared incident-sim helper** — consolidate duplicated logic between `dual_05_*_Bidirectional.py` and `dual_05_*_SingleIncident.py` siblings.
+- **#70 — Post-pipeline asset refresh** (in flight 2026-05-19 evening) — `fs cp` fig4 PNG from UC Volume → repo, `npm run build`, commit + push, `bundle deploy + bundle run glucosphere_dashboard`. Pairs with the matplotlib fix in `6fd9222`.
+
+#### Infra & portability
+
+- **#39 — Standalone catalog cutover** (`mmt_aws_usw2_catalog` → `mmt_aws_usw2`) — manual playbook test; includes schema-naming decision (`glucosphere_dev` → `glucosphere`?). Validates the cutover playbook for the eventual fe-vm-hls-amer rollout.
+- **#58 — Send fe-vm Variant E follow-up** — unblock app quota + Lakebase enablement on fe-vm-hls-amer.
+- **fe-vm-hls-amer catalog rollout** — applies cutover playbook + deploy template once #58 unblocks the workspace's 100/100 app quota (admin SP cleanup of cross-workspace SP entanglement pending in parent workspace).
+
+#### Deploy template & repo cleanup
+
+- **#43 — Deploy template** (`glucosphere.deploy.yaml` + `scripts/deploy_glucosphere.py`) — one-command fresh-workspace bootstrap. Captures patterns from #41/#42/#39.
+- **#48 — Renumber + rename notebooks** for clean execution-order convention (POST #43). Re-apply the notebook-rename playbook (`ref_notes/2026-05-18_notebook-rename-playbook.md`).
+- **#69 — Full repo branch cleanup audit** (new 2026-05-19) — holistic sweep: for each top-level file, assess relevance + upstream/downstream dependencies + staleness markers. Pairs with the docs work below. Half-day to full-day effort.
+
+#### Docs
+
+- **#46 — Rewrite `Data_DataGen_ModelForecast/README.md`** — current text references deleted `01_download_data.py` / `02_parseNcombine_processed_data.py` / `03_extract_baselineTS_EDAcheck.py`; needs refresh to current `dual_*` notebook set.
+- **#50 — Add demo usage / deployment instructions for end users** — pairs with #46.
+- **#53 — Incorporate Lakebase positioning into README + demo docs** — lands once #42 implementation is live so docs match what the app actually does. Pairs with #46/#50.
+- **#64 — Markdown audit + cleanup sweep** across `dual_*` notebook `# MAGIC %md` cells (post-bidirectional + post-palette + post-rename). Targets human-readable narrative inside notebooks for review quality.
 - **#40 — User review of README** (commit `d897eaa`).
-- **Landing-page intro to demo's component map** — orientation banner on
-  GlucoStream Intelligence landing page explaining the four sub-dashboards
-  (GlucoStream, Device Support, Diabetes Coach, Care Management placeholder)
-  and which persona each serves.
-- **DAIS demo readiness** — polish for booth pickup if CGM /
-  connected-device monitoring use cases come up.
+- **Landing-page intro to demo's component map** — orientation banner on GlucoStream Intelligence landing page explaining the four sub-dashboards (GlucoStream, Device Support, Diabetes Coach, Care Management placeholder) and which persona each serves.
+
+#### Outreach
+
+- **DAIS demo readiness** — polish for booth pickup if CGM / connected-device monitoring use cases come up.
 
 ### Open question
 
@@ -200,21 +172,84 @@ v9 finalization, asset refresh, full push + deploy + run.
   flagged for `#69` to investigate which DABs fields need migration.
   See task #69 (Full repo branch cleanup) for the broader sweep.
 - **`dual_05_*_Bidirectional.py` Figure 4 — readability fix for dark-themed
-  React app.** Wrapped the 4-panel distribution-comparison figure in an
-  rcParams save/override/restore block that sets `text.color`,
-  `axes.labelcolor`, `xtick.color`, `ytick.color`, `axes.edgecolor`, and
-  `axes.titlecolor` to white for the duration of the figure construction
-  + savefig. The resulting PNG (`fig4_distribution_comparison_4panel.png`,
-  saved with `transparent=True`) renders subplot titles, axis labels, and
-  tick text readably on the dark React app background instead of
-  black-on-near-black (the prior PNG had dark titles invisible against
-  the slate-950 React bg — flagged by user with screenshot 2026-05-19).
-  Tuned for dark-theme-only (glucosphere-dashboard ships dark-only as of
-  2026-05-19); if a light-theme toggle is added later, drop the override
-  or use bbox-backed text. ⚠️ The **live app's embedded PNG won't refresh
-  until the next pipeline run** regenerates the asset to UC Volume +
-  copies it back to `Data_DataGen_ModelForecast/assets/`. Next
-  `bundle run -t mmt_aws_usw2 glucosphere_full_setup` will trigger that.
+  React app** (iterated 4x on 2026-05-19 evening, current state below):
+  - **rcParams override (narrowed)**: wrapped the 4-panel
+    distribution-comparison figure in an rcParams save/override/restore
+    block that sets `axes.labelcolor`, `xtick.color`, `ytick.color`,
+    `axes.edgecolor`, and `axes.titlecolor` to white for the duration of
+    the figure construction + savefig. **Critically does NOT override
+    `text.color`** — that would make ALL text (including legend labels +
+    `ax.text()` percentage annotations on bars) white, which fails on
+    legend boxes (default white bg → invisible) and bar value labels (on
+    colored bars where black is correct). Only OUTSIDE-the-axes text
+    (titles / axis labels / ticks / edges) gets white; INSIDE-axes text
+    stays default-black via unchanged `text.color`.
+  - **Dark-themed legend boxes** (Option 3, superseded by Option 4 below):
+    all 4 fig4 legend calls were briefly styled with
+    `facecolor='#0a0e1a', edgecolor='gray', framealpha=0.85, labelcolor='white'`
+    — slate-dark box w/ white labels. Visually integrated with the React
+    app but read as "jarring" inside the notebook UI (light bg). Replaced
+    by Option 4.
+  - **Combined legend in CDF lower-right quadrant** (Option 4, current):
+    per-axis `ax1`/`ax2`/`ax4` legends removed entirely; one combined
+    legend lives on `ax3` (the CDF subplot), placed `loc='lower right'`
+    in the empty quadrant that CDFs leave open (curves saturate to y=1
+    by ~250-300 mg/dL, leaving the high-x/low-y region free). The combined
+    legend is built by collecting `get_legend_handles_labels()` from `ax1`
+    (4 cohort entries with descriptive `+40`/`-40` labels) and `ax4` (2
+    threshold-line entries — Hypo `<70` / Hyper `>180`), deduped by
+    label string. Six entries total; `framealpha=0.7` transparent white
+    box, default black text — readable on both the dark React app bg
+    AND the notebook UI light bg. Cuts visual clutter (was 4 boxes →
+    1 box) and gives each subplot more breathing room for the data.
+  - **ax4 ordering bug fix** (discovered late-evening 2026-05-19): the
+    Option 4 combined-legend builder must run AFTER `ax4 = axes[1, 1]`
+    is created in the `Plot 4: Box plots` block; an earlier placement
+    of the builder at the end of `ax3`'s setup raised
+    `NameError: name 'ax4' is not defined` and failed run `897117790864535`.
+    Builder now lives just before `plt.tight_layout()` so both `ax1`
+    handles + `ax4` axhline-label handles are fully populated. Fix
+    validated by run `1083492488019438` (SUCCESS, ~4 min).
+  - **Single-task rerun pattern discovered**:
+    `databricks jobs run-now --json '{"job_id":<JOB_ID>,"only":["incident_inference"]}'`
+    runs JUST `incident_inference` (~5-10 min) instead of the full
+    `glucosphere_full_setup` job (~45-60 min). Other tasks come back
+    SKIPPED with `DISABLED`. Used today for fast PNG-regeneration
+    iteration — runs `233809323742076` (narrowed rcParams), `249016198346734`
+    (dark legend, now superseded), `921289767879821` (combined-legend
+    intent ran on stale v3 workspace code — no-op), `897117790864535`
+    (v4 with ax4 NameError, FAILED), and `1083492488019438`
+    (v4 ordering fix, SUCCESS in ~4 min).
+- **`App/databricks/app.py` — new `/uc-assets/<path>` Flask route**
+  reading PNGs directly from UC Volume at runtime (via
+  `GET /api/2.0/fs/files/Volumes/...`). Eliminates the `fs cp` step
+  from the iteration cycle: pipeline writes PNG → UC Volume; App
+  fetches PNG via UC Volume; no local copy + no vite re-import + no
+  npm rebuild needed for PNG refresh. Matches the longevity solution
+  agreed in earlier sessions but only landed in code today.
+- **`App/src/pages/MetricsExplained.jsx` — switched to UC-Volume URL**:
+  removed `import fig4DistributionPng from '../assets/...'` (vite static
+  import) and replaced with `const FIG4_UC_PATH = '/uc-assets/dual_05_assets/fig4_distribution_comparison_4panel.png';`
+  pointed at the new Flask route. `<img src={FIG4_UC_PATH}>` now fetches
+  the latest UC Volume PNG on every page load.
+- **`App/src/assets/fig4_distribution_comparison_4panel.png` — DELETED**
+  (`git rm`) since vite no longer bundles it. Future plot PNGs follow
+  the same pattern: write to UC Volume from notebook, never commit to
+  `App/src/assets/`.
+- **`dual_10_Grant_App_Permissions.py` — added `GRANT READ VOLUME ON
+  VOLUME {CATALOG}.{SCHEMA}.landing_zone TO <app-sp>`** to the SQL
+  grants list. Required for the new `/uc-assets/` route to read PNGs
+  on fresh deploys. Live-applied on `mmt_aws_usw2` via direct SQL
+  statement `01f153c4-edcf-1aa9-88aa-ad9e5d0d08ed` so the running
+  App stops 403-ing; the notebook addition self-heals future workspaces.
+  Result PNG (`fig4_distribution_comparison_4panel.png`, transparent bg)
+  renders: white subtitles + axis labels + tick text on dark React bg;
+  default-black combined-legend text inside a transparent-white box
+  parked in `ax3`'s lower-right empty quadrant; default-black bar value
+  labels on colored bars. Tuned for dark-theme-only
+  (glucosphere-dashboard ships dark-only as of 2026-05-19); if a
+  light-theme toggle is added later, drop the override entirely or
+  switch to bbox-backed text for theme-agnostic readability.
 - **`DEPLOY.md` Step 6 deploy command** — replaced workspace-specific
   example values (`catalog=hls_glucosphere`, `schema=cgm`) with generic
   placeholders (`<your-catalog>`, `<your-schema>`, `<your-profile>`) and
@@ -278,30 +313,74 @@ fixes, plot polish iterations v1-v8.
 
 ## [2026-05-17]
 
-Branch bootstrap on origin: first push of
-`feature/dual-baseline-mmt-aws-usw2`, bidirectional viz pass on React +
-notebook, Lakebase scaffolding.
+Branch bootstrap on origin: first push of `feature/dual-baseline-mmt-aws-usw2`, bidirectional viz pass on React + notebook, Lakebase scaffolding.
 
 ### Added
 
-- Lakebase alerts schema initializer (`#42` step 2) (`bd15400`) — boundary
-  commit of this changelog range; references this schema in subsequent
-  Lakebase work.
-- Bidirectional Glucose Timeline two-line viz on React dashboard +
-  matching MetricsExplained text + footer fix (`120d7b8`).
-- Bidirectional plots in `dual_05_*_Bidirectional.py` notebook + React chart
-  y-axis headroom (`bdf40ae`).
-- Claude Code plugin setup section in `README.md` for maintainers
-  (`026bd88`).
+- Lakebase alerts schema initializer (#42 step 2) (`bd15400`) — first commit of the bundled push range `bd15400..bfdcc14` to origin; subsequent Lakebase work references this schema.
+- Bidirectional Glucose Timeline two-line viz on React dashboard + matching MetricsExplained text + footer fix (`120d7b8`).
+- Bidirectional plots in `dual_05_*_Bidirectional.py` notebook + React chart y-axis headroom (`bdf40ae`).
+- Claude Code plugin setup section in `README.md` for maintainers (`026bd88`).
 
 ### Changed
 
-- React app: `catalog`/`schema` now read via `/api/config` (Flask endpoint)
-  instead of Flask-side string substitution (`d540fbf`) — removes the
-  monkey-patch and makes the React side responsible for its own config
-  lookup.
+- React app: `catalog`/`schema` now read via `/api/config` (Flask endpoint) instead of Flask-side string substitution (`d540fbf`) — removes the monkey-patch and makes the React side responsible for its own config lookup.
 
 ### Fixed
 
-- `dual_05_*_Bidirectional.py` `AMBIGUOUS_REFERENCE` on `incident_direction`
-  column in inference join (`#41` followup) (`ae5e2c6`).
+- `dual_05_*_Bidirectional.py` `AMBIGUOUS_REFERENCE` on `incident_direction` column in inference join (#41 followup) (`ae5e2c6`).
+
+---
+
+## [2026-05-16]
+
+Dual-baseline path validated end-to-end on `fevm-mmt-aws-usw2`. Synthetic = 0.14% hypo / std 34; real_from_source = 6.6% hypo / std 57 / max 444 mg/dL. Lakebase Commit F kickoff design drafted (alert state cache + 2 tables + ~50 LOC SQL + ~4 hr effort) — implementation deferred as task #42.
+
+### Changed
+
+- `baseline_source` default flipped `synthetic` → `real_from_source` (commit `d897eaa`) + README rewrites: data fidelity section, getting-started, repo-structure refresh.
+- Off-by-one sampling fix in `04_*.py` stratified sampler (commit `4abcb9b`) — deterministic cycling + `plan.count() == NUM_PSEUDO` assertion took the gold patient count from 999 → 1000.
+
+### Added
+
+- Persistent `glucosphere_distribution_comparison` job + inline `display(fig)` + UC Volume auto-provision (commit `88b140f`).
+- Plot cell added to `dual_02_compare_baseline_modes.py` (commit `a742e10`).
+
+Comparison numbers + plot interpretations in `ref_notes/2026-05-16_dual-baseline-comparison-plots.md`. C/D/E plan sub-commits all validated against `mmt_aws_usw2_catalog.glucosphere_dev_test*` sandbox schemas (since dropped).
+
+---
+
+## [2026-05-15]
+
+Plan execution start: `feature/dual-baseline-mmt-aws-usw2` branched off `origin/feature/ward-app-cleanup-upstream` after fe-vm-hls-amer hit 100/100 app quota (cross-workspace SP entanglement blocking admin deletion).
+
+### Added
+
+- `hls_amer` DABs target + `scripts/render_app_yaml.py` (rewrites the 7 per-target fields in `App/databricks/app.yaml`) + `.gitignore ref_notes/` (commit `3ad3d0a`).
+- Top-level bundle var defaults flipped to hls_amer values (commit `289cd76`) — default target → hls_amer; consolidated Ward's dev+prod into `ward_consolidated` (now removed 2026-05-19).
+- `baseline_source` bundle var + `condition_task` dispatch + stub `dual_01_ingest_real_baseline.py` (commit `bec587b`).
+
+### Fixed
+
+- Notebook 09 silent MAS-creation failure (commits `f509dfd` + `b3d3ed0`): KA-ready wait up to 10 min requiring `status==ONLINE`; endpoint-name JSON path fix at `.tile.serving_endpoint_name` not `.status.*`.
+
+### Settled
+
+- (C4) `${var.*}` does NOT interpolate inside `App/databricks/app.yaml` — `scripts/render_app_yaml.py` is the canonical mechanism per Databricks Apps env-vars docs.
+- (C5) May has catalog visibility on both `hls_glucosphere` and `hls_amer_catalog` on fe-vm-hls-amer.
+
+L3 end-to-end VALIDATED on `fevm-mmt-aws-usw2`: full Glucosphere stack (synthetic baseline → diabetes_data check → modeling → DLT silver/gold → MAS/KA/Genie → app live). Detail in `ref_notes/2026-05-15_session-snapshot.md`.
+
+---
+
+## [2026-05-14]
+
+Pre-work discovery: branch divergence analysis between `origin/hls-buildathon-main` (real HUPA-UCM ingest, 25 T1D patients) and `origin/feature/ward-app-cleanup-upstream` (Justin Ward's cleanup: Asset Bundle deploy + synthetic-only baseline, real-data ingest deleted).
+
+### Findings
+
+- Real-data nuance lost on cleanup — HUPA-UCM 25-patient priors + 1,266-LOC `03_extract_baselineTS_EDAcheck.py` replaced by textbook phenotypes + AR(1) dynamics in new `01_generate_synthetic_baseline.py` (recoverable from git history; `04/05/06` modeling spine intact).
+- Cleanup branch ships Asset Bundle targeting 4 workspaces with `App/databricks/app.yaml` hardcoding `azure`-target IDs that `deploy.py` patches at deploy time.
+- Lakebase IS in the v0.1 architecture (`Data_DataGen_ModelForecast/assets/architecture_0.1.png`) — Postgres component between silver/gold Delta and the App layer, not yet implemented on either branch; added as Plan Commit F.
+
+Codex 1st-pass + 2nd-pass cross-checks folded in. Snapshot persisted to `ref_notes/2026-05-14_branch-divergence-snapshot.md` + dual-baseline plan drafted (originally 3 modes: `synthetic` / `real_from_table` / `real_from_source` — later collapsed to 2 at DABs level via `condition_task` on 2026-05-15).

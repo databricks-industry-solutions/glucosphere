@@ -44,13 +44,13 @@ dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py
   (Active sibling for pipeline dispatch; SingleIncident is the simpler
    one-direction variant kept alongside as a reference.)
                               ↓                                  ─────┐
-dual_06_DeployModel_as_ServingEndpoint.py                              │
+dual_06_DeployModel_as_ServingEndpoint.py                             │
   → Serving Endpoints (15m/30m forecast)                              │
-                                                                       │
-utils/additional_patient_info/ notebooks                               │
+                                                                      │
+utils/additional_patient_info/ notebooks                              │
   → UC Volume: landing_zone/raw_patient_registry/                     │
   → UC Volume: landing_zone/raw_device_telemetry_stream/              │
-                                                                       │
+                                                                      │
 DLT Pipeline (transformations.sql)  ◄─────────────────────────────────┘
   → LIVE: silver_patient_registry
   → LIVE: silver_device_telemetry_stream
@@ -98,12 +98,24 @@ Edit `databricks.yml` or override at deploy time. Top-level defaults (verified a
 | `endpoint_name` | MAS serving endpoint name | (set after Step 3) |
 | `genie_space_id` | Genie room ID | (set after Step 4) |
 
-> **Defaults reflect the `hls_amer` bundle target.** When deploying to your
-> own workspace, override with `--var catalog=<your-catalog>` etc., or add a
-> new target in `databricks.yml:targets`. The committed `App/databricks/app.yaml`
-> ships with `azure`-target default values so non-hls_amer deploys also work
-> without rendering — but you'll want `scripts/render_app_yaml.py --target <your-target>`
-> to inject your catalog/schema/warehouse/Genie/endpoint values.
+> **Top-level defaults are generic placeholders** (e.g. `glucosphere_catalog`,
+> `glucosphere_dev`) that any new deployment can create. Each active target
+> in `databricks.yml:targets` (`hls_amer`, `mmt_aws_usw2`) overrides these
+> with its workspace-specific values in a `variables:` block.
+>
+> **When deploying to your own workspace:** either add a new target in
+> `databricks.yml:targets` (see the template-style commented block at the
+> bottom of the file), OR override at deploy time with
+> `--var catalog=<your-catalog> --var schema=<your-schema>` etc.
+>
+> **Don't forget `scripts/render_app_yaml.py --target <your-target>` before
+> `bundle deploy`** — it rewrites `App/databricks/app.yaml` (which is shipped
+> verbatim by DABs; `${var.*}` does NOT interpolate inside it) with the right
+> catalog / schema / warehouse_id / MAS / KA / Genie values for your target.
+> As of 2026-05-19, the committed `App/databricks/app.yaml` has
+> `mmt_aws_usw2`-target values from the most recent render, so deploys to
+> `mmt_aws_usw2` work without re-rendering. Deploys to any other target
+> (including `hls_amer`) require a render-then-deploy cycle.
 
 ---
 
@@ -322,7 +334,7 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 
 ### `render_app_yaml.py` — what it does
 
-`scripts/render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. The committed `app.yaml` keeps `azure`-target values as the default fallback, so deployments to non-rendered targets still work (resource block names match `azure`).
+`scripts/render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. As of 2026-05-19, the committed `App/databricks/app.yaml` has `mmt_aws_usw2`-target values from the most recent render — `bundle deploy -t mmt_aws_usw2` works directly without re-rendering, but ANY OTHER target requires `render_app_yaml.py --target <your-target>` first to avoid mismatched catalog/schema/endpoint references in the deployed app.
 
 ### Grants preflight — the deployed app's service principal needs
 
