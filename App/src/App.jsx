@@ -2,7 +2,7 @@ import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import GlucoseLandingDashboard from './pages/GlucoseLandingDashboard'
 import CareManagementDashboard from './pages/CareManagementDashboard'
-import ClinicianDashboard from './pages/ClinicianDashboard'
+import DiabetesCoachDashboard from './pages/DiabetesCoachDashboard'
 import DeviceSupportDashboard from './pages/DeviceSupportDashboard'
 import MetricsExplained from './pages/MetricsExplained'
 
@@ -12,7 +12,7 @@ function App() {
       <Routes>
         <Route path="/" element={<GlucoseLandingDashboard />} />
         <Route path="/care-management" element={<CareManagementDashboard />} />
-        <Route path="/clinician" element={<ClinicianDashboard />} />
+        <Route path="/diabetes-coach" element={<DiabetesCoachDashboard />} />
         <Route path="/device-support" element={<DeviceSupportDashboard />} />
         <Route path="/metrics-explained" element={<MetricsExplained />} />
       </Routes>

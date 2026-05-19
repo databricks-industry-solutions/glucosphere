@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stethoscope, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity, Loader2 } from 'lucide-react';
-import { getPopulationMetrics, getInsulinMetrics } from './ClinicianDashboard/queries';
+import { getPopulationMetrics, getInsulinMetrics } from './DiabetesCoachDashboard/queries';
 
-export default function ClinicianDashboard() {
+export default function DiabetesCoachDashboard() {
   const navigate = useNavigate();
   const [selectedPatient, setSelectedPatient] = useState('Sarah K.');
   const [queryText, setQueryText] = useState('');
@@ -129,7 +129,7 @@ export default function ClinicianDashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-                  Clinician Dashboard
+                  Diabetes Coach Dashboard
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">Provider Encounter Preparation</p>
               </div>

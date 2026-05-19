@@ -70,7 +70,7 @@ Edit `databricks.yml` or override at deploy time. At minimum you need:
 
 ## Step 3: Create the Multi-Agent Supervisor Endpoint
 
-The MAS endpoint is a Databricks Model Serving endpoint running a multi-agent supervisor that orchestrates clinician queries. It is **not** created by this bundle — it must be set up separately.
+The MAS endpoint is a Databricks Model Serving endpoint running a multi-agent supervisor that orchestrates diabetes-coach queries. It is **not** created by this bundle — it must be set up separately.
 
 1. In your target workspace, open **Serving → Create serving endpoint**
 2. Deploy the MAS configuration from your agent framework

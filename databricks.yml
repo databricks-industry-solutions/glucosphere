@@ -462,6 +462,6 @@ resources:
       name: ${var.app_name}
       description: >
         Glucosphere CGM Intelligence Dashboard — continuous glucose monitoring
-        platform with AI-powered clinician insights, device anomaly detection,
+        platform with AI-powered diabetes coach insights, device anomaly detection,
         and fleet-level incident analysis.
       source_code_path: App/databricks

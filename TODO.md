@@ -11,7 +11,7 @@
   3. App smoke-test checklist in DEPLOY.md — see DEPLOY.md Step 11 (added in commit `590b724`).
 
 - [ ] **Commit F — restore Lakebase per v0.1 architecture (~half-day).**
-  Lakebase = Databricks-managed Postgres (autoscale tier: scale-to-zero, branching, instant restore). v0.1 architecture diagram shows it between silver/gold Delta and the App layer; not currently implemented. Declare as DABs resource on `mmt_aws_usw2` + wire Flask to read/write certain state from Lakebase where OLTP latency matters. **Use case TBD at kickoff:** clinician interaction state / real-time alert cache / app OLTP / demo showcase. Effort: bundle resource config (~30 min) + Lakebase provisioning (~15 min) + Flask wiring (~1-2 hr) + tangible demo (~30 min).
+  Lakebase = Databricks-managed Postgres (autoscale tier: scale-to-zero, branching, instant restore). v0.1 architecture diagram shows it between silver/gold Delta and the App layer; not currently implemented. Declare as DABs resource on `mmt_aws_usw2` + wire Flask to read/write certain state from Lakebase where OLTP latency matters. **Use case TBD at kickoff:** diabetes-coach interaction state / real-time alert cache / app OLTP / demo showcase. Effort: bundle resource config (~30 min) + Lakebase provisioning (~15 min) + Flask wiring (~1-2 hr) + tangible demo (~30 min).
 
 
 
@@ -76,7 +76,7 @@
 
 - [ ] Should the real-baseline path emit `baseline_timeseries` + `baseline_windows_metadata` as QC tables (recovers some EDA value lost on cleanup)?
 - [ ] Add `02_ai_data_validation.py` comparing real vs synthetic distributions — Commit D or its own commit?
-- [ ] Lakebase use case for Commit F (clinician interaction state / real-time alert cache / demo) — defer to F kickoff
+- [ ] Lakebase use case for Commit F (diabetes-coach interaction state / real-time alert cache / demo) — defer to F kickoff
 - [ ] Push the 3 local commits to origin — waiting for explicit "push" / "go ahead" / "ship it"
 
 ## Comms / unblock (async, optional)

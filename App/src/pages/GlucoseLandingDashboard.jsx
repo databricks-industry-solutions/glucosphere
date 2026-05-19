@@ -54,13 +54,13 @@ export default function GlucoseLandingDashboard() {
     },
     {
       icon: Stethoscope,
-      title: 'Coaches',
+      title: 'Diabetes Coach',
       subtitle: 'Diabetes Coaching',
       metric: 'View Dashboard',
       color: 'from-cyan-500 to-blue-500',
       bgColor: 'bg-cyan-500/10',
       borderColor: 'border-cyan-500/30',
-      route: '/clinician'
+      route: '/diabetes-coach'
     }
     // Care Management option temporarily hidden - uncomment to restore
     // {

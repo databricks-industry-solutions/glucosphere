@@ -645,7 +645,7 @@ LIMIT 4`}
                   </div>
                   <div className="flex">
                     <span className="font-mono text-rose-400 w-48">Severity:</span>
-                    <span>HIGH (>5%), MEDIUM (>4.5%), LOW (≤4.5%)</span>
+                    <span>HIGH (&gt;5%), MEDIUM (&gt;4.5%), LOW (≤4.5%)</span>
                   </div>
                 </div>
               </div>
@@ -733,7 +733,7 @@ LIMIT 50`}
             </div>
 
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 opacity-50">
-              <h3 className="text-sm font-semibold text-slate-400 mb-2">Clinician Dashboard</h3>
+              <h3 className="text-sm font-semibold text-slate-400 mb-2">Diabetes Coach Dashboard</h3>
               <p className="text-xs text-slate-500">Metrics documentation coming soon...</p>
             </div>
           </div>
