@@ -2,7 +2,7 @@
 
 > **Branch:** `feature/dual-baseline-mmt-aws-usw2`
 > **Parent:** `origin/feature/ward-app-cleanup-upstream` (Justin Ward's post-buildathon cleanup branch)
-> **Tracked range as of 2026-05-19:** `bd15400..bfdcc14` (25 commits across 2026-05-17 → 2026-05-19)
+> **Tracked range:** from `bd15400` (branch base, 2026-05-17) through current HEAD on origin. See dated sections below for per-commit detail.
 
 All notable changes to the Glucosphere demo project on the
 `feature/dual-baseline-mmt-aws-usw2` branch are documented in this file.
@@ -21,6 +21,11 @@ dated history captures work in progress / planned work.
 
 ### Planned
 
+- **#69 — Full repo branch cleanup audit** (new 2026-05-19) — holistic sweep:
+  for each top-level file, assess (a) relevance to current branch state,
+  (b) upstream dependencies, (c) downstream dependencies,
+  (d) staleness markers (TODOs, dated references, removed-notebook mentions).
+  Pairs with #46/#50/#53 docs work. Half-day to full-day effort.
 - **#42 — Lakebase F kickoff** (alert state cache integration, ~4 hr) — alerts +
   alert_transitions tables on workspace-scoped Lakebase Autoscaling instance;
   Flask wiring; React Open Alerts panel as `#56` follow-up. Design landed
@@ -139,6 +144,82 @@ v9 finalization, asset refresh, full push + deploy + run.
   (positive cohort no longer mislabeled "negative" when opposite-cohort
   column is NaN) — `pd.notna()`-aware comparison replacing Python `or`
   truthiness (`d095c2a`).
+
+### Documentation
+
+- **Consolidated `AGENT_DEPLOY_INSTRUCTIONS.md` → `DEPLOY.md`** — deleted
+  AGENT_DEPLOY_INSTRUCTIONS.md (344 lines, ward-demo workspace-specific,
+  ~70% overlap with DEPLOY.md). Unique content folded into DEPLOY.md:
+  agent-prompt callout at top, Verification Checklist section, Key File
+  Locations tree, pre-flight catalog/schema/volume creation snippet.
+  Updated DEPLOY.md: CLI version bumped to v0.281.0+, Architecture Overview
+  rewritten with current `dual_*` notebook names + condition_task dispatch,
+  Step 2 variables refreshed to actual `databricks.yml` defaults,
+  target-specific section refactored to surface `mmt_aws_usw2` as the
+  active demo target alongside `hls_amer` (historical/blocked), added the
+  `--var baseline_source` placement gotcha section, expanded Troubleshooting
+  with all the AGENT_DEPLOY entries. Historical AGENT_DEPLOY content
+  preserved on `origin/feature/ward-app-cleanup-upstream` (commit `fc214eb`).
+- **Generified `databricks.yml` top-level catalog default** — `default:
+  hls_amer_catalog` → `default: glucosphere_catalog` (a generic placeholder
+  name new deployments can create). Added explicit `catalog:
+  hls_amer_catalog` override to the `hls_amer` target's `variables:` block,
+  preserving existing `bundle deploy -t hls_amer` behavior exactly.
+  Validated both `hls_amer` and `mmt_aws_usw2` targets parse cleanly via
+  `bundle validate`. Also updated 5 notebook widget defaults to match the
+  new generic placeholder: `dual_01_ingest_real_baseline.py`,
+  `utils/dual_check_pre_baseline_grants.py`,
+  `utils/dual_check_post_endpoint_grants.py`, `utils/dual_sanity_summary.py`,
+  `utils/dual_validate_baseline_source.py` (these defaults only apply when
+  notebooks are run interactively outside the bundle; bundle job runs always
+  pass the catalog via `base_parameters`).
+- **Removed dead Ward-branch targets from `databricks.yml`** — deleted the
+  three commented-out historical targets (`ward_consolidated`, `azure`,
+  `azure2`) that hardcoded Justin's workspace-specific host + catalog +
+  warehouse IDs (not portable, never used by our active deploys). Replaced
+  with a generic template-style commented block showing the YAML structure
+  for adding new targets. Authoritative copies live on
+  `origin/feature/ward-app-cleanup-upstream`. ⚠️ Side-effect to be addressed
+  under #69: `deploy.py:199-269` has four hardcoded `ward_consolidated`
+  references that are now orphaned (the script was Justin's pre-DABs
+  deployment wrapper; our active deploys use `databricks bundle deploy` /
+  `bundle run` directly, not `python deploy.py`).
+- **Added "Agent-assisted deployment" section to `DEPLOY.md`** — placed
+  between Verification Checklist and Key File Locations. Surfaces the
+  skills to activate at session start, memory + ref_notes to pre-load,
+  long-running job polling pattern, verification discipline, and common
+  agent lapses to avoid (including the 2026-05-19 `baseline_source` default
+  lapse).
+- **Pre-existing markdownlint warnings** in `DEPLOY.md` (MD040 missing
+  language on code fences, MD060 table column style, MD031 blanks-around-
+  fences) are unrelated to this session's edits; flagged for the `#69`
+  markdown sweep.
+- **Pre-existing yaml-schema deprecation warnings** in `databricks.yml`
+  (lines 95, 148, 404 — "field is deprecated" per the Declarative
+  Automation Bundles schema) are unrelated to this session's edits;
+  flagged for `#69` to investigate which DABs fields need migration.
+  See task #69 (Full repo branch cleanup) for the broader sweep.
+- **`dual_05_*_Bidirectional.py` Figure 4 — readability fix for dark-themed
+  React app.** Wrapped the 4-panel distribution-comparison figure in an
+  rcParams save/override/restore block that sets `text.color`,
+  `axes.labelcolor`, `xtick.color`, `ytick.color`, `axes.edgecolor`, and
+  `axes.titlecolor` to white for the duration of the figure construction
+  + savefig. The resulting PNG (`fig4_distribution_comparison_4panel.png`,
+  saved with `transparent=True`) renders subplot titles, axis labels, and
+  tick text readably on the dark React app background instead of
+  black-on-near-black (the prior PNG had dark titles invisible against
+  the slate-950 React bg — flagged by user with screenshot 2026-05-19).
+  Tuned for dark-theme-only (glucosphere-dashboard ships dark-only as of
+  2026-05-19); if a light-theme toggle is added later, drop the override
+  or use bbox-backed text. ⚠️ The **live app's embedded PNG won't refresh
+  until the next pipeline run** regenerates the asset to UC Volume +
+  copies it back to `Data_DataGen_ModelForecast/assets/`. Next
+  `bundle run -t mmt_aws_usw2 glucosphere_full_setup` will trigger that.
+- **`DEPLOY.md` Step 6 deploy command** — replaced workspace-specific
+  example values (`catalog=hls_glucosphere`, `schema=cgm`) with generic
+  placeholders (`<your-catalog>`, `<your-schema>`, `<your-profile>`) and
+  added a note that for active targets users should `-t <target>` instead
+  of `--var` overrides.
 
 ---
 

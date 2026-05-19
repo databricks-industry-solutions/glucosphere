@@ -17,7 +17,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME", "hls_amer_catalog", "Catalog")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
 dbutils.widgets.text("SCHEMA_NAME",  "glucosphere_dev",  "Schema")
 
 CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")

@@ -24,7 +24,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME", "hls_amer_catalog", "Target catalog (unused; here for parity)")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Target catalog (unused; here for parity)")
 dbutils.widgets.text("SCHEMA_NAME",  "glucosphere_dev",  "Target schema (unused; here for parity)")
 dbutils.widgets.text("KA_NAME",      "Glucosphere-Knowledge-Assistant", "KA tile name")
 dbutils.widgets.text("MAS_NAME",     "Glucosphere-Supervisor",          "MAS tile name")

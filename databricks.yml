@@ -3,8 +3,8 @@ bundle:
 
 variables:
   catalog:
-    description: Unity Catalog catalog name
-    default: hls_amer_catalog
+    description: Unity Catalog catalog name (override per target). The default is a generic placeholder name that any new deployment can create; each named target in `targets:` below sets its own workspace-specific catalog.
+    default: glucosphere_catalog
   schema:
     description: Schema / database name
     default: glucosphere_dev
@@ -45,32 +45,28 @@ targets:
     default: true
     workspace:
       host: https://fe-vm-hls-amer.cloud.databricks.com
-    # No variables: block — defaults above already match this target.
-
-  # Ward's consolidated workspace (was dev + prod, which were identical).
-  ward_consolidated:
-    workspace:
-      host: https://fevm-ws-ward-pixels.cloud.databricks.com
     variables:
-      catalog: ws_ward_pixels_catalog
-      schema: glucosphere
-      warehouse_id: 51c4c056c19e474b
+      catalog: hls_amer_catalog
 
-  azure:
-    workspace:
-      host: https://adb-7405619937790736.16.azuredatabricks.net
-    variables:
-      catalog: catalog_demo_nj4186
-      schema: glucosphere
-      warehouse_id: 88ea03d3ff69e0b4
-
-  azure2:
-    workspace:
-      host: https://adb-7405614266629280.0.azuredatabricks.net
-    variables:
-      catalog: warddbx
-      schema: glucosphere
-      warehouse_id: 73c7a9f94ef108ab
+  # ─── Template for adding your own target ──────────────────────────────────
+  # Copy the block below, uncomment, and replace the four placeholder values
+  # with your workspace's host + catalog + schema + warehouse_id. The two
+  # active targets above (`hls_amer`, `mmt_aws_usw2`) serve as working examples.
+  #
+  # Historical Ward-branch targets (`ward_consolidated`, `azure`, `azure2`)
+  # were removed 2026-05-19 — their workspace-specific hardcoded values are
+  # not portable (specific to Justin's deploys on
+  # `origin/feature/ward-app-cleanup-upstream`, where they remain
+  # authoritative). Note that `deploy.py` may still reference `ward_consolidated`
+  # as a hardcoded target name; flagged for cleanup under task #69.
+  #
+  # my_target_name:
+  #   workspace:
+  #     host: https://<your-workspace>.cloud.databricks.com
+  #   variables:
+  #     catalog: <your-catalog>
+  #     schema: <your-schema>
+  #     warehouse_id: <your-warehouse-id>
 
   # Backup / portability-test target on May's personal MMT workspace.
   # Has plenty of app-cap headroom (1/100 used) so unblocked from the

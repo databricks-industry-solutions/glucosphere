@@ -15,7 +15,7 @@
 # COMMAND ----------
 
 dbutils.widgets.text("BASELINE_SOURCE",  "synthetic",         "Baseline source mode")
-dbutils.widgets.text("CATALOG_NAME",     "hls_amer_catalog",  "Target catalog")
+dbutils.widgets.text("CATALOG_NAME",     "glucosphere_catalog",  "Target catalog")
 dbutils.widgets.text("SCHEMA_NAME",      "glucosphere_dev",   "Target schema")
 dbutils.widgets.text("SOURCE_CATALOG",   "",                  "Source catalog (real_from_table only)")
 dbutils.widgets.text("SOURCE_SCHEMA",    "",                  "Source schema (real_from_table only)")

@@ -1671,7 +1671,24 @@ print(f"Hyper (>180):       {baseline_hyper:6.1f}%     {clean_hyper:6.1f}%     {
 print("")  # blank line — visual separator between stats table and 4-panel figure
 print("")
 
-# Create visualization — 4-class palette across all 4 subplots
+# Create visualization — 4-class palette across all 4 subplots.
+# Temporarily override matplotlib text/label/tick colors to white so the
+# resulting PNG (saved with transparent background below) renders readably
+# on the dark React app theme (glucosphere-dashboard is dark-only as of
+# 2026-05-19). Restored after plt.show() below. If a light-theme toggle is
+# ever added, drop this override OR use bbox-backed text for theme-agnostic
+# readability. NOTE: wrapping plt.subplots() in `plt.style.context(...)` is
+# NOT sufficient — text colors are read at render time (set_title / xlabel
+# / etc.), which happens AFTER the style context would have exited; need
+# the rcParams override to span the whole figure-construction block.
+_DUAL05_FIG4_RCPARAMS_SAVED = {k: plt.rcParams[k] for k in (
+    'text.color', 'axes.labelcolor', 'xtick.color', 'ytick.color',
+    'axes.edgecolor', 'axes.titlecolor')}
+plt.rcParams.update({
+    'text.color': 'white', 'axes.labelcolor': 'white',
+    'xtick.color': 'white', 'ytick.color': 'white',
+    'axes.edgecolor': 'white', 'axes.titlecolor': 'white',
+})
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
 # Plot 1: Overlaid histograms — 4 classes
@@ -1792,8 +1809,11 @@ ax4.grid(True, alpha=0.3, axis='y')
 ax4.legend(fontsize=9, loc='upper right')
 
 plt.tight_layout()
-# Save PNG asset for MetricsExplained "How MAE alerts are triggered" section
-# (transparent bg so the embedded image works on dark + light React app themes)
+# Save PNG asset for MetricsExplained "How MAE alerts are triggered" section.
+# Transparent background + white text/labels (rcParams override above) — tuned
+# for the dark React app theme (glucosphere-dashboard is dark-only as of
+# 2026-05-19). For a light-theme target, regenerate with default text colors
+# or use bbox-backed text.
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
@@ -1803,6 +1823,8 @@ try:
 except Exception as _e:
     print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
 plt.show()
+# Restore rcParams so any later cell in this notebook uses defaults.
+plt.rcParams.update(_DUAL05_FIG4_RCPARAMS_SAVED)
 
 print("\n" + "="*80)
 print("DISTRIBUTION IMPACT SUMMARY")

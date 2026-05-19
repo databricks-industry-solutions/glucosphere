@@ -25,7 +25,7 @@
 # COMMAND ----------
 
 # Widgets — all parameterized per codex C1 (no hardcoded sources)
-dbutils.widgets.text("CATALOG_NAME", "hls_amer_catalog", "Catalog (target)")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog (target)")
 dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema (target)")
 dbutils.widgets.text("BASELINE_SOURCE", "real_from_source", "Mode: real_from_source | real_from_table")
 dbutils.widgets.text(
