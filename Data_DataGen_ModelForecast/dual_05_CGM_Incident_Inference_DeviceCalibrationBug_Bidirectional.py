@@ -1146,6 +1146,16 @@ ax2.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
 ax2.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 plt.tight_layout()
+# Save PNG asset to UC Volume for repo refresh + MetricsExplained embed
+# (transparent bg so the image inherits parent card color in any theme — dark or light)
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+try:
+    os.makedirs(_ASSET_DIR, exist_ok=True)
+    _asset_path = f"{_ASSET_DIR}/fig1_mae_glucose_bidirectional_2panel.png"
+    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+    print(f"[ASSET] Saved {_asset_path}")
+except Exception as _e:
+    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
 plt.show()
 
 print("[SUCCESS] Visualization complete!")
@@ -1315,6 +1325,15 @@ ax3.grid(True, alpha=0.3)
 # ylim shared with panels 1/2 — set globally right after figure creation
 
 plt.tight_layout()
+# Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+try:
+    os.makedirs(_ASSET_DIR, exist_ok=True)
+    _asset_path = f"{_ASSET_DIR}/fig2_mae_breakdown_3panel.png"
+    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+    print(f"[ASSET] Saved {_asset_path}")
+except Exception as _e:
+    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
 plt.show()
 
 print("[SUCCESS] 3-panel MAE comparison complete!")
@@ -1556,6 +1575,15 @@ ax3.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
 ax3.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 plt.tight_layout()
+# Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+try:
+    os.makedirs(_ASSET_DIR, exist_ok=True)
+    _asset_path = f"{_ASSET_DIR}/fig3_glucose_timeline_3panel.png"
+    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+    print(f"[ASSET] Saved {_asset_path}")
+except Exception as _e:
+    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
 plt.show()
 
 print("[SUCCESS] 3-panel glucose timeline comparison complete!")
@@ -1764,6 +1792,16 @@ ax4.grid(True, alpha=0.3, axis='y')
 ax4.legend(fontsize=9, loc='upper right')
 
 plt.tight_layout()
+# Save PNG asset for MetricsExplained "How MAE alerts are triggered" section
+# (transparent bg so the embedded image works on dark + light React app themes)
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+try:
+    os.makedirs(_ASSET_DIR, exist_ok=True)
+    _asset_path = f"{_ASSET_DIR}/fig4_distribution_comparison_4panel.png"
+    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+    print(f"[ASSET] Saved {_asset_path}")
+except Exception as _e:
+    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
 plt.show()
 
 print("\n" + "="*80)
