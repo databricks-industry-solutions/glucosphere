@@ -54,9 +54,20 @@ export default function MetricsExplained() {
               About This Page
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
-              This page documents how each metric is calculated across the GlucoStream Intelligence Dashboard. 
-              All metrics are derived from real-time data in the Databricks Unity Catalog using SQL queries 
+              This page documents how each metric is calculated across the GlucoStream Intelligence Dashboard.
+              All metrics are derived from real-time data in the Databricks Unity Catalog using SQL queries
               via the DBSQL MCP (Model Context Protocol) server.
+            </p>
+            <p className="text-sm text-slate-400 leading-relaxed mt-3">
+              <span className="text-amber-300 font-medium">Note on demo data:</span> patient identifiers,
+              device metadata, and the ±40 mg/dL device-calibration-bug incidents shown across these charts
+              are <span className="text-amber-300 font-medium">simulated</span> for demo purposes — there is
+              no real adverse-event PHI. The underlying CGM glucose signal pattern is seeded from a real T1D
+              dataset (HUPA-UCM) in the default <span className="font-mono text-cyan-400">real_from_source</span>{' '}
+              baseline mode, so the forecasting model + monitoring stack are exercised against realistic clinical
+              extremes (≈6.6% hypo, max 444 mg/dL). A fully-synthetic baseline mode is also available for clean
+              demos without external data dependency — see <span className="font-mono text-cyan-400">baseline_source</span>{' '}
+              in the deploy docs.
             </p>
           </div>
         </section>
@@ -214,6 +225,26 @@ WHERE glucose_out_of_range = 1
             Landing Page: Recent Incident Analysis
           </h2>
 
+          {/* Why this monitoring stack matters — frames the 3 incident charts that follow */}
+          <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-6 mb-6">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-semibold text-cyan-300 mb-1">Why this monitoring stack matters</h3>
+                <p className="text-xs text-slate-500 font-mono">Platform value — what the three charts below detect</p>
+              </div>
+              <span className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-300">FRAMING</span>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Real-world CGM device calibration failures span <span className="font-medium">both directions</span> — Abbott FreeStyle Libre has FDA recalls on record for both <span className="text-red-300 font-medium">over-reading</span> and <span className="text-blue-300 font-medium">under-reading</span> sensors, each clinically dangerous in opposite ways (over-read → unwarranted corrective insulin → hypo risk; under-read → missed real highs → delayed correction). A fleet-monitoring layer that catches either failure mode with a single <span className="font-medium">direction-agnostic</span> metric (MAE rolling-window) and then lets operators drill in to <span className="font-medium">which</span> direction each device drifted (<span className="font-mono text-cyan-400">incident_direction</span> field on the alerts table) is what closes the loop from fleet-wide alert → per-device action.
+            </p>
+            <p className="text-sm text-slate-300 leading-relaxed mt-3">
+              The three charts below walk through that detection chain:
+              <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view).</span>
+              <span className="block ml-4">(2) <span className="text-cyan-300 font-medium">How MAE alerts are triggered</span> — distribution shift explains <em>why</em> MAE spiked.</span>
+              <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted.</span>
+            </p>
+          </div>
+
           {/* Incident Impact Chart */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
             <div className="flex items-start justify-between mb-4">
@@ -309,6 +340,9 @@ ORDER BY minute`}
                 <p className="text-sm text-slate-400 leading-relaxed">
                   Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart above) catches in real time and surfaces as an alert.
                 </p>
+                <p className="text-xs text-slate-500 italic mt-2">
+                  (The ±40 mg/dL incident itself is a <span className="text-amber-300">simulated</span> calibration bug injected into the demo data for illustration — see the page intro for full provenance.)
+                </p>
               </div>
               <div className="my-4">
                 <img
@@ -352,6 +386,9 @@ ORDER BY minute`}
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
                   Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor in the top chart.
+                </p>
+                <p className="text-xs text-slate-500 italic mt-2">
+                  (The ±40 mg/dL two-window incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see the page intro for full provenance.)
                 </p>
               </div>
 
