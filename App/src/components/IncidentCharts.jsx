@@ -744,10 +744,11 @@ export function GlucoseTimelineChart() {
 
 /**
  * Glucose Absolute Chart — absolute glucose timeline per direction cohort.
- * Three lines: green True (ground truth), red Positive cohort device readings
- * (spikes UP +bias_magnitude during window 1), blue Negative cohort device
- * readings (drops DOWN -bias_magnitude during window 2). Mirrors the
- * notebook 3-panel chart's middle "Affected Patients Only" panel.
+ * Three lines: darkgray True (ground truth — matches unified palette across
+ * notebook + app), red Positive cohort device readings (spikes UP
+ * +bias_magnitude during window 1), blue Negative cohort device readings
+ * (drops DOWN -bias_magnitude during window 2). Mirrors the notebook
+ * 3-panel chart's middle "Affected Patients Only" panel.
  */
 export function GlucoseAbsoluteChart() {
   const [data, setData] = useState([]);
@@ -963,7 +964,7 @@ export function GlucoseAbsoluteChart() {
           </text>
 
           {/* Lines — thinner strokes than before for less bar-like appearance */}
-          <path d={truePath} fill="none" stroke="rgb(34 197 94)" strokeWidth="1.5" opacity="0.95" />
+          <path d={truePath} fill="none" stroke="rgb(169 169 169)" strokeWidth="1.5" opacity="0.95" />
           <path d={positivePath} fill="none" stroke="rgb(239 68 68)" strokeWidth="1.5" opacity="0.9" />
           <path d={negativePath} fill="none" stroke="rgb(59 130 246)" strokeWidth="1.5" opacity="0.9" />
 
@@ -972,7 +973,7 @@ export function GlucoseAbsoluteChart() {
             <g key={`mk-${i}`}>
               {d.glucose_true != null && (
                 <circle cx={xScale(d.time)} cy={yScale(d.glucose_true)} r="2.5"
-                        fill="rgb(34 197 94)" stroke="rgb(34 197 94)" />
+                        fill="rgb(169 169 169)" stroke="rgb(169 169 169)" />
               )}
               {d.glucose_positive != null && (
                 <rect x={xScale(d.time) - 2.5} y={yScale(d.glucose_positive) - 2.5} width="5" height="5"
@@ -989,8 +990,8 @@ export function GlucoseAbsoluteChart() {
 
           {/* Legend */}
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
-            <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(34 197 94)" strokeWidth="2" />
-            <circle cx="15" cy="0" r="2.5" fill="rgb(34 197 94)" />
+            <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(169 169 169)" strokeWidth="2" />
+            <circle cx="15" cy="0" r="2.5" fill="rgb(169 169 169)" />
             <text x="38" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
               True glucose (ground truth)
             </text>
