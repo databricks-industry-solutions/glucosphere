@@ -1063,11 +1063,13 @@ if incident_blocks_1:
         )
 
 # Plot 2: Glucose Timeline (bidirectional)
-# GREEN = True glucose (actual baseline)
+# Unified palette (post-v7): DARKGRAY = True glucose reference, RED = positive cohort,
+# BLUE = negative cohort. Same convention across all dual_05 figures.
+# DARKGRAY = True glucose (actual baseline)
 # RED  = Positive-bias cohort device readings (over-reads — spikes UP +bias_magnitude during incident)
 # BLUE = Negative-bias cohort device readings (under-reads — drops DOWN -bias_magnitude during incident)
 ax2.plot(hourly_agg["hour"], hourly_agg["glucose_true"], label="True glucose (actual baseline)",
-         linewidth=2.5, linestyle='-', color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
+         linewidth=2.5, linestyle='-', color="darkgray", marker="o", markersize=4, alpha=0.9, zorder=2)
 ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed_positive"],
          label=f"Device — positive bias cohort (+{bias_magnitude:.0f} mg/dL)",
          linewidth=2.0, linestyle='-', color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
@@ -1417,11 +1419,14 @@ ax3.set_ylim(_y_min_fig3, _y_max_fig3)
 # Plot 1: ALL PATIENTS (Fleet-wide average)
 # ------------------------
 ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_true"],
-         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-', 
-         color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
-ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_observed"], 
-         label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
-         color="red", marker="s", markersize=4, alpha=0.9, zorder=3)
+         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-',
+         color="darkgray", marker="o", markersize=4, alpha=0.9, zorder=2)
+ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_observed"],
+         label="Observed glucose (device reading)", linewidth=2.5, linestyle='-',
+         color="mediumturquoise", marker="s", markersize=4, alpha=0.85, zorder=3)
+# Unified palette: panels 1 + 3 use mediumturquoise for observed (no cohort split)
+# — visually paired as "no directional bias displayed". Distinct from panel 2's
+# red/blue cohort split. True-glucose reference is darkgray across all figures.
 
 # Compute per-block fleet bias + one yellow label per incident
 fleet_bias = 0.0
@@ -1435,7 +1440,7 @@ for _i, _blk in enumerate(incident_blocks_3):
     _mid_row = _blk["rows"].iloc[len(_blk["rows"]) // 2]
     ax1.annotate(
         f'Incident {_i+1}\n{_blk_bias:+.1f} mg/dL\nfleet-wide bias',
-        xy=(_blk["mid"], (_mid_row["glucose_true"] + _mid_row["glucose_observed"]) / 2),
+        xy=(_blk["mid"], _mid_row["glucose_observed"]),
         xytext=(_blk["mid"] + pd.Timedelta(hours=12), 175 if _blk_bias >= 0 else 95),
         fontsize=8, fontweight='bold', ha='center', va='center',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
@@ -1451,12 +1456,12 @@ ax1.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 # ------------------------
 # Plot 2: AFFECTED PATIENTS ONLY — bidirectional split
-# Three lines: green True + red positive cohort + blue negative cohort
+# Three lines: darkgray True + red positive cohort + blue negative cohort
 # (Same color convention as the React Glucose Timeline chart in IncidentCharts.jsx)
 # ------------------------
 ax2.plot(affected_glucose["hour"], affected_glucose["glucose_true"],
          label="True glucose (actual baseline)", linewidth=2.5, linestyle='-',
-         color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
+         color="darkgray", marker="o", markersize=4, alpha=0.9, zorder=2)
 ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed_positive"],
          label=f"Device — positive bias cohort (+{bias_magnitude:.0f} mg/dL, over-reads)",
          linewidth=2.0, linestyle='-',
@@ -1510,12 +1515,15 @@ ax2.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 # ------------------------
 # Plot 3: UNAFFECTED PATIENTS ONLY
 # ------------------------
-ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_true"], 
-         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-', 
-         color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
-ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_observed"], 
-         label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
-         color="blue", marker="s", markersize=4, alpha=0.9, zorder=3)
+ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_true"],
+         label="True glucose (actual baseline)", linewidth=2.5, linestyle='-',
+         color="darkgray", marker="o", markersize=4, alpha=0.9, zorder=2)
+ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_observed"],
+         label="Observed glucose (device reading)", linewidth=2.5, linestyle='-',
+         color="mediumturquoise", marker="s", markersize=4, alpha=0.85, zorder=3)
+# Unified palette: panels 1 + 3 use mediumturquoise for observed (no cohort split)
+# — visually paired as "no directional bias displayed". Distinct from blue=negative-
+# cohort in panel 2. True-glucose reference is darkgray across all figures.
 
 # NOTE: ylim shared with panels 1/2 (set globally right after figure creation) so
 # amplitude comparison is visually fair. Unaffected panel will look flat within
@@ -1640,15 +1648,15 @@ fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
 # Plot 1: Overlaid histograms — 4 classes
 ax1 = axes[0, 0]
-ax1.hist(baseline_glucose, bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='blue')
-ax1.hist(clean_glucose, bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='green')
+ax1.hist(baseline_glucose, bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='darkgray')
+ax1.hist(clean_glucose, bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='mediumturquoise')
 if len(incident_pos_glucose):
     ax1.hist(incident_pos_glucose, bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
 if len(incident_neg_glucose):
-    ax1.hist(incident_neg_glucose, bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='purple')
-ax1.axvspan(40, 70, alpha=0.1, color='red')
-ax1.axvspan(70, 180, alpha=0.1, color='grey')
-ax1.axvspan(180, 400, alpha=0.1, color='yellow')
+    ax1.hist(incident_neg_glucose, bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='blue')
+ax1.axvspan(40, 70, alpha=0.15, color='lightcoral')   # hypo zone — red-family (medical danger convention)
+ax1.axvspan(70, 180, alpha=0.1, color='grey')          # normal range — neutral
+ax1.axvspan(180, 400, alpha=0.15, color='lightblue')  # hyper zone — blue-family (visually contrasts with red positive-cohort line)
 ax1.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax1.set_xlabel('Glucose (mg/dL)', fontsize=11)
@@ -1668,10 +1676,10 @@ inc_neg_pcts = [inc_neg_hypo, inc_neg_normal, inc_neg_hyper]
 x = np.arange(len(categories))
 width = 0.2
 
-ax2.bar(x - 1.5*width, baseline_pcts, width, label='Baseline', alpha=0.8, color='blue')
-ax2.bar(x - 0.5*width, clean_pcts, width, label='Clean Period', alpha=0.8, color='green')
+ax2.bar(x - 1.5*width, baseline_pcts, width, label='Baseline', alpha=0.8, color='darkgray')
+ax2.bar(x - 0.5*width, clean_pcts, width, label='Clean Period', alpha=0.8, color='mediumturquoise')
 ax2.bar(x + 0.5*width, inc_pos_pcts, width, label='Inc + cohort', alpha=0.8, color='red')
-ax2.bar(x + 1.5*width, inc_neg_pcts, width, label='Inc − cohort', alpha=0.8, color='purple')
+ax2.bar(x + 1.5*width, inc_neg_pcts, width, label='Inc − cohort', alpha=0.8, color='blue')
 ax2.set_ylabel('Percentage (%)', fontsize=11)
 ax2.set_title('Distribution by Glucose Range (4-class direction split)', fontsize=12, fontweight='bold')
 ax2.set_xticks(x)
@@ -1689,15 +1697,15 @@ for i, (b, c, ip, in_) in enumerate(zip(baseline_pcts, clean_pcts, inc_pos_pcts,
 # Plot 3: Cumulative distribution — 4 CDFs
 ax3 = axes[1, 0]
 ax3.plot(np.sort(baseline_glucose), np.arange(1, len(baseline_glucose) + 1) / max(1, len(baseline_glucose)),
-         label='Baseline', linewidth=2, color='blue')
+         label='Baseline', linewidth=2, color='darkgray')
 ax3.plot(np.sort(clean_glucose), np.arange(1, len(clean_glucose) + 1) / max(1, len(clean_glucose)),
-         label='Clean Period', linewidth=2, color='green')
+         label='Clean Period', linewidth=2, color='mediumturquoise')
 if len(incident_pos_glucose):
     ax3.plot(np.sort(incident_pos_glucose), np.arange(1, len(incident_pos_glucose) + 1) / max(1, len(incident_pos_glucose)),
              label='Inc + cohort', linewidth=2, color='red')
 if len(incident_neg_glucose):
     ax3.plot(np.sort(incident_neg_glucose), np.arange(1, len(incident_neg_glucose) + 1) / max(1, len(incident_neg_glucose)),
-             label='Inc − cohort', linewidth=2, color='purple')
+             label='Inc − cohort', linewidth=2, color='blue')
 ax3.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax3.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
 ax3.set_xlabel('Glucose (mg/dL)', fontsize=11)
@@ -1711,7 +1719,7 @@ ax3.set_xlim(40, 400)
 ax4 = axes[1, 1]
 box_data = [baseline_glucose, clean_glucose]
 box_labels = ['Baseline', 'Clean\nPeriod']
-box_colors = ['blue', 'green']
+box_colors = ['darkgray', 'mediumturquoise']
 if len(incident_pos_glucose):
     box_data.append(incident_pos_glucose)
     box_labels.append('Inc +\ncohort')
@@ -1719,7 +1727,7 @@ if len(incident_pos_glucose):
 if len(incident_neg_glucose):
     box_data.append(incident_neg_glucose)
     box_labels.append('Inc −\ncohort')
-    box_colors.append('purple')
+    box_colors.append('blue')
 
 bp = ax4.boxplot(box_data, labels=box_labels, patch_artist=True, widths=0.6)
 for patch, color in zip(bp['boxes'], box_colors):
@@ -1727,8 +1735,10 @@ for patch, color in zip(bp['boxes'], box_colors):
     patch.set_alpha(0.6)
 
 # E4 — bolder threshold zones so it's visually obvious which boxes cross hypo/hyper
-ax4.axhspan(0, 70, alpha=0.18, color='red', zorder=0)        # hypo zone
-ax4.axhspan(180, 500, alpha=0.18, color='orange', zorder=0)  # hyper zone
+# Hypo zone = lightcoral (red-family, matches medical danger convention).
+# Hyper zone = lightblue (visually contrasts with red positive-cohort line spiking into it).
+ax4.axhspan(0, 70, alpha=0.20, color='lightcoral', zorder=0)   # hypo zone — red-family
+ax4.axhspan(180, 500, alpha=0.20, color='lightblue', zorder=0) # hyper zone — blue-family
 ax4.axhline(y=70, color='red', linestyle='--', linewidth=1.5, alpha=0.8, label='Hypo threshold (<70)')
 ax4.axhline(y=180, color='orange', linestyle='--', linewidth=1.5, alpha=0.8, label='Hyper threshold (>180)')
 
