@@ -1040,8 +1040,9 @@ ax1.legend(loc='upper left')
 ax1.grid(True, alpha=0.3)
 ax1.set_ylim(0, max(hourly_agg["mae_15m"].max(), hourly_agg["mae_30m"].max()) * 1.1)
 
-# Yellow box annotation per incident — positioned ABOVE each spike so each
-# label is near its own incident rather than lumped together.
+# Yellow box annotation per incident — positioned ABOVE-RIGHT of each spike
+# with an arrow back to the spike, so the box does not occlude the data peak
+# it is annotating. 12h horizontal offset clears spike width on a 7-day chart.
 if incident_blocks_1:
     y_min_ax1, y_max_ax1 = ax1.get_ylim()
     for _i, _blk in enumerate(incident_blocks_1):
@@ -1052,7 +1053,7 @@ if incident_blocks_1:
         ax1.annotate(
             f'Incident {_i+1}\n{_blk_peak_15m:.0f} (15m)\n{_blk_peak_30m:.0f} (30m) mg/dL',
             xy=(_blk["mid"], _target_y),
-            xytext=(_blk["mid"], y_max_ax1 * 0.88),
+            xytext=(_blk["mid"] + pd.Timedelta(hours=12), y_max_ax1 * 0.88),
             fontsize=8,
             fontweight='bold',
             ha='center',
@@ -1074,9 +1075,25 @@ ax2.plot(hourly_agg["hour"], hourly_agg["glucose_observed_negative"],
          label=f"Device — negative bias cohort (-{bias_magnitude:.0f} mg/dL)",
          linewidth=2.0, linestyle='-', color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
-# Shade each incident period + per-incident yellow label (above each spike).
+# Set explicit ylim with headroom so labels fit comfortably above/below spikes
+# without colliding with chart title/frame.
+_all_y_fig1 = pd.concat([
+    hourly_agg["glucose_true"],
+    hourly_agg.get("glucose_observed_positive", pd.Series(dtype=float)),
+    hourly_agg.get("glucose_observed_negative", pd.Series(dtype=float)),
+]).dropna()
+_data_min_fig1, _data_max_fig1 = _all_y_fig1.min(), _all_y_fig1.max()
+_y_range_fig1 = _data_max_fig1 - _data_min_fig1
+ax2.set_ylim(_data_min_fig1 - _y_range_fig1 * 0.20, _data_max_fig1 + _y_range_fig1 * 0.20)
+_y_min_fig1, _y_max_fig1 = ax2.get_ylim()
+_y_pad_fig1 = (_y_max_fig1 - _y_min_fig1) * 0.05
+
+# Shade each incident period + per-incident yellow label (offset to the right
+# of each spike with arrow pointing back, so the box does not occlude the data).
 # Window 1 (positive cohort) gets label "+N mg/dL"; Window 2 (negative cohort)
 # gets label "-N mg/dL" — derived from the block's middle-row signed bias.
+# NaN-aware direction detection: use 0 when the opposite cohort's value is NaN
+# (Python's `or` would return NaN here — truthy — and break the comparison).
 for _i, _blk in enumerate(incident_blocks_1):
     ax2.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
                 label='Incident Period' if _i == 0 else None, zorder=1)
@@ -1088,20 +1105,28 @@ for _i, _blk in enumerate(incident_blocks_1):
     _pos = _row.get("glucose_observed_positive")
     _neg = _row.get("glucose_observed_negative")
 
-    # Determine direction by looking at which observed cohort diverges from true
-    if pd.notna(_pos) and abs(_pos - _y_true) > abs((_neg or _y_true) - _y_true):
+    # Determine direction by larger divergence from true (NaN-safe)
+    _pos_diff = abs(_pos - _y_true) if pd.notna(_pos) else 0
+    _neg_diff = abs(_neg - _y_true) if pd.notna(_neg) else 0
+    if _pos_diff > _neg_diff:
         _direction = "positive"
         _sign = "+"
-        _annot_y = _y_true + bias_magnitude + 10
+        # Arrow tip on the RED (positive cohort) spike — use the block's peak observation
+        _pos_data = _blk["rows"].get("glucose_observed_positive")
+        _y_target = _pos_data.max() if _pos_data is not None and pd.notna(_pos_data.max()) else (_y_true + bias_magnitude)
+        _annot_y = min(_y_max_fig1 - _y_pad_fig1, _y_true + bias_magnitude + 10)
     else:
         _direction = "negative"
         _sign = "-"
-        _annot_y = _y_true - bias_magnitude - 10
+        # Arrow tip on the BLUE (negative cohort) trough — use the block's lowest observation
+        _neg_data = _blk["rows"].get("glucose_observed_negative")
+        _y_target = _neg_data.min() if _neg_data is not None and pd.notna(_neg_data.min()) else (_y_true - bias_magnitude)
+        _annot_y = max(_y_min_fig1 + _y_pad_fig1, _y_true - bias_magnitude - 10)
 
     ax2.annotate(
         f'Incident {_i+1}\n{_sign}{bias_magnitude:.0f} mg/dL\n({_direction} cohort)',
-        xy=(_blk["mid"], _y_true),
-        xytext=(_blk["mid"], _annot_y),
+        xy=(_blk["mid"], _y_target),
+        xytext=(_blk["mid"] + pd.Timedelta(hours=12), _annot_y),
         fontsize=8,
         fontweight='bold',
         ha='center',
@@ -1196,9 +1221,25 @@ unaffected_incident_mae_30m = 0.0
 # Create figure with 3 subplots (vertical stack)
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
+# Shared y-axis range across all 3 MAE panels — keeps amplitudes comparable
+# (panel 2 affected has the highest spike; panel 3 unaffected is flat by design).
+# Same pattern as Figure 3 (Glucose Timeline).
+_fig2_all_mae = pd.concat([
+    all_patients_agg["mae_15m"], all_patients_agg["mae_30m"],
+    affected_agg["mae_15m"], affected_agg["mae_30m"],
+    unaffected_agg["mae_15m"], unaffected_agg["mae_30m"],
+]).dropna()
+_y_max_fig2 = _fig2_all_mae.max() * 1.15
+ax1.set_ylim(0, _y_max_fig2)
+ax2.set_ylim(0, _y_max_fig2)
+ax3.set_ylim(0, _y_max_fig2)
+
 def _per_block_annotate(ax, agg_df, blocks, color_box='yellow', label_prefix=''):
-    """Helper: draw one shaded rect + one yellow label per incident block."""
-    y_max = max(agg_df["mae_15m"].max(), agg_df["mae_30m"].max()) * 1.15
+    """Helper: draw one shaded rect + one label per incident block.
+    Label is offset 12h to the right of the spike with an arrow back, so the
+    box does not occlude the data peak. Uses the ax's CURRENT ylim (set globally
+    above before the helper is called) so labels align with the shared range."""
+    y_max = ax.get_ylim()[1]
     for _i, _blk in enumerate(blocks):
         ax.axvspan(_blk["start"], _blk["end"], alpha=0.2, color='grey',
                    label='Incident Period' if _i == 0 else None)
@@ -1207,7 +1248,7 @@ def _per_block_annotate(ax, agg_df, blocks, color_box='yellow', label_prefix='')
         ax.annotate(
             f'{label_prefix}Incident {_i+1}\n{_blk_15m:.0f} (15m)\n{_blk_30m:.0f} (30m) mg/dL',
             xy=(_blk["mid"], _blk_15m),
-            xytext=(_blk["mid"], y_max * 0.88),
+            xytext=(_blk["mid"] + pd.Timedelta(hours=12), y_max * 0.88),
             fontsize=8, fontweight='bold', ha='center', va='center',
             bbox=dict(boxstyle='round,pad=0.4', facecolor=color_box, alpha=0.7, edgecolor='black', linewidth=1.2),
             arrowprops=dict(arrowstyle='->', color='black', lw=1.5, connectionstyle='arc3,rad=0.0')
@@ -1230,7 +1271,7 @@ ax1.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax1.set_title("1. ALL PATIENTS (Fleet-wide Average) - Diluted Impact", fontsize=13, fontweight='bold')
 ax1.legend(loc='upper left', fontsize=10)
 ax1.grid(True, alpha=0.3)
-ax1.set_ylim(0, max(all_patients_agg["mae_15m"].max(), all_patients_agg["mae_30m"].max()) * 1.15)
+# ylim shared with panels 2/3 — set globally right after figure creation
 
 # ------------------------
 # Plot 2: AFFECTED PATIENTS ONLY
@@ -1248,7 +1289,7 @@ ax2.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax2.set_title(f"2. AFFECTED PATIENTS ONLY (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet across two windows) - True Incident Impact", fontsize=13, fontweight='bold')
 ax2.legend(loc='upper left', fontsize=10)
 ax2.grid(True, alpha=0.3)
-ax2.set_ylim(0, max(affected_agg["mae_15m"].max(), affected_agg["mae_30m"].max()) * 1.15)
+# ylim shared with panels 1/3 — set globally right after figure creation
 
 # ------------------------
 # Plot 3: UNAFFECTED PATIENTS ONLY
@@ -1269,7 +1310,7 @@ ax3.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - Stable Performance", fontsize=13, fontweight='bold')
 ax3.legend(loc='upper left', fontsize=10)
 ax3.grid(True, alpha=0.3)
-ax3.set_ylim(0, max(unaffected_agg["mae_15m"].max(), unaffected_agg["mae_30m"].max()) * 1.15)
+# ylim shared with panels 1/2 — set globally right after figure creation
 
 plt.tight_layout()
 plt.show()
@@ -1351,10 +1392,31 @@ incident_blocks_3 = _incident_blocks_from(all_patients_glucose)
 # Create figure with 3 subplots (vertical stack)
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
+# Shared y-axis range across all 3 panels — keeps scales comparable visually so
+# the reader can compare amplitude of variation between Fleet-wide / Affected /
+# Unaffected. Driven by panel 2 (affected) which has the widest range (+40/-40 spikes).
+_fig3_all_data = pd.concat([
+    all_patients_glucose["glucose_true"],
+    all_patients_glucose.get("glucose_observed", pd.Series(dtype=float)),
+    affected_glucose["glucose_true"],
+    affected_glucose.get("glucose_observed_positive", pd.Series(dtype=float)),
+    affected_glucose.get("glucose_observed_negative", pd.Series(dtype=float)),
+    unaffected_glucose["glucose_true"],
+    unaffected_glucose.get("glucose_observed", pd.Series(dtype=float)),
+]).dropna()
+_data_min_fig3, _data_max_fig3 = _fig3_all_data.min(), _fig3_all_data.max()
+_y_range_fig3 = _data_max_fig3 - _data_min_fig3
+_y_min_fig3 = _data_min_fig3 - _y_range_fig3 * 0.20
+_y_max_fig3 = _data_max_fig3 + _y_range_fig3 * 0.20
+_y_pad_fig3 = (_y_max_fig3 - _y_min_fig3) * 0.05
+ax1.set_ylim(_y_min_fig3, _y_max_fig3)
+ax2.set_ylim(_y_min_fig3, _y_max_fig3)
+ax3.set_ylim(_y_min_fig3, _y_max_fig3)
+
 # ------------------------
 # Plot 1: ALL PATIENTS (Fleet-wide average)
 # ------------------------
-ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_true"], 
+ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_true"],
          label="True glucose (actual baseline)", linewidth=2.5, linestyle='-', 
          color="green", marker="o", markersize=4, alpha=0.9, zorder=2)
 ax1.plot(all_patients_glucose["hour"], all_patients_glucose["glucose_observed"], 
@@ -1374,7 +1436,7 @@ for _i, _blk in enumerate(incident_blocks_3):
     ax1.annotate(
         f'Incident {_i+1}\n{_blk_bias:+.1f} mg/dL\nfleet-wide bias',
         xy=(_blk["mid"], (_mid_row["glucose_true"] + _mid_row["glucose_observed"]) / 2),
-        xytext=(_blk["mid"], 175 if _blk_bias >= 0 else 95),
+        xytext=(_blk["mid"] + pd.Timedelta(hours=12), 175 if _blk_bias >= 0 else 95),
         fontsize=8, fontweight='bold', ha='center', va='center',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
         arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
@@ -1404,27 +1466,35 @@ ax2.plot(affected_glucose["hour"], affected_glucose["glucose_observed_negative"]
          linewidth=2.0, linestyle='-',
          color="blue", marker="^", markersize=4, alpha=0.9, zorder=3)
 
+# NOTE: y-limit set globally for all 3 panels right after the figure-creation block above
+# (shared range so panel-to-panel amplitude comparisons are visually fair).
 incident_blocks_3_affected = _incident_blocks_from(affected_glucose)
 for _i, _blk in enumerate(incident_blocks_3_affected):
     ax2.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
                 label='Incident Period' if _i == 0 else None, zorder=1)
     _mid_row = _blk["rows"].iloc[len(_blk["rows"]) // 2]
     _y_true = _mid_row["glucose_true"]
-    # Direction: which cohort diverges from true at this block?
+    # Direction: which cohort diverges from true at this block? (NaN-safe)
     _pos = _mid_row.get("glucose_observed_positive")
     _neg = _mid_row.get("glucose_observed_negative")
     if pd.notna(_pos) and (pd.isna(_neg) or abs(_pos - _y_true) > abs(_neg - _y_true)):
         _direction = "positive (over-reads)"
         _sign = "+"
-        _annot_y = _y_true + bias_magnitude + 10
+        # Arrow tip on RED positive-cohort spike — use block's peak observation
+        _pos_data = _blk["rows"].get("glucose_observed_positive")
+        _y_target = _pos_data.max() if _pos_data is not None and pd.notna(_pos_data.max()) else (_y_true + bias_magnitude)
+        _annot_y = min(_y_max_fig3 - _y_pad_fig3, _y_true + bias_magnitude + 10)
     else:
         _direction = "negative (under-reads)"
         _sign = "-"
-        _annot_y = _y_true - bias_magnitude - 10
+        # Arrow tip on BLUE negative-cohort trough — use block's lowest observation
+        _neg_data = _blk["rows"].get("glucose_observed_negative")
+        _y_target = _neg_data.min() if _neg_data is not None and pd.notna(_neg_data.min()) else (_y_true - bias_magnitude)
+        _annot_y = max(_y_min_fig3 + _y_pad_fig3, _y_true - bias_magnitude - 10)
     ax2.annotate(
         f'Incident {_i+1}\n{_sign}{bias_magnitude:.0f} mg/dL\n{_direction}',
-        xy=(_blk["mid"], _y_true),
-        xytext=(_blk["mid"], _annot_y),
+        xy=(_blk["mid"], _y_target),
+        xytext=(_blk["mid"] + pd.Timedelta(hours=12), _annot_y),
         fontsize=8, fontweight='bold', ha='center', va='center',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7, edgecolor='black', linewidth=1.2),
         arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
@@ -1447,14 +1517,21 @@ ax3.plot(unaffected_glucose["hour"], unaffected_glucose["glucose_observed"],
          label="Observed glucose (device reading)", linewidth=2.5, linestyle='-', 
          color="blue", marker="s", markersize=4, alpha=0.9, zorder=3)
 
+# NOTE: ylim shared with panels 1/2 (set globally right after figure creation) so
+# amplitude comparison is visually fair. Unaffected panel will look flat within
+# this wider range — that visual contrast IS the point.
+
 incident_blocks_3_unaffected = _incident_blocks_from(unaffected_glucose)
 for _i, _blk in enumerate(incident_blocks_3_unaffected):
     ax3.axvspan(_blk["start"], _blk["end"], alpha=0.15, color='grey',
                 label='Incident Period' if _i == 0 else None, zorder=1)
+    # Position label near top of shared range; arrow tip at the actual data point in block
+    _mid_idx = len(_blk["rows"]) // 2
+    _arrow_y = _blk["rows"]["glucose_observed"].iloc[_mid_idx] if "glucose_observed" in _blk["rows"].columns else (_y_min_fig3 + _y_max_fig3) / 2
     ax3.annotate(
         f'Incident {_i+1}\nNo bias\n(device OK)',
-        xy=(_blk["mid"], 140),
-        xytext=(_blk["mid"], 175),
+        xy=(_blk["mid"], _arrow_y),
+        xytext=(_blk["mid"] + pd.Timedelta(hours=12), _y_max_fig3 - _y_pad_fig3),
         fontsize=8, fontweight='bold', ha='center', va='center',
         bbox=dict(boxstyle='round,pad=0.4', facecolor='lightgreen', alpha=0.7, edgecolor='black', linewidth=1.2),
         arrowprops=dict(arrowstyle='->', color='black', lw=1.5, alpha=0.7, connectionstyle='arc3,rad=0.0')
@@ -1465,6 +1542,8 @@ ax3.set_ylabel("Glucose (mg/dL)", fontsize=12)
 ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - No Device Bug", fontsize=12, fontweight='bold')
 ax3.legend(loc='upper left', fontsize=10)
 ax3.grid(True, alpha=0.3)
+# axhlines for 70/180 thresholds: still drawn but typically off-screen at this tighter ylim
+# (kept for visual consistency with panels 1/2; safe to remove if cleaner desired)
 ax3.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
 ax3.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
@@ -1553,6 +1632,8 @@ inc_neg_hypo, inc_neg_normal, inc_neg_hyper = _pct_buckets(incident_neg_glucose)
 print(f"\nHypo (<70):         {baseline_hypo:6.1f}%     {clean_hypo:6.1f}%     {inc_pos_hypo:6.1f}%     {inc_neg_hypo:6.1f}%")
 print(f"Normal (70-180):    {baseline_normal:6.1f}%     {clean_normal:6.1f}%     {inc_pos_normal:6.1f}%     {inc_neg_normal:6.1f}%")
 print(f"Hyper (>180):       {baseline_hyper:6.1f}%     {clean_hyper:6.1f}%     {inc_pos_hyper:6.1f}%     {inc_neg_hyper:6.1f}%")
+print("")  # blank line — visual separator between stats table and 4-panel figure
+print("")
 
 # Create visualization — 4-class palette across all 4 subplots
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
