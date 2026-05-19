@@ -333,11 +333,11 @@ hls-glucosphere/
 ├── Data_DataGen_ModelForecast/
 │   ├── dual_01_generate_synthetic_baseline.py      ← cloned from cleanup branch + dual-baseline checks
 │   ├── dual_01_ingest_real_baseline.py             ← real-data ingest (stub; implemented in plan's Commit C.2/C.3)
-│   ├── 04_CGM_PseudoGeneration_CleanData_Modeling.py
-│   ├── 05_CGM_Incident_Inference_DeviceCalibrationBug.py
-│   ├── 06_DeployModel_as_ServingEndpoint.py
+│   ├── dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
+│   ├── dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py
+│   ├── dual_06_DeployModel_as_ServingEndpoint.py
 │   ├── dual_09_Create_Genie_KA_MAS.py     ← Creates KA + Genie + MAS (with KA-ready wait + fail-fast)
-│   ├── 10_Grant_App_Permissions.py         ← Grants SP access to all resources
+│   ├── dual_10_Grant_App_Permissions.py         ← Grants SP access to all resources
 │   └── utils/additional_patient_info/      ← Patient/device data generators
 └── scripts/
     └── grant_app_permissions.py            ← Local fallback permissions script

@@ -240,7 +240,7 @@ resources:
           depends_on:
             - task_key: sanity_summary
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/04_CGM_PseudoGeneration_CleanData_Modeling.py
+            notebook_path: Data_DataGen_ModelForecast/dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -273,7 +273,7 @@ resources:
           depends_on:
             - task_key: datagen_modeling
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/06_DeployModel_as_ServingEndpoint.py
+            notebook_path: Data_DataGen_ModelForecast/dual_06_DeployModel_as_ServingEndpoint.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -372,7 +372,7 @@ resources:
           depends_on:
             - task_key: check_post_endpoint_grants
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/10_Grant_App_Permissions.py
+            notebook_path: Data_DataGen_ModelForecast/dual_10_Grant_App_Permissions.py
             base_parameters:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}

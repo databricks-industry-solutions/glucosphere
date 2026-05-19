@@ -272,7 +272,7 @@ databricks bundle deploy -t hls_amer
 - `SELECT` on the silver / gold tables consumed by the Flask app
 - `CAN_USE` on warehouse `d9af05523dafe3a6` (handled by the `sql-warehouse` resource block in `app.yaml`)
 - `CAN_QUERY` on the MAS and KA serving endpoints (handled by the `mas-endpoint` / `ka-endpoint` resource blocks)
-- `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `10_Grant_App_Permissions.py` during the setup job)
+- `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `dual_10_Grant_App_Permissions.py` during the setup job)
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 

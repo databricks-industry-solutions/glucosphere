@@ -3,7 +3,7 @@
 # MAGIC # Real-baseline ingest (HUPA-UCM)
 # MAGIC
 # MAGIC Produces `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` — the single-table
-# MAGIC data contract that `04_CGM_PseudoGeneration_CleanData_Modeling.py` reads.
+# MAGIC data contract that `dual_04_CGM_PseudoGeneration_CleanData_Modeling.py` reads.
 # MAGIC Same schema as the synthetic path (see `dual_01_generate_synthetic_baseline.py`)
 # MAGIC so downstream `04_*` / `05_*` / `06_*` work uniformly regardless of which
 # MAGIC baseline path ran.

@@ -245,7 +245,7 @@ print("=" * 60)
 # MAGIC ## Check the diabetes_data table looks right
 # MAGIC
 # MAGIC Reads the freshly-written `diabetes_data` and confirms it has the columns,
-# MAGIC reading interval, and completeness that `04_CGM_PseudoGeneration_CleanData_Modeling.py`
+# MAGIC reading interval, and completeness that `dual_04_CGM_PseudoGeneration_CleanData_Modeling.py`
 # MAGIC expects. The same check runs at the end of the real-data path
 # MAGIC (`01_ingest_real_baseline.py`) so synthetic and real outputs are
 # MAGIC interchangeable. Raises `AssertionError` if anything is off.
