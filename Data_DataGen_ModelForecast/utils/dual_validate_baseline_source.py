@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Validate baseline_source + print run banner
 # MAGIC
-# MAGIC Runs at the head of `glucosphere_full_setup`. Two responsibilities:
+# MAGIC Runs at the head of `glucosphere_full_setup`. Three responsibilities:
 # MAGIC
 # MAGIC 1. **Enum validation** — `baseline_source` must be one of
 # MAGIC    `{synthetic, real_from_source, real_from_table}`. Fail fast on typos
@@ -11,6 +11,12 @@
 # MAGIC    so anyone reading the job log immediately knows which mode is
 # MAGIC    selected, what catalog/schema is the target, and which source table
 # MAGIC    will be read (if applicable).
+# MAGIC 3. **Provenance write** — overwrite a 1-row `baseline_provenance` UC
+# MAGIC    table with the validated mode + source detail + timestamp. The App's
+# MAGIC    `/api/config` route queries this row (with 60s TTL cache) so the
+# MAGIC    Metrics Explained page can render mode-accurate prose without
+# MAGIC    relying on deploy-time env vars (which can skew from the pipeline's
+# MAGIC    actual run mode). See `~/.claude/projects/.../memory/reference_provenance_table_pattern.md`.
 
 # COMMAND ----------
 
@@ -73,3 +79,34 @@ elif BASELINE_SOURCE == "real_from_source":
 else:
     print(f"  source                = synthetic generator (textbook phenotypes + AR(1))")
 print(bar)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Provenance write
+# MAGIC
+# MAGIC Write a 1-row `baseline_provenance` table so the App's `/api/config` route
+# MAGIC can render mode-accurate prose on the Metrics Explained page (real_from_source
+# MAGIC mention HUPA-UCM seed, synthetic mention textbook generator, etc.) without
+# MAGIC having to read deploy-time env vars (which can skew from the pipeline's
+# MAGIC actual run mode). Single-row table replaced on every pipeline run.
+
+# COMMAND ----------
+
+source_detail = (
+    f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}" if BASELINE_SOURCE == "real_from_table"
+    else "HUPA-UCM Mendeley dataset" if BASELINE_SOURCE == "real_from_source"
+    else "synthetic generator (textbook phenotypes + AR(1))"
+)
+spark.sql(f"""
+    CREATE TABLE IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance (
+        baseline_source STRING,
+        source_detail   STRING,
+        last_run_at     TIMESTAMP
+    )
+""")
+spark.sql(f"""
+    INSERT OVERWRITE {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance VALUES
+        ('{BASELINE_SOURCE}', '{source_detail}', current_timestamp())
+""")
+print(f"[PROVENANCE] Wrote baseline_provenance row: baseline_source={BASELINE_SOURCE!r}, source_detail={source_detail!r}")
