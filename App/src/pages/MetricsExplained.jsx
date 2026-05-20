@@ -322,28 +322,39 @@ WHERE glucose_out_of_range = 1
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Displays Mean Absolute Error (MAE) over a 7-day window, showing device accuracy degradation during an incident period. 
-                  Two lines show MAE calculated over 15-minute and 30-minute windows. The incident period (Jan 7, 14:00-17:00) is highlighted with a narrow gray shaded region.
-                  Baseline sensor noise of 5.0 mg/dL is added to all measurements to simulate realistic CGM accuracy (~5.8 mg/dL MARD).
+                  Displays Mean Absolute Error (MAE) over a 7-day window, showing device accuracy degradation
+                  during incident periods. Two lines carry distinct information: <span className="text-blue-400 font-medium">fleet-wide</span> MAE
+                  (AVG across all patients — diluted because only the affected cohorts are drifting) vs{' '}
+                  <span className="text-orange-400 font-medium">affected-only</span> MAE (AVG over just the patients
+                  whose devices are currently in an incident window — shows the TRUE bias magnitude).
+                  With the two-window mirror simulation (2026-05-18), TWO separate red-tinted dashed-border
+                  rectangles mark the two incident windows: Day 2 (+40 mg/dL bias on Alpha/Gamma cohort) and
+                  Day 5 (-40 mg/dL bias on Beta/Delta cohort). Baseline sensor noise of 5.0 mg/dL is added
+                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL MARD).
                 </p>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`WITH minute_data AS (
-  SELECT 
+  SELECT
     DATE_TRUNC('minute', time) as minute,
+    has_incident,
     CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
     incident_type as incident_label,
     ABS(glucose_observed - glucose_true) + 5.0 as error_value
   FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
   WHERE time IS NOT NULL
 )
-SELECT 
+SELECT
   minute as time,
   AVG(error_value) as mae_fleet,
-  AVG(CASE WHEN has_incident = 1 THEN error_value END) as mae_affected,
+  -- Two-window mirror gotcha: mae_affected uses incident_period (per-time-window)
+  -- NOT has_incident (per-patient). has_incident=1 includes both cohorts at all
+  -- times — averaging over them dilutes the spike. incident_period=1 only fires
+  -- during each cohort's OWN window → clean ~+/-45 mg/dL peaks at the two windows.
+  AVG(CASE WHEN incident_period = 1 THEN error_value END) as mae_affected,
   MAX(incident_period) as incident_period,
   MAX(incident_label) as incident_label
 FROM minute_data
@@ -351,17 +362,16 @@ GROUP BY minute
 ORDER BY minute`}
                 </pre>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> ABS(glucose_observed - glucose_true) + 5.0 (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
-                  <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only ~30% are affected</li>
-                  <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to affected patients (has_incident = 1) — shows the TRUE device-error magnitude ~45 mg/dL during incident</li>
+                  <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only the active-window cohort drifts at any moment</li>
+                  <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the two-window-mirror dilution trap where has_incident=1 includes both cohorts at all times.</li>
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
-                  <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window)</li>
-                  <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy - dashed line)</li>
-                  <li>• <span className="font-mono text-violet-400">Peak MAE:</span> Maximum MAE during incident period (~45 mg/dL)</li>
+                  <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window per cohort; two such windows total in the mirror simulation)</li>
+                  <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy — dashed slate-400 reference line)</li>
                 </ul>
               </div>
               
@@ -370,9 +380,8 @@ ORDER BY minute`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="text-blue-400">Blue line:</span> MAE Fleet-wide (diluted across all patients — ~17 mg/dL peak)</li>
                   <li>• <span className="text-orange-400">Orange line:</span> MAE Affected-only (true bias magnitude — ~45 mg/dL peak)</li>
-                  <li>• <span className="text-slate-400">Gray shaded region:</span> Incident period (typically 3 hours)</li>
-                  <li>• <span className="text-slate-400">Dashed line:</span> Baseline MAE reference</li>
-                  <li>• <span className="text-yellow-400">Yellow callout:</span> Peak MAE spike value</li>
+                  <li>• <span style={{color: 'rgb(248 113 113)'}}>Light-red shaded rectangles (dashed border):</span> Incident windows — TWO separate rectangles (3h each) for the two-window mirror simulation (Day 2 +40 cohort, Day 5 −40 cohort)</li>
+                  <li>• <span className="text-slate-400">Dashed slate line:</span> Baseline MAE reference (~5.8 mg/dL)</li>
                 </ul>
               </div>
               
