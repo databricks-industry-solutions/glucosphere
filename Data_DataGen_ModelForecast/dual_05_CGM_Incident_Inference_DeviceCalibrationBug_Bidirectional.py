@@ -1525,7 +1525,7 @@ for _i, _blk in enumerate(incident_blocks_3_affected):
     )
 
 ax2.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax2.set_title(f"2. AFFECTED PATIENTS ONLY (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Alpha/Gamma +bias on Day 2; Beta/Delta -bias on Day 5)", fontsize=12, fontweight='bold')
+ax2.set_title(f"2. AFFECTED PATIENTS ONLY (~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Alpha/Gamma +bias on Day 2; Beta/Delta -bias on Day 5)", fontsize=12, fontweight='bold', color='#888888')
 ax2.legend(loc='upper left', fontsize=10)
 ax2.grid(True, alpha=0.3)
 ax2.axhline(y=70, color='red', linestyle=':', linewidth=1, alpha=0.5)
@@ -1566,7 +1566,7 @@ for _i, _blk in enumerate(incident_blocks_3_unaffected):
 
 ax3.set_xlabel("Time", fontsize=12)
 ax3.set_ylabel("Glucose (mg/dL)", fontsize=12)
-ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - No Device Bug", fontsize=12, fontweight='bold')
+ax3.set_title(f"3. UNAFFECTED PATIENTS ONLY (~{(1 - cfg.incident_pct - getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of fleet — Epsilon/Zeta models) - No Device Bug", fontsize=12, fontweight='bold', color='#888888')
 ax3.legend(loc='upper left', fontsize=10)
 ax3.grid(True, alpha=0.3)
 # axhlines for 70/180 thresholds: still drawn but typically off-screen at this tighter ylim
@@ -1672,28 +1672,34 @@ print("")  # blank line — visual separator between stats table and 4-panel fig
 print("")
 
 # Create visualization — 4-class palette across all 4 subplots.
-# Temporarily override OUTSIDE-the-axes text colors (subplot titles, axis
-# labels, tick labels, axes edges) to white so the resulting PNG (saved
-# with transparent background below) renders readably on the dark React
-# app theme (glucosphere-dashboard is dark-only as of 2026-05-19).
+# Override OUTSIDE-the-axes text/edge colors (subplot titles, axis labels,
+# tick labels, axes edges) to mid-grey `#888888`. This single color reads
+# on BOTH the dark React app theme (~4.5:1 vs slate-950, passes WCAG AA)
+# AND the notebook UI's light bg (~4.8:1 vs white, passes WCAG AA). Earlier
+# iterations used 'white' which was crisp on React but INVISIBLE in the
+# notebook UI; user flagged late-evening 2026-05-19. The mid-grey trade-off
+# loses a bit of crispness on React but works in both contexts without
+# generating two separate PNGs.
 # IMPORTANT: do NOT override `text.color` (the GLOBAL text color) — that
-# would also force legend text + ax.text() value labels (e.g. bar-chart
-# percentage annotations) to white, which fails because legend boxes have
-# default white background + bar value labels sit on colored bars. Those
-# INSIDE-the-axes text elements stay default-black via the unchanged
-# rcParams. Restored after plt.show() below. If a light-theme toggle is
-# ever added, drop this override OR use bbox-backed text for theme-agnostic
-# readability. NOTE: wrapping plt.subplots() in `plt.style.context(...)` is
-# NOT sufficient — these rcParams are read at render time (set_title /
+# would also force ax.text() bar-chart percentage annotations to mid-grey,
+# which would lower their contrast on the colored bars (default-black on
+# top of the bars is intentional). Restored after plt.show() below.
+# NOTE: wrapping plt.subplots() in `plt.style.context(...)` is NOT
+# sufficient — these rcParams are read at render time (set_title /
 # xlabel / etc.), which happens AFTER a style context would have exited;
 # need the rcParams override to span the whole figure-construction block.
 _DUAL05_FIG4_RCPARAMS_SAVED = {k: plt.rcParams[k] for k in (
     'axes.labelcolor', 'xtick.color', 'ytick.color',
-    'axes.edgecolor', 'axes.titlecolor')}
+    'axes.edgecolor', 'axes.titlecolor',
+    'font.weight', 'axes.titleweight')}
 plt.rcParams.update({
-    'axes.labelcolor': 'white',
-    'xtick.color': 'white', 'ytick.color': 'white',
-    'axes.edgecolor': 'white', 'axes.titlecolor': 'white',
+    'axes.labelcolor': '#888888',
+    'xtick.color': '#888888', 'ytick.color': '#888888',
+    'axes.edgecolor': '#888888', 'axes.titlecolor': '#888888',
+    # Bold weight everywhere — legend labels, tick labels, default ax.text()
+    # all inherit. Combined with mid-grey color, bold weight lifts perceived
+    # contrast on dark React bg so labels read like the subplot titles did.
+    'font.weight': 'bold', 'axes.titleweight': 'bold',
 })
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
@@ -1710,9 +1716,9 @@ ax1.axvspan(70, 180, alpha=0.1, color='grey')          # normal range — neutra
 ax1.axvspan(180, 400, alpha=0.15, color='lightblue')  # hyper zone — blue-family (visually contrasts with red positive-cohort line)
 ax1.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
-ax1.set_xlabel('Glucose (mg/dL)', fontsize=11)
-ax1.set_ylabel('Density', fontsize=11)
-ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold')
+ax1.set_xlabel('Glucose (mg/dL)', fontsize=12, fontweight='bold', color='#888888')
+ax1.set_ylabel('Density', fontsize=12, fontweight='bold', color='#888888')
+ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold', color='#888888')
 # Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).
 ax1.grid(True, alpha=0.3)
 
@@ -1731,8 +1737,8 @@ ax2.bar(x - 1.5*width, baseline_pcts, width, label='Baseline', alpha=0.8, color=
 ax2.bar(x - 0.5*width, clean_pcts, width, label='Clean Period', alpha=0.8, color='mediumturquoise')
 ax2.bar(x + 0.5*width, inc_pos_pcts, width, label='Inc + cohort', alpha=0.8, color='red')
 ax2.bar(x + 1.5*width, inc_neg_pcts, width, label='Inc − cohort', alpha=0.8, color='blue')
-ax2.set_ylabel('Percentage (%)', fontsize=11)
-ax2.set_title('Distribution by Glucose Range (4-class direction split)', fontsize=12, fontweight='bold')
+ax2.set_ylabel('Percentage (%)', fontsize=12, fontweight='bold', color='#888888')
+ax2.set_title('Distribution by Glucose Range (4-class direction split)', fontsize=12, fontweight='bold', color='#888888')
 ax2.set_xticks(x)
 ax2.set_xticklabels(categories)
 # Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).
@@ -1740,10 +1746,10 @@ ax2.grid(True, alpha=0.3, axis='y')
 
 # Add percentage labels for all 4 series
 for i, (b, c, ip, in_) in enumerate(zip(baseline_pcts, clean_pcts, inc_pos_pcts, inc_neg_pcts)):
-    ax2.text(i - 1.5*width, b + 1, f'{b:.0f}%', ha='center', fontsize=7)
-    ax2.text(i - 0.5*width, c + 1, f'{c:.0f}%', ha='center', fontsize=7)
-    ax2.text(i + 0.5*width, ip + 1, f'{ip:.0f}%', ha='center', fontsize=7)
-    ax2.text(i + 1.5*width, in_ + 1, f'{in_:.0f}%', ha='center', fontsize=7)
+    ax2.text(i - 1.5*width, b + 1, f'{b:.0f}%', ha='center', fontsize=9)
+    ax2.text(i - 0.5*width, c + 1, f'{c:.0f}%', ha='center', fontsize=9)
+    ax2.text(i + 0.5*width, ip + 1, f'{ip:.0f}%', ha='center', fontsize=9)
+    ax2.text(i + 1.5*width, in_ + 1, f'{in_:.0f}%', ha='center', fontsize=9)
 
 # Plot 3: Cumulative distribution — 4 CDFs
 ax3 = axes[1, 0]
@@ -1759,9 +1765,9 @@ if len(incident_neg_glucose):
              label='Inc − cohort', linewidth=2, color='blue')
 ax3.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax3.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
-ax3.set_xlabel('Glucose (mg/dL)', fontsize=11)
-ax3.set_ylabel('Cumulative Probability', fontsize=11)
-ax3.set_title('Cumulative Distribution Function (split by cohort)', fontsize=12, fontweight='bold')
+ax3.set_xlabel('Glucose (mg/dL)', fontsize=12, fontweight='bold', color='#888888')
+ax3.set_ylabel('Cumulative Probability', fontsize=12, fontweight='bold', color='#888888')
+ax3.set_title('Cumulative Distribution Function (split by cohort)', fontsize=12, fontweight='bold', color='#888888')
 # Per-axis legend removed — single combined legend is built below, AFTER ax4
 # exists (ax4 = axes[1, 1] is set up in the next block; the combined-legend
 # builder needs both ax1 + ax4 to be fully populated with labeled artists
@@ -1783,7 +1789,17 @@ if len(incident_neg_glucose):
     box_labels.append('Inc −\ncohort')
     box_colors.append('blue')
 
-bp = ax4.boxplot(box_data, labels=box_labels, patch_artist=True, widths=0.6)
+bp = ax4.boxplot(
+    box_data, labels=box_labels, patch_artist=True, widths=0.6,
+    # Mid-grey for all line components so they read on BOTH dark React bg
+    # AND notebook UI light bg. Default black whiskers/caps/fliers were
+    # effectively invisible on slate-950 (~1.5:1 contrast).
+    whiskerprops=dict(color='#888888', linewidth=1.2),
+    capprops=dict(color='#888888', linewidth=1.2),
+    medianprops=dict(color='orange', linewidth=1.8),  # orange median pops on both bgs
+    flierprops=dict(marker='o', markerfacecolor='#888888', markeredgecolor='#888888',
+                    markersize=4, alpha=0.7),
+)
 for patch, color in zip(bp['boxes'], box_colors):
     patch.set_facecolor(color)
     patch.set_alpha(0.6)
@@ -1805,15 +1821,15 @@ for _i, (_data, _lbl, _col) in enumerate(zip(box_data, box_labels, box_colors)):
     _min = float(np.min(_data))
     if 'Inc +' in _lbl and _max > 180:
         ax4.annotate(f'max {_max:.0f}', xy=(_i + 1, _max), xytext=(_i + 1, _max + 15),
-                     fontsize=7, ha='center', color='darkred',
-                     arrowprops=dict(arrowstyle='->', color='darkred', lw=0.8))
+                     fontsize=9, fontweight='bold', ha='center', color='#888888',
+                     arrowprops=dict(arrowstyle='->', color='#888888', lw=0.8))
     if 'Inc −' in _lbl and _min < 70:
         ax4.annotate(f'min {_min:.0f}', xy=(_i + 1, _min), xytext=(_i + 1, _min - 15),
-                     fontsize=7, ha='center', color='darkred',
-                     arrowprops=dict(arrowstyle='->', color='darkred', lw=0.8))
+                     fontsize=9, fontweight='bold', ha='center', color='#888888',
+                     arrowprops=dict(arrowstyle='->', color='#888888', lw=0.8))
 
-ax4.set_ylabel('Glucose (mg/dL)', fontsize=11)
-ax4.set_title('Glucose Distribution Box Plots — hypo/hyper zones shaded', fontsize=12, fontweight='bold')
+ax4.set_ylabel('Glucose (mg/dL)', fontsize=12, fontweight='bold', color='#888888')
+ax4.set_title('Glucose Distribution Box Plots — hypo/hyper zones shaded', fontsize=12, fontweight='bold', color='#888888')
 ax4.grid(True, alpha=0.3, axis='y')
 # Per-axis legend removed — hypo/hyper threshold handles (label= on the axhline
 # calls above) are still discoverable via ax4.get_legend_handles_labels() and
@@ -1832,14 +1848,33 @@ for _ax in (ax1, ax4):
         if _li not in _combined_l:
             _combined_h.append(_hi)
             _combined_l.append(_li)
-ax3.legend(_combined_h, _combined_l, loc='lower right', fontsize=8, framealpha=0.7)
+_combined_legend = ax3.legend(_combined_h, _combined_l, loc='lower right', fontsize=8,
+                              labelcolor='#888888', facecolor='none', edgecolor='lightgray',
+                              handlelength=2.5, handleheight=1.2)
+# Light dotted border — frame is visible but unobtrusive, no fill so the
+# axes data shows through. labelcolor='#888888' (mid-grey) is the sweet
+# spot: readable on dark React bg (~4.5:1 contrast vs slate-950) AND
+# light notebook UI (~4.8:1 contrast vs white) — passes WCAG AA on both.
+_combined_legend.get_frame().set_linestyle(':')
+_combined_legend.get_frame().set_linewidth(1.2)
+# Add a thin mid-grey outline to the PATCH legend handles (the 4 cohort
+# histogram swatches) so the darkgray Baseline (Real) swatch is visible
+# on dark bgs too — without this, darkgray patch on slate-950 React bg
+# is effectively invisible because both are dark. Line handles (the 2
+# threshold dashed lines from ax4) are skipped because their color +
+# linestyle already make them visible without an outline.
+from matplotlib.patches import Patch as _Patch
+for _h in _combined_legend.legend_handles:
+    if isinstance(_h, _Patch):
+        _h.set_edgecolor('#888888')
+        _h.set_linewidth(0.6)
 
 plt.tight_layout()
 # Save PNG asset for MetricsExplained "How MAE alerts are triggered" section.
-# Transparent background + white text/labels (rcParams override above) — tuned
-# for the dark React app theme (glucosphere-dashboard is dark-only as of
-# 2026-05-19). For a light-theme target, regenerate with default text colors
-# or use bbox-backed text.
+# Transparent background + mid-grey (`#888888`) text/labels/ticks/edges via
+# the rcParams override above — works on BOTH the dark React app theme AND
+# notebook UI light bg (passes WCAG AA ~4.5:1 on both). Single PNG, no
+# per-theme regeneration needed.
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
