@@ -198,10 +198,33 @@ v9 finalization, asset refresh, full push + deploy + run.
     legend is built by collecting `get_legend_handles_labels()` from `ax1`
     (4 cohort entries with descriptive `+40`/`-40` labels) and `ax4` (2
     threshold-line entries — Hypo `<70` / Hyper `>180`), deduped by
-    label string. Six entries total; `framealpha=0.7` transparent white
-    box, default black text — readable on both the dark React app bg
-    AND the notebook UI light bg. Cuts visual clutter (was 4 boxes →
-    1 box) and gives each subplot more breathing room for the data.
+    label string. Six entries total; `labelcolor='#888888',
+    facecolor='none', edgecolor='lightgray'` with a light dotted
+    border (`linestyle=':', linewidth=1.2` applied via
+    `legend.get_frame()`). No fill at all — the legend floats over
+    whatever bg is behind it. Mid-grey `#888888` text + global
+    `font.weight='bold'` rcParams override: ~5.7:1 contrast on dark React
+    bg (passes WCAG AA small text) and ~3.55:1 on notebook UI light bg
+    (passes WCAG AA large text, which the fontsize=12+bold combination
+    qualifies for). Bold lifts perceived contrast on both bgs — user
+    noted the subplot titles (already bold) were the "readable reference"
+    the rest of the figure should match. Iteration history that landed
+    here: framealpha=0.7 (darkgray Baseline swatch blended in),
+    framealpha=0.95 (too cut-out), facecolor='lightgray'+0.85 (still
+    a solid-feeling box), no-fill+dotted+#737373-text (axis labels still
+    too dim on dark), then current #888888+bold+fontsize-12 — settled
+    after user note "subplot title color worked so using that should
+    be better". Cuts visual clutter (was 4 boxes → 1) and gives each
+    subplot more breathing room for the data.
+  - **Boxplot line components explicitly styled** (whiskers, caps,
+    fliers): default-black on transparent bg was invisible on dark
+    React (~1.5:1 contrast). Now `whiskerprops` + `capprops` + `flierprops`
+    all set to `#888888`; `medianprops` kept `orange` for emphasis
+    visible on both bgs.
+  - **Bar value labels** (the `22%`/`6%`/`72%`/etc. annotations above
+    each bar in the Distribution by Glucose Range subplot): bumped
+    `fontsize=7` → `fontsize=9` so they're legible at the rendered PNG
+    scale on both bgs.
   - **ax4 ordering bug fix** (discovered late-evening 2026-05-19): the
     Option 4 combined-legend builder must run AFTER `ax4 = axes[1, 1]`
     is created in the `Plot 4: Box plots` block; an earlier placement
@@ -243,18 +266,78 @@ v9 finalization, asset refresh, full push + deploy + run.
   statement `01f153c4-edcf-1aa9-88aa-ad9e5d0d08ed` so the running
   App stops 403-ing; the notebook addition self-heals future workspaces.
   Result PNG (`fig4_distribution_comparison_4panel.png`, transparent bg)
-  renders: white subtitles + axis labels + tick text on dark React bg;
-  default-black combined-legend text inside a transparent-white box
-  parked in `ax3`'s lower-right empty quadrant; default-black bar value
-  labels on colored bars. Tuned for dark-theme-only
-  (glucosphere-dashboard ships dark-only as of 2026-05-19); if a
-  light-theme toggle is added later, drop the override entirely or
-  switch to bbox-backed text for theme-agnostic readability.
+  renders with `#888888` mid-grey titles / axis labels / tick text / axes
+  edges (single rcParams override block covers all four). Combined legend
+  in `ax3`'s lower-right empty quadrant: no fill (`facecolor='none'`),
+  light dotted border (`linestyle=':', linewidth=1.2`), mid-grey labels.
+  Default-black bar value labels stay default-black (intentional — they
+  sit on top of colored bars). Legend patch handles get a thin
+  mid-grey outline so the `darkgray` Baseline (Real) swatch is visible
+  on dark bgs (darkgray-on-slate-950 was effectively invisible without
+  the outline). Result: single PNG renders readably in BOTH the dark
+  React app theme AND the notebook UI's light bg without per-theme
+  regeneration.
 - **`DEPLOY.md` Step 6 deploy command** — replaced workspace-specific
   example values (`catalog=hls_glucosphere`, `schema=cgm`) with generic
   placeholders (`<your-catalog>`, `<your-schema>`, `<your-profile>`) and
   added a note that for active targets users should `-t <target>` instead
   of `--var` overrides.
+- **`MetricsExplained.jsx` content-accuracy pass + dynamic baseline_source**
+  (evening 2026-05-19):
+  - **High Risk Alerts time-window**: doc said "last 24 hours" but the
+    actual `getHighRiskAlerts()` query (`GlucoseLanding/queries.js:162`)
+    uses `INTERVAL 3 HOUR`. Updated doc to 3-hour with the rationale
+    (incident-window length matching; 24h gets dominated by ~943 natural
+    diabetic OOR baseline, 3h gives 495 baseline → 800 incident signal).
+  - **Out-of-Range Device Readings query** (Device Support Dashboard) doc
+    was missing the `INTERVAL 3 HOUR` time filter that the actual
+    `getOutOfRangeDevices()` query (`databricksSQL.js:174`) has. Added
+    the filter to the documented SQL + explained the 3-hour parallel
+    with High Risk Alerts.
+  - **FDA recall citations**: the "Why this monitoring stack matters"
+    callout used to claim "Abbott FreeStyle Libre has FDA recalls on
+    record for both over-reading and under-reading sensors" without
+    citation. Added superscript footnotes [1] [2] linking to the
+    actual FDA recall pages (FreeStyle Libre 3 Class I, ≈3M sensors,
+    ≥860 serious injuries and 7 deaths linked to the under-read
+    failure mode) + a Sources line below the recall claim. Verified
+    URLs current as of 2026-05-19.
+  - **Chart-location disambiguation**: prose used to say "three charts
+    below walk through that detection chain" but the actual rendered
+    charts live on the GlucoStream Intelligence landing page (chart 2
+    is the only one embedded in Metrics Explained as a snapshot PNG).
+    Rewrote per-chart location notes: chart 1 / chart 3 = "Lives on
+    the GlucoStream Intelligence landing page"; chart 2 = "Snapshot
+    PNG from the most recent incident-simulation pipeline run (dual_05
+    notebook), embedded only in this Metrics Explained tab". Also
+    rewrote the "top chart" / "bottom chart" inline references (3 sites)
+    to fully-qualify the landing-page location.
+  - **"page intro" wording**: replaced 2 occurrences with explicit
+    "_About This Page_ above" pointers so a reader landing mid-page
+    knows exactly where the provenance disclaimer lives.
+  - **Broken job/run URL**: a stale "run 899387466814174" link pointing
+    at job_id `464619060436574` (neither matches the real job 911600926545
+    nor any actual session run) was replaced with a durable reference to
+    the job page itself + a note that the App reads PNGs live from UC
+    Volume via `/uc-assets/` so the snapshot refreshes on each pipeline
+    run.
+  - **Dynamic `baseline_source` (truly runtime, NOT deploy-time)**:
+    deploy-time env vars can skew from actual pipeline-run mode. Solved
+    with a provenance-table pattern (saved as memory `reference_provenance_table_pattern.md`):
+    `dual_validate_baseline_source.py` `INSERT OVERWRITE`s a 1-row
+    `{catalog}.{schema}.baseline_provenance` table at the head of every
+    pipeline run; `App/databricks/app.py` adds `_get_baseline_provenance()`
+    that queries this row via DBSQL with a 60s TTL cache + graceful
+    fallback to `'real_from_source'` if the table doesn't yet exist
+    (first-deploy edge case); `/api/config` exposes `baseline_source` +
+    `baseline_source_detail` fields; `MetricsExplained.jsx` adds
+    `useState` + `useEffect` to consume them and renders 3-mode
+    conditional prose (`synthetic` / `real_from_source` / `real_from_table`).
+    Result: the "About This Page" disclaimer about CGM signal provenance
+    is always truthful for whatever the pipeline actually last ran.
+    Validated 2026-05-19 evening via `jobs run-now --only validate_baseline_source`
+    run `689520984699374` SUCCESS — provenance table populated, app
+    `/api/config` returns live mode.
 
 ---
 
