@@ -169,6 +169,27 @@ targets:
         glucosphere_oltp:
           name: glucosphere-oltp-table-e2e
 
+  # Validates the from_source mode end-to-end with all C8/C14/C17/C18 fixes —
+  # exercises the Mendeley download + parse path + source-adaptive sampler
+  # against real HUPA-UCM source distribution. Isolated sandbox schema so the
+  # live mmt_aws_usw2.glucosphere_dev table is not touched.
+  mmt_aws_usw2_from_source_e2e:
+    mode: development
+    workspace:
+      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
+    variables:
+      catalog: mmt_aws_usw2_catalog
+      schema: glucosphere_from_source_e2e
+      warehouse_id: dafc5dff8eb8094a
+      baseline_source: from_source
+    resources:
+      apps:
+        glucosphere_dashboard:
+          name: glucosphere-source-e2e
+      database_instances:
+        glucosphere_oltp:
+          name: glucosphere-oltp-source-e2e
+
 resources:
 
   # ---------------------------------------------------------------------------
