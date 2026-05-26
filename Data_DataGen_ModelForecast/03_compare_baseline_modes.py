@@ -29,11 +29,11 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME",             "mmt_aws_usw2_catalog",    "Catalog containing the schemas to compare")
-dbutils.widgets.text("SYNTHETIC_SCHEMA",         "glucosphere_dev",         "Schema where synthetic-mode diabetes_data lives (empty to skip)")
-dbutils.widgets.text("FROM_SOURCE_SCHEMA",  "glucosphere_dev_test",    "Schema where from_source-mode diabetes_data lives (empty to skip)")
-dbutils.widgets.text("FROM_TABLE_SCHEMA",   "glucosphere_dev_test_table", "Schema where from_table-mode diabetes_data lives (empty to skip)")
-dbutils.widgets.text("WRITE_SUMMARY_TO_SCHEMA",  "",                        "Optional: write summary table to this schema (empty = print only)")
+dbutils.widgets.text("CATALOG_NAME",            "mmt_aws_usw2_catalog", "Catalog containing the schemas to compare")
+dbutils.widgets.text("SYNTHETIC_SCHEMA",        "",                     "Schema where synthetic-mode diabetes_data lives (empty to skip; e.g. glucosphere_synth_e2e)")
+dbutils.widgets.text("FROM_SOURCE_SCHEMA",      "",                     "Schema where from_source-mode diabetes_data lives (empty to skip; e.g. glucosphere_from_source_e2e, or the live glucosphere_dev)")
+dbutils.widgets.text("FROM_TABLE_SCHEMA",       "",                     "Schema where from_table-mode diabetes_data lives (empty to skip; e.g. glucosphere_from_table_e2e)")
+dbutils.widgets.text("WRITE_SUMMARY_TO_SCHEMA", "",                     "Optional: write summary table to this schema (empty = print only)")
 
 CATALOG_NAME           = dbutils.widgets.get("CATALOG_NAME")
 SYNTHETIC_SCHEMA       = dbutils.widgets.get("SYNTHETIC_SCHEMA")
