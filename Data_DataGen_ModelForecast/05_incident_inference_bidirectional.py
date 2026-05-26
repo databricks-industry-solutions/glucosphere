@@ -29,9 +29,9 @@
 # MAGIC **Lakebase F (task #42) integration:** the new `incident_direction` column on
 # MAGIC `pseudo_incident_7d_labeled` is what populates the `bias_direction` field on the alerts table.
 # MAGIC
-# MAGIC **Sibling notebook:** `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py` retains the unidirectional
+# MAGIC **Sibling notebook:** `06_incident_inference_single.py` retains the unidirectional
 # MAGIC single-incident variant for simpler demos / reference comparisons. Revert to that simpler variant by changing
-# MAGIC `databricks.yml` `incident_inference` task's `notebook_path` back to `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py`.
+# MAGIC `databricks.yml` `incident_inference` task's `notebook_path` back to `06_incident_inference_single.py`.
 # MAGIC Original Ward-branch pristine version preserved (gitignored) at `previous/Data_DataGen_ModelForecast/05_CGM_Incident_Inference_DeviceCalibrationBug.py`.
 # MAGIC
 # MAGIC ---

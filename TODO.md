@@ -3,7 +3,7 @@
 ## Remaining plan-commits (after C.1-C.6 closed 2026-05-16)
 
 - [ ] **Commit D — distribution comparison across the 3 baseline modes (NEXT, ~30 min + test).**
-  New notebook `Data_DataGen_ModelForecast/dual_02_compare_baseline_modes.py` (~150-250 LOC). Runs all three modes + emits a side-by-side comparison: row counts, patient counts, glucose stats (mean/median/std/percentiles), hypo/normal/hyper percentages, histograms, KS-test for distribution similarity. Demo value + regression catcher.
+  New notebook `Data_DataGen_ModelForecast/03_compare_baseline_modes.py` (~150-250 LOC). Runs all three modes + emits a side-by-side comparison: row counts, patient counts, glucose stats (mean/median/std/percentiles), hypo/normal/hyper percentages, histograms, KS-test for distribution similarity. Demo value + regression catcher.
 
 - [x] **Commit E — hygiene + valueFrom + smoke checklist (CLOSED 2026-05-18).** Three batched items:
   1. ~~`valueFrom` conversion in `app.yaml`~~ — **REVERTED 2026-05-18 (`8942f4d`)**. `valueFrom: <resource-name>` did not resolve at runtime because the app object's `resources` field came back empty after `bundle deploy` (verified via `/api/2.0/apps/glucosphere-dashboard`). ENDPOINT_NAME and GENIE_SPACE_ID came up empty → 500 errors from Clinical Analysis + Genie panels. Reverted to plain `value:` with hardcoded IDs; `render_app_yaml.py` updated to rewrite the env var value alongside the resource block. Resources block stays declared for SP permissions but no longer load-bearing for env-var resolution.

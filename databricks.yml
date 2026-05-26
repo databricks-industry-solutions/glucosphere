@@ -16,9 +16,9 @@ variables:
       Which baseline ingest path the job runs at the head of the pipeline.
       Valid: "synthetic" | "from_source" | "from_table".
       Validated upfront by validate_baseline_source task (typos fail fast).
-        - synthetic        → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1))
-        - from_source → dual_01_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
-        - from_table  → dual_01_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
+        - synthetic        → 01_synthetic_baseline.py (textbook phenotypes + AR(1))
+        - from_source → 02_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
+        - from_table  → 02_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
       Default is from_source (changed 2026-05-16) — buildathon demos want
       clinical realism (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL),
       and the Mendeley URL has been reliable. Synthetic remains one --var away for
@@ -262,7 +262,7 @@ resources:
           description: Validate baseline_source enum + print run banner (fail-fast on typos)
           max_retries: 0
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/utils/dual_validate_baseline_source.py
+            notebook_path: Data_DataGen_ModelForecast/utils/validate_baseline_source.py
             base_parameters:
               BASELINE_SOURCE: ${var.baseline_source}
               CATALOG_NAME:    ${var.catalog}
@@ -279,7 +279,7 @@ resources:
           depends_on:
             - task_key: validate_baseline_source
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/utils/dual_check_pre_baseline_grants.py
+            notebook_path: Data_DataGen_ModelForecast/utils/check_pre_baseline_grants.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -302,7 +302,7 @@ resources:
             - task_key: dispatch_baseline_source
               outcome: "true"
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_01_generate_synthetic_baseline.py
+            notebook_path: Data_DataGen_ModelForecast/01_synthetic_baseline.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -315,7 +315,7 @@ resources:
             - task_key: dispatch_baseline_source
               outcome: "false"
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_01_ingest_real_baseline.py
+            notebook_path: Data_DataGen_ModelForecast/02_ingest_real_baseline.py
             base_parameters:
               CATALOG_NAME:    ${var.catalog}
               SCHEMA_NAME:     ${var.schema}
@@ -334,7 +334,7 @@ resources:
             - task_key: ingest_real_baseline
           run_if: AT_LEAST_ONE_SUCCESS
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/utils/dual_sanity_summary.py
+            notebook_path: Data_DataGen_ModelForecast/utils/sanity_summary.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -346,7 +346,7 @@ resources:
           depends_on:
             - task_key: sanity_summary
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
+            notebook_path: Data_DataGen_ModelForecast/04_pseudo_data_modeling.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -365,7 +365,7 @@ resources:
           depends_on:
             - task_key: datagen_modeling
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py
+            notebook_path: Data_DataGen_ModelForecast/05_incident_inference_bidirectional.py
             base_parameters:
               CATALOG_NAME:     ${var.catalog}
               SCHEMA_NAME:      ${var.schema}
@@ -379,7 +379,7 @@ resources:
           depends_on:
             - task_key: datagen_modeling
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_06_DeployModel_as_ServingEndpoint.py
+            notebook_path: Data_DataGen_ModelForecast/07_deploy_serving_endpoints.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -444,7 +444,7 @@ resources:
           depends_on:
             - task_key: run_dlt_pipeline
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_09_Create_Genie_KA_MAS.py
+            notebook_path: Data_DataGen_ModelForecast/08_genie_ka_mas.py
             base_parameters:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
@@ -460,7 +460,7 @@ resources:
           depends_on:
             - task_key: create_genie_ka_mas
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/utils/dual_check_post_endpoint_grants.py
+            notebook_path: Data_DataGen_ModelForecast/utils/check_post_endpoint_grants.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -478,7 +478,7 @@ resources:
           depends_on:
             - task_key: check_post_endpoint_grants
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_10_Grant_App_Permissions.py
+            notebook_path: Data_DataGen_ModelForecast/09_grant_app_permissions.py
             base_parameters:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
@@ -517,7 +517,7 @@ resources:
           description: Compute side-by-side stats and render inline plots
           max_retries: 0
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/dual_02_compare_baseline_modes.py
+            notebook_path: Data_DataGen_ModelForecast/03_compare_baseline_modes.py
             base_parameters:
               CATALOG_NAME:             ${var.catalog}
               # Operator must override at least 2 of the next 3 at run time.

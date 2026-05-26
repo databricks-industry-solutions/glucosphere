@@ -39,13 +39,13 @@ Run `598606749042992` (first synth_e2e deploy) failed immediately at the `valida
 
 ### Root cause
 
-`validate_baseline_source` is the FIRST task in `glucosphere_full_setup` and tries to write a `baseline_provenance` table to the deploy-target's `{catalog}.{schema}`. The schema creation lives in `dual_01_generate_synthetic_baseline.py:18` and `dual_01_ingest_real_baseline.py:75` — but those run AFTER the dispatch task, which runs AFTER validate. So for any **fresh** schema (new workspace, new sandbox target), validate fires before any code has created the schema.
+`validate_baseline_source` is the FIRST task in `glucosphere_full_setup` and tries to write a `baseline_provenance` table to the deploy-target's `{catalog}.{schema}`. The schema creation lives in `01_synthetic_baseline.py:18` and `02_ingest_real_baseline.py:75` — but those run AFTER the dispatch task, which runs AFTER validate. So for any **fresh** schema (new workspace, new sandbox target), validate fires before any code has created the schema.
 
 For the live `mmt_aws_usw2` target, `glucosphere_dev` was created on the first deploy back in 2026-05-15 and has persisted ever since. The bug never surfaced there.
 
 ### Fix
 
-`Data_DataGen_ModelForecast/utils/dual_validate_baseline_source.py:107` (commit `398d637`):
+`Data_DataGen_ModelForecast/utils/validate_baseline_source.py:107` (commit `398d637`):
 
 ```python
 # Ensure schema exists before writing provenance. dual_01_* notebooks (which
@@ -76,7 +76,7 @@ Per-stratum targets: hypo=64, normal=717, hyper=218, mixed=1 (sum=1000).
 
 ### Root cause
 
-`dual_04_CGM_PseudoGeneration_CleanData_Modeling.py:422-428` classifies each source patient into one of 4 strata:
+`04_pseudo_data_modeling.py:422-428` classifies each source patient into one of 4 strata:
 
 | Stratum | Threshold |
 |---|---|
@@ -121,7 +121,7 @@ The decoupling between *classification* (label every patient) and *sampling* (on
 
 ### Fix
 
-`Data_DataGen_ModelForecast/dual_01_generate_synthetic_baseline.py:52-69` (commit `21baa5e`):
+`Data_DataGen_ModelForecast/01_synthetic_baseline.py:52-69` (commit `21baa5e`):
 
 ```python
 PHENOTYPES = [
@@ -186,11 +186,11 @@ databricks bundle destroy -t mmt_aws_usw2_from_table_e2e --auto-approve --profil
 
 ## Bug 3 (visual / quality) — bimodal synthetic distribution
 
-After Bugs 1 + 2 cleared and synth_e2e ran successfully to `datagen_modeling`, the `dual_02_compare_baseline_modes.py` comparison output revealed a **bimodal aggregate glucose distribution** in synthetic baseline (peaks ~100 + ~150 mg/dL, valley ~130). Real HUPA-UCM by contrast is **right-skewed continuous** — see `project_dual_baseline_comparison_results.md` 2026-05-16 numbers (mean 141, median 132, p95 251, single peak).
+After Bugs 1 + 2 cleared and synth_e2e ran successfully to `datagen_modeling`, the `03_compare_baseline_modes.py` comparison output revealed a **bimodal aggregate glucose distribution** in synthetic baseline (peaks ~100 + ~150 mg/dL, valley ~130). Real HUPA-UCM by contrast is **right-skewed continuous** — see `project_dual_baseline_comparison_results.md` 2026-05-16 numbers (mean 141, median 132, p95 251, single peak).
 
 ### Root cause
 
-The 8-phenotype discrete design in `dual_01_generate_synthetic_baseline.py` lines 53-70 (after C9 + C12 additions) had phenotype means clustered into TWO groups:
+The 8-phenotype discrete design in `01_synthetic_baseline.py` lines 53-70 (after C9 + C12 additions) had phenotype means clustered into TWO groups:
 
 | Low cluster (~75-110) | High cluster (~140-175) |
 |---|---|
@@ -249,7 +249,7 @@ Tonight's iterations made it concrete that **synthetic and real data are not int
 - Naturally-correlated multi-signal extremes — when a real patient went hypo, their behavioral signals correlated in clinically plausible ways.
 
 ### Why this matters for incident simulation (esp. bidirectional)
-The platform's incident simulation overlays **device calibration bugs** on top of the baseline glucose stream (see `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py`). A meaningful bidirectional bug demo (over-reading AND under-reading sensor drift, per [[reference-bidirectional-cgm-calibration-bugs]]) requires baseline data with **both tails** populated:
+The platform's incident simulation overlays **device calibration bugs** on top of the baseline glucose stream (see `05_incident_inference_bidirectional.py`). A meaningful bidirectional bug demo (over-reading AND under-reading sensor drift, per [[reference-bidirectional-cgm-calibration-bugs]]) requires baseline data with **both tails** populated:
 
 - **Over-reading bug (+40 mg/dL) on a hypo-prone patient** — sensor masks a real hypoglycemic event; patient sees "normal" reading while actually crashing. Clinically high-risk. Requires baseline data with hypo events to surface this.
 - **Under-reading bug (-40 mg/dL) on a hyper-prone patient** — sensor masks a real hyperglycemic excursion; patient may over-bolus or fail to act. Requires baseline data with sustained hyperglycemia.
@@ -271,7 +271,7 @@ Two valid framings, both reflected in the current code:
 - **Default stays `from_source`** — empirically validated by the iteration log above. Synthetic remains valid for CI / restricted-egress / smoke-test scenarios where a known well-behaved fixture is preferred.
 - **Bidirectional bug demo (#41)** should run against `from_source` data exclusively. Synthetic baselines would under-stress at least one direction of the bug.
 - **Harness validation matrix should always include `from_source`** — synth-only validation will miss distribution-width regressions that real data catches naturally (as Bug 2 latently demonstrated for two weeks against the live target before #68 surfaced it).
-- **Future synthetic improvements** should be measured against real HUPA-UCM as the reference shape (`dual_02_compare_baseline_modes.py` is the working tool for this). If a synthetic-only KS-test deviation exceeds a threshold, treat it as a regression.
+- **Future synthetic improvements** should be measured against real HUPA-UCM as the reference shape (`03_compare_baseline_modes.py` is the working tool for this). If a synthetic-only KS-test deviation exceeds a threshold, treat it as a regression.
 
 ### Linked architectural threads
 - **#41 bidirectional CGM calibration bugs** — uses this real-baseline substrate.

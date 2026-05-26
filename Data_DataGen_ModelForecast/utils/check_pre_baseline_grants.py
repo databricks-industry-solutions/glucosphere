@@ -27,7 +27,7 @@
 # MAGIC - SQL warehouse `CAN_USE` — Spark already has a working compute connection
 # MAGIC   if this notebook is running, so no separate check needed
 # MAGIC - Serving endpoint `CAN_QUERY` — endpoints don't exist yet at this phase;
-# MAGIC   `dual_check_post_endpoint_grants.py` handles them after creation
+# MAGIC   `check_post_endpoint_grants.py` handles them after creation
 # MAGIC - `CREATE MODEL` — covered implicitly by the broader CREATE * on schema;
 # MAGIC   probing a UC model requires registering one which is heavier than worth
 

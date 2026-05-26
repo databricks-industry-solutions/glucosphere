@@ -435,7 +435,7 @@ ORDER BY minute`}
                   refreshes automatically whenever the pipeline regenerates it (no app redeploy needed).
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Notebook: <span className="text-cyan-400">dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional</span> 4-class distribution comparison cell. PNG has transparent background so it inherits the surrounding card color in any theme.
+                  Notebook: <span className="text-cyan-400">05_incident_inference_bidirectional</span> 4-class distribution comparison cell. PNG has transparent background so it inherits the surrounding card color in any theme.
                 </p>
               </div>
             </div>

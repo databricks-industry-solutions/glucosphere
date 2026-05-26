@@ -27,24 +27,24 @@ converge on `diabetes_data` and the downstream modeling spine is shared.
 
 ```
 baseline_source dispatch (condition_task on var)
-  ├─ synthetic → dual_01_generate_synthetic_baseline.py
+  ├─ synthetic → 01_synthetic_baseline.py
   │             (textbook phenotypes + AR(1); writes diabetes_data +
   │              baseline_timeseries + baseline_windows_metadata)
-  └─ from_* (from_source | from_table)  → dual_01_ingest_real_baseline.py
+  └─ from_* (from_source | from_table)  → 02_ingest_real_baseline.py
                 (HUPA-UCM download OR existing UC table; same three tables)
                               ↓
 sanity_summary  (asserts diabetes_data non-empty + plausible)
                               ↓
-dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
+04_pseudo_data_modeling.py
   → Tables: pseudo_clean_7d, pseudo_incident_*
   → UC Models: cgm_xgb_15m, cgm_xgb_30m
                               ↓
-dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py
+05_incident_inference_bidirectional.py
   → Tables: pseudo_incident_7d_labeled, fleet_forecast_incident
   (Active sibling for pipeline dispatch; SingleIncident is the simpler
    one-direction variant kept alongside as a reference.)
                               ↓                                  ─────┐
-dual_06_DeployModel_as_ServingEndpoint.py                             │
+07_deploy_serving_endpoints.py                             │
   → Serving Endpoints (15m/30m forecast)                              │
                                                                       │
 utils/additional_patient_info/ notebooks                              │
@@ -57,12 +57,12 @@ DLT Pipeline (transformations.sql)  ◄─────────────�
   → LIVE: silver_patient_readings
   → LIVE: gold_patient_device_readings  ──→ App SQL queries
 
-dual_09_Create_Genie_KA_MAS.py
+08_genie_ka_mas.py
   → Genie space (gold_patient_device_readings)  ──→ App /api/genie/query
   → KA endpoint (Knowledge Assistant)
   → MAS endpoint (Multi-Agent Supervisor)         ──→ App /api/agent/query
 
-dual_10_Grant_App_Permissions.py
+09_grant_app_permissions.py
   → App SP grants on UC + endpoints + warehouse + Genie
 ```
 
@@ -343,7 +343,7 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 - `SELECT` on the silver / gold tables consumed by the Flask app
 - `CAN_USE` on the SQL warehouse (handled by the `sql-warehouse` resource block in `app.yaml`)
 - `CAN_QUERY` on the MAS and KA serving endpoints (handled by the `mas-endpoint` / `ka-endpoint` resource blocks)
-- `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `dual_10_Grant_App_Permissions.py` during the setup job)
+- `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `09_grant_app_permissions.py` during the setup job)
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
@@ -492,15 +492,15 @@ glucosphere/
 │   ├── src/                                ← React source
 │   └── vite.config.js
 ├── Data_DataGen_ModelForecast/
-│   ├── dual_01_generate_synthetic_baseline.py
-│   ├── dual_01_ingest_real_baseline.py
-│   ├── dual_02_compare_baseline_modes.py
-│   ├── dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
-│   ├── dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py   ← active inference (pipeline dispatch)
-│   ├── dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py  ← sibling reference
-│   ├── dual_06_DeployModel_as_ServingEndpoint.py
-│   ├── dual_09_Create_Genie_KA_MAS.py
-│   ├── dual_10_Grant_App_Permissions.py
+│   ├── 01_synthetic_baseline.py
+│   ├── 02_ingest_real_baseline.py
+│   ├── 03_compare_baseline_modes.py
+│   ├── 04_pseudo_data_modeling.py
+│   ├── 05_incident_inference_bidirectional.py   ← active inference (pipeline dispatch)
+│   ├── 06_incident_inference_single.py  ← sibling reference
+│   ├── 07_deploy_serving_endpoints.py
+│   ├── 08_genie_ka_mas.py
+│   ├── 09_grant_app_permissions.py
 │   ├── utils/additional_patient_info/      ← Patient/device data generators
 │   └── configs/baseline_config.yaml
 └── scripts/

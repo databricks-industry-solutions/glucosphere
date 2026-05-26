@@ -2412,5 +2412,5 @@ print("="*80)
 # MAGIC | `has_incident = 1` | All records of affected patients (full 7-day timeline) | 2,016 records | ~604,800 rows | "Which patients?" |
 # MAGIC | `incident_type = "calibration_bias"` | Only in-window records | 36 records (3 hrs) | ~10,800 rows | "Which timepoints?" |
 # MAGIC
-# MAGIC **Bidirectional variant — `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py`:**
+# MAGIC **Bidirectional variant — `05_incident_inference_bidirectional.py`:**
 # MAGIC The affected cohort is split into positive- and negative-bias subgroups via the `incident_direction` column (`positive` / `negative` for affected patients, `null` for clean). Counts above are unchanged; `incident_direction` is just a per-affected-patient label to filter MAE breakouts by direction.

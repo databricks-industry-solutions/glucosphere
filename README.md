@@ -47,7 +47,7 @@ The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) trained on 
 
 A well-tuned model performs at published-research-quality on clean data (~5 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — by over 6× — when device calibration is compromised**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
 
-Real-trained vs synthetic-trained models produce nearly identical numbers (the synthetic-trained baseline in `origin/hls-buildathon-main` was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See `Data_DataGen_ModelForecast/dual_05_CGM_Incident_Inference_DeviceCalibrationBug_Bidirectional.py` for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler `dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py` sibling retains the unidirectional single-incident variant for reference.
+Real-trained vs synthetic-trained models produce nearly identical numbers (the synthetic-trained baseline in `origin/hls-buildathon-main` was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See `Data_DataGen_ModelForecast/05_incident_inference_bidirectional.py` for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler `06_incident_inference_single.py` sibling retains the unidirectional single-incident variant for reference.
 
 ### Column-level provenance (important — easy to mis-explain)
 
@@ -100,20 +100,20 @@ High-level layout:
 │   ├── assets/                                   # Architecture diagrams, plots
 │   ├── configs/                                  # Pipeline parameters
 │   ├── utils/
-│   │   ├── dual_validate_baseline_source.py      # Enum + banner preflight
-│   │   ├── dual_validate_diabetes_data.py        # Schema contract check (cols, cadence, coverage)
-│   │   ├── dual_sanity_summary.py                # Non-empty + plausible-range assertion
-│   │   ├── dual_check_pre_baseline_grants.py     # Try-create-drop probe (catalog/schema/volume)
-│   │   ├── dual_check_post_endpoint_grants.py    # KA/MAS/Genie existence check
+│   │   ├── validate_baseline_source.py      # Enum + banner preflight
+│   │   ├── validate_diabetes_data.py        # Schema contract check (cols, cadence, coverage)
+│   │   ├── sanity_summary.py                # Non-empty + plausible-range assertion
+│   │   ├── check_pre_baseline_grants.py     # Try-create-drop probe (catalog/schema/volume)
+│   │   ├── check_post_endpoint_grants.py    # KA/MAS/Genie existence check
 │   │   └── additional_patient_info/              # Registry + device + telemetry generators
-│   ├── dual_01_generate_synthetic_baseline.py    # baseline_source = synthetic
-│   ├── dual_01_ingest_real_baseline.py           # baseline_source = from_source | from_table
-│   ├── dual_02_compare_baseline_modes.py         # Standalone analytics (synthetic vs real)
-│   ├── dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
-│   ├── dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py
-│   ├── dual_06_DeployModel_as_ServingEndpoint.py
-│   ├── dual_09_Create_Genie_KA_MAS.py            # KA + MAS + Genie tile setup
-│   ├── dual_10_Grant_App_Permissions.py               # App SP grants on UC + endpoints
+│   ├── 01_synthetic_baseline.py    # baseline_source = synthetic
+│   ├── 02_ingest_real_baseline.py           # baseline_source = from_source | from_table
+│   ├── 03_compare_baseline_modes.py         # Standalone analytics (synthetic vs real)
+│   ├── 04_pseudo_data_modeling.py
+│   ├── 06_incident_inference_single.py
+│   ├── 07_deploy_serving_endpoints.py
+│   ├── 08_genie_ka_mas.py            # KA + MAS + Genie tile setup
+│   ├── 09_grant_app_permissions.py               # App SP grants on UC + endpoints
 │   ├── README.md
 │   └── README_data.md
 └── README.md

@@ -3,8 +3,8 @@
 # MAGIC # Real-baseline ingest (HUPA-UCM)
 # MAGIC
 # MAGIC Produces `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` — the single-table
-# MAGIC data contract that `dual_04_CGM_PseudoGeneration_CleanData_Modeling.py` reads.
-# MAGIC Same schema as the synthetic path (see `dual_01_generate_synthetic_baseline.py`)
+# MAGIC data contract that `04_pseudo_data_modeling.py` reads.
+# MAGIC Same schema as the synthetic path (see `01_synthetic_baseline.py`)
 # MAGIC so downstream `04_*` / `05_*` / `06_*` work uniformly regardless of which
 # MAGIC baseline path ran.
 # MAGIC
@@ -25,7 +25,7 @@
 # MAGIC
 # MAGIC The dispatch task in `glucosphere_full_setup` runs this notebook only when
 # MAGIC `baseline_source != "synthetic"`. The synthetic path runs the other
-# MAGIC notebook (`dual_01_generate_synthetic_baseline.py`).
+# MAGIC notebook (`01_synthetic_baseline.py`).
 
 # COMMAND ----------
 
@@ -66,7 +66,7 @@ if BASELINE_SOURCE not in ALLOWED_MODES:
         f"BASELINE_SOURCE={BASELINE_SOURCE!r} is not valid for this notebook. "
         f"Expected one of {sorted(ALLOWED_MODES)}. (For the synthetic path, "
         f"set baseline_source=synthetic at the bundle level — the dispatch will "
-        f"route to dual_01_generate_synthetic_baseline.py instead.)"
+        f"route to 01_synthetic_baseline.py instead.)"
     )
 
 target_table = f"{CATALOG_NAME}.{SCHEMA_NAME}.diabetes_data"
@@ -212,7 +212,7 @@ if BASELINE_SOURCE == "from_source":
 # already wrote diabetes_data from an existing UC table).
 #
 # Use an explicit schema (not inferSchema) so the types are deterministic at read
-# time and match the contract checked by `dual_validate_diabetes_data`. Without
+# time and match the contract checked by `validate_diabetes_data`. Without
 # this, inferSchema picks DoubleType for `steps` (the contract wants LongType)
 # and the check fails — caught 2026-05-16 during the first C.2 sandbox test.
 if BASELINE_SOURCE == "from_source":
@@ -270,7 +270,7 @@ if BASELINE_SOURCE == "from_source":
 # MAGIC %md
 # MAGIC ## Build QC observability tables (baseline_timeseries + baseline_windows_metadata)
 # MAGIC
-# MAGIC Mirrors the windowed observability tables that `dual_01_generate_synthetic_baseline.py`
+# MAGIC Mirrors the windowed observability tables that `01_synthetic_baseline.py`
 # MAGIC emits, so the two baseline paths produce a SYMMETRIC set of outputs:
 # MAGIC
 # MAGIC   - `diabetes_data` — the data contract for `04_*` (required)
@@ -410,7 +410,7 @@ print(f"[windows] ✓ wrote {meta_table}")
 # MAGIC %md
 # MAGIC ## Check the diabetes_data table looks right
 # MAGIC
-# MAGIC Same check used by `dual_01_generate_synthetic_baseline.py` — confirms the
+# MAGIC Same check used by `01_synthetic_baseline.py` — confirms the
 # MAGIC freshly-written `diabetes_data` matches the contract that `04_*` consumes
 # MAGIC (required columns + reading interval + completeness).
 # MAGIC
@@ -421,4 +421,4 @@ print(f"[windows] ✓ wrote {meta_table}")
 
 # COMMAND ----------
 
-# MAGIC %run ./utils/dual_validate_diabetes_data
+# MAGIC %run ./utils/validate_diabetes_data

@@ -422,7 +422,7 @@ def query_agent():
 _baseline_provenance_cache = {'value': None, 'fetched_at': 0, 'ttl': 60}  # 60-second TTL
 
 def _get_baseline_provenance():
-    """Query the `baseline_provenance` table (written by dual_validate_baseline_source.py
+    """Query the `baseline_provenance` table (written by validate_baseline_source.py
     at the head of every pipeline run) so /api/config can return mode-accurate data.
     60s TTL cache — fresh enough for runtime tracking, cheap enough to not hammer DBSQL.
     Graceful fallback to 'from_source' (the bundle var default) if the table

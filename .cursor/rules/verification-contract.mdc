@@ -1,0 +1,15 @@
+---
+description: Require explicit verification status in agent responses
+alwaysApply: true
+---
+
+# Verification Contract
+
+- Treat every identifier and behavior statement as a factual claim.
+- Do not claim `fixed`, `working`, `done`, `verified`, or `passing` unless checks were actually run in this session.
+- If a claim is inferred but not checked, label it clearly as `Unverified`.
+- Prefer explicit uncertainty over implied certainty.
+- Before final response, include:
+  - Verified:
+  - Unverified:
+  - Next verification step:
