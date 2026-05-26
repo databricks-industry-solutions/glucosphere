@@ -43,7 +43,7 @@
 # MAGIC
 # MAGIC ---
 # MAGIC
-# MAGIC ## Incident Scenario (two-window mirror design, 2026-05-18)
+# MAGIC ## Incident Scenario (two-window mirror design)
 # MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bias across two SEPARATE incident windows on DIFFERENT cohorts** (Window 1: +bias on Alpha/Gamma devices; Window 2: -bias on Beta/Delta devices). Replaces the earlier within-window 50/50 split which canceled visually.
 # MAGIC * **Window 1:** Day 2, 2:00 PM - 5:00 PM (3-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
 # MAGIC * **Window 2:** Day 5, 10:00 AM - 1:00 PM (3-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
@@ -407,12 +407,22 @@ print(f"\nData timerange (from YAML):")
 print(f"   demo_week_start: {demo_week_start}")
 print(f"   Expected data: {demo_week_start} to {pd.Timestamp(demo_week_start) + pd.Timedelta(days=7)}")
 
-# Calculate TWO incident windows (mirror design, 2026-05-18):
-#   Window 1: original buildathon-main +bias_magnitude incident (Day 2 14:00-17:00)
-#   Window 2: mirror -bias_magnitude incident (Day 5 10:00-13:00) on a DIFFERENT cohort
-# Each window is UNIDIRECTIONAL on its own cohort, so plots show two clearly distinct
-# spikes at different x-positions without cancellation. Cohorts are mutually exclusive
-# (no patient is in both windows).
+# Calculate TWO incident windows (mirror design):
+#   Window 1: +bias_magnitude incident (over-reading), Day 2 14:00-17:00
+#   Window 2: -bias_magnitude incident (under-reading), Day 5 10:00-13:00,
+#             on a DIFFERENT cohort
+# Each window is UNIDIRECTIONAL on its own cohort, so plots show two clearly
+# distinct spikes at different x-positions without cancellation. Cohorts are
+# mutually exclusive (no patient is in both windows).
+#
+# SIMULATION SIMPLIFICATION: in real clinical settings, the SAME CGM device
+# can be hit by both over-reading AND under-reading calibration drift at
+# different times (e.g. FreeStyle Libre FDA-recall history covers both
+# directions on the same hardware). The mutually-exclusive cohort split here
+# is a demo-storytelling choice — it keeps the two failure modes visually
+# distinct in plots and lets each mode be analyzed independently. Modeling
+# the same device experiencing both bugs over its lifecycle is a follow-up
+# realism enhancement, out of scope for the current demo narrative.
 base_date = pd.Timestamp(demo_week_start)
 
 # --- Window 1 ---
@@ -533,7 +543,7 @@ else:
 # Legacy variable for back-compat with downstream prints/expected-impact math
 n_incident_patients = n1 + n2
 
-print(f"\nAffected Patients (two-window mirror design, 2026-05-18):")
+print(f"\nAffected Patients (two-window mirror design):")
 print(f"   Total patients:               {total_patients}")
 print(f"   Window 1 cohort (+{bias_magnitude} mg/dL, Day {cfg.incident_start_day}): {n1} patients ({cfg.incident_pct*100:.0f}%)")
 print(f"   Window 2 cohort ({window2_signed_bias:+.0f} mg/dL, Day {cfg.second_incident_start_day}): {n2} patients ({getattr(cfg, 'second_incident_pct', cfg.incident_pct)*100:.0f}%)")
@@ -559,7 +569,7 @@ print(f"\n[SUCCESS] Two-window incident cohorts selected")
 
 # DBTITLE 1,Inject calibration bias into glucose_observed
 # ------------------------
-# Inject calibration bias during incident windows (two-window mirror design, 2026-05-18)
+# Inject calibration bias during incident windows (two-window mirror design)
 # glucose_true stays unchanged (ground truth)
 # glucose_observed += signed_bias_mgdl during the patient's own incident window
 #   Cohort 1 (positive, +bias_magnitude) is biased during window 1
@@ -745,7 +755,7 @@ incident_info = spark.table(pseudo_incident_tbl).select(
 )
 df = df.drop("has_incident", "incident_direction").join(incident_info, ["patient_id", "time"], "inner")
 
-# Add incident_active flag — TWO windows (2026-05-18 mirror design):
+# Add incident_active flag — TWO windows (two-window mirror design):
 # A row is incident_active if the patient's cohort matches the window AND the row's time
 # is inside that window. Cohort 1 (positive direction) maps to window 1; cohort 2
 # (negative direction) maps to window 2. Cohorts are mutually exclusive so incident_active
@@ -1616,7 +1626,7 @@ baseline_sample = baseline_df.sample(False, 0.1, seed=cfg.seed).toPandas()
 baseline_glucose = baseline_sample['glucose'].dropna().values
 
 # Get clean period and incident period glucose, plus per-cohort splits.
-# E3 (2026-05-18 tweak): split Incident into Incident-Positive (Day 2 +40
+# E3: split Incident into Incident-Positive (Day 2 +40
 # cohort) and Incident-Negative (Day 5 -40 cohort) so the direction-specific
 # distribution shifts are visible. Lumping them under one "Incident" class
 # hides the shift because positive and negative shifts partially cancel.
