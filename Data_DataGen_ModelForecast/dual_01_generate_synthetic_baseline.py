@@ -52,32 +52,41 @@ START_DATE    = datetime(2025, 10, 1)
 # Per-patient (mean, std) continuous draws — replaces the previous discrete
 # phenotype library design.
 #
-# Why: the original 8-phenotype discrete design (commits 21baa5e + df0dc7c
-# added phenotypes #7 + #8) produced a BIMODAL aggregate glucose distribution
-# (peaks ~100 + ~150, valley ~130) because phenotype means clustered into two
-# groups. Real HUPA-UCM population glucose is RIGHT-SKEWED CONTINUOUS — see
-# project_dual_baseline_comparison_results.md 2026-05-16 numbers. Continuous
-# per-patient draws eliminate the cluster artifact and produce a more
-# realistic aggregate shape.
+# Why: the original 8-phenotype discrete design (commits 21baa5e + df0dc7c)
+# produced a BIMODAL aggregate glucose distribution (peaks ~100 + ~150) because
+# phenotype means clustered into two groups. Real HUPA-UCM population glucose
+# is RIGHT-SKEWED CONTINUOUS — see project_dual_baseline_comparison_results.md
+# 2026-05-16 numbers. Continuous per-patient draws eliminate the cluster
+# artifact.
 #
-# Distribution design:
-#   - Mean: normal(135, 25) clipped to [75, 195]. Centered near HUPA-UCM
-#     population mean (~141); std 25 covers ~5th-95th percentile [~95, ~175].
-#   - Std: 15 + 0.15*(mean-100) + N(0,3), clipped to [10, 60]. Sicker patients
-#     (higher mean) have higher variance — clinically realistic.
+# Distribution design (tuned 2026-05-26 across iterations C16 → C17):
+#   - Mean: normal(125, 35) clipped to [70, 200]. Shifted slightly below
+#     HUPA-UCM population mean of 141 + widened std=35 (vs initial C16's
+#     135/25) to ensure adequate tails for hypo_prone + hyper_prone strata.
+#     C16's Normal(135, 25) was TOO TIGHT — produced 0 hypo-stratum patients
+#     (verified empirically 2026-05-26 in run 955000016526491 task
+#     datagen_modeling: hypo_prone n_available=0, got 936/1000).
+#   - Std: V-shaped with patient mean — `20 + 0.10*|mean - 130| + N(0,3)`,
+#     clipped to [15, 60]. Higher std at BOTH extremes (low + high mean) so
+#     low-mean patients produce enough <70 readings to cross hypo threshold,
+#     and high-mean patients produce enough >180 readings to cross hyper.
+#     Middle-mean patients (~130) get the minimum std=20 → tight normal_stable.
 #
-# Stratum coverage in dual_04 (after C14 mixed-drop):
-#   - hypo_prone (>15% readings <70): patients with mean in ~75-95
-#   - normal_stable (>60% readings in [70,180]): patients with mean in ~95-165
-#   - hyper_prone (>40% readings >180): patients with mean in ~165-195
-# All three populate naturally from this distribution.
+# Expected stratum coverage with N_PATIENTS=60 + this distribution:
+#   - hypo_prone:    ~10 patients (means in 70-95, P(reading<70) ≥ 15%)
+#   - normal_stable: ~40 patients (means in 95-165, mostly normal-range)
+#   - hyper_prone:   ~10 patients (means in 165-200, P(reading>180) ≥ 40%)
+#
+# Aggregate shape: mixture of N=60 individual gaussians with continuous means
+# Normal(125, 35) + heteroscedastic std → approximately bell-shaped right-
+# skewed, similar to HUPA-UCM aggregate.
 patient_means = np.clip(
-    np.random.normal(loc=135, scale=25, size=N_PATIENTS),
-    75, 195,
+    np.random.normal(loc=125, scale=35, size=N_PATIENTS),
+    70, 200,
 )
 patient_stds = np.clip(
-    15 + 0.15 * (patient_means - 100) + np.random.normal(0, 3, N_PATIENTS),
-    10, 60,
+    20 + 0.10 * np.abs(patient_means - 130) + np.random.normal(0, 3, N_PATIENTS),
+    15, 60,
 )
 
 # Meal schedule: (hour, carb_g_mean, bolus_mean)
