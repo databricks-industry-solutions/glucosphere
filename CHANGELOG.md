@@ -74,14 +74,17 @@ Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild 
 
 - React static rebuild reconciliation commit (`d260338`) — vite output for `b88d193` source state. Was deployed live 2026-05-19 evening but never committed; this commit brings repo HEAD into sync with the deployed bundle.
 - Two permanent `mode: development` harness targets in `databricks.yml`:
-  - `mmt_aws_usw2_synth_e2e` — `baseline_source=synthetic`, isolated sandbox schema
-  - `mmt_aws_usw2_from_table_e2e` — `baseline_source=from_table`, sources from existing `glucosphere_dev.diabetes_data`
+  - `mmt_aws_usw2_synth_e2e` — `baseline_source=synthetic`, isolated sandbox schema `glucosphere_synth_e2e`. App: `glucosphere-synth-e2e`. DB: `glucosphere-oltp-synth-e2e`.
+  - `mmt_aws_usw2_from_table_e2e` — `baseline_source=from_table`, **self-bootstrapping**: sources from `glucosphere_synth_e2e.diabetes_data` (synth harness output, NOT live `glucosphere_dev`). App: `glucosphere-table-e2e`. DB: `glucosphere-oltp-table-e2e`. Implication: synth_e2e MUST be run BEFORE from_table_e2e.
 
-  Auto-prefixed `[dev may_merkletan]`, paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
+  Auto-prefixed `[dev may_merkletan]` on jobs + pipelines (see "Settled" below for auto-prefix caveats), paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
 
 ### Settled
 
 - **DABs resource naming pattern documented**: `[dev USERNAME]` auto-prefix encodes deployment-type + user (`workspace.current_user.short_name`); target-name suffix (`_synth_e2e`, `_from_table_e2e`) encodes baseline mode. No custom prefix needed for #68 — full reference saved as memory `reference_dabs_resource_naming_pattern.md`. Configurable prefix design (with `BUNDLE_VAR_dev_prefix` env-var override + `bundle-vars.env.example` template) deferred to task #74.
+- **Auto-prefix scope (verified empirically 2026-05-26 via failed first deploy)**: `mode: development` auto-prefixes `jobs:` and `pipelines:` only — NOT `apps:` or `database_instances:` (those resource types have DNS-compliance constraints that exclude brackets). For non-prefixed types, target-level `resources:` overrides are needed to avoid name collisions with the live target.
+- **Short_name normalization**: docs say prefix is `[dev ${workspace.current_user.short_name}]`. Empirical reality: dots in `short_name` get normalized to underscores. May's short_name = `may.merkletan` but actual prefix = `[dev may_merkletan]`.
+- **App name 30-char limit (verified empirically)**: harness App names trimmed to fit (`glucosphere-synth-e2e` = 21 chars, `glucosphere-table-e2e` = 21 chars). The full `glucosphere-dashboard-synth-e2e` would have been 31 chars — over limit.
 - **`real_from_table` E2E test never ran**: confirmed via git log + memory + ref_notes search — commit `1db686e` implemented the mode but no run-completion or memory entry records an actual end-to-end validation. Closed as part of #68 via the `mmt_aws_usw2_from_table_e2e` harness.
 
 ### Deferred (new tasks filed)
