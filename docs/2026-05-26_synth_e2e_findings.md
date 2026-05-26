@@ -11,7 +11,7 @@ Phase 1 (#68) E2E validation of the **synthetic baseline path** surfaced **two l
 | Bug | Where | Why latent | Fix |
 |---|---|---|---|
 | 1. `SCHEMA_NOT_FOUND` in `validate_baseline_source` | First task of `glucosphere_full_setup` | Live target's `glucosphere_dev` schema pre-existed from prior deploys; fresh sandbox schemas don't | Added `CREATE SCHEMA IF NOT EXISTS` before `CREATE TABLE baseline_provenance` (commit `398d637`) |
-| 2. Stratified-sampler plan-size assertion fails | `dual_04_*` line 109 | Synthetic phenotypes produced 0 patients in `hypo_prone` + `mixed` strata; real HUPA-UCM naturally covers all 4 | Added 2 phenotypes: hypo-prone (mean 75, std 20) + brittle T1D (mean 135, std 55) to `dual_01_generate_synthetic_baseline.py` (commit `21baa5e`) |
+| 2. Stratified-sampler plan-size assertion fails | `dual_04_*` line 109 | Synthetic phenotypes produced 0 patients in `hypo_prone` + `mixed` strata; real HUPA-UCM naturally covers all 4 | Added 2 phenotypes: hypo-prone (mean 75, std 20) + brittle T1D — initial `(135, 55)` closed gap to 999/1000 but landed in `normal_stable`; tuned to `(150, 70)` for `mixed` placement (commits `21baa5e` + follow-up tune) |
 
 ## Context
 
@@ -107,7 +107,7 @@ PHENOTYPES = [
     (100, 12, "Type1"),   # tight control                  → normal_stable
     (175, 45, "Type2"),   # high baseline                  → hyper_prone
     (75,  20, "Type1"),   # NEW: hypo-prone               → hypo_prone (>15% <70)
-    (135, 55, "Type1"),   # NEW: brittle/labile T1D        → mixed (high-var both ways)
+    (150, 70, "Type1"),   # NEW: brittle T1D (tuned from initial 135/55 → 150/70 to land in mixed @ ~54% normal, below the 60% normal_stable threshold)
 ]
 ```
 

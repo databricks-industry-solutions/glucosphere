@@ -66,7 +66,7 @@ PHENOTYPES = [
     (100, 12, "Type1"),   # tight control                  → normal_stable
     (175, 45, "Type2"),   # high baseline                  → hyper_prone
     (75,  20, "Type1"),   # hypo-prone (added 2026-05-26)  → hypo_prone (>15% readings <70)
-    (135, 55, "Type1"),   # brittle/labile (added 2026-05-26) → mixed (high-var, no single dominant range)
+    (150, 70, "Type1"),   # brittle T1D (added 2026-05-26, tuned 2026-05-26b — was 135/55 which landed in normal_stable @ 66% > 60% threshold) → mixed (≈54% normal / ≈13% hypo / ≈33% hyper, none dominant)
 ]
 
 # Meal schedule: (hour, carb_g_mean, bolus_mean)
