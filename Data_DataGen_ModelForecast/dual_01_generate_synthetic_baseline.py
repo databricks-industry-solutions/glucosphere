@@ -50,13 +50,23 @@ CADENCE_MIN   = 5           # CGM reading every 5 minutes
 START_DATE    = datetime(2025, 10, 1)
 
 # Patient phenotype library — (glucose_mean, glucose_std, diabetes_type)
+#
+# Designed to populate all 4 strata recognized by dual_04's stratified sampler
+# (dual_04 lines 422-428): hypo_prone (>15% readings <70), hyper_prone
+# (>40% readings >180), normal_stable (>60% readings in [70,180]), mixed (else).
+# Without coverage of all 4 strata, dual_04 fails at the plan-size assertion
+# (verified empirically 2026-05-26 via synth_e2e run 891637990308752 task
+# datagen_modeling run_id 767146243479756: 935/1000 pseudo patients because
+# hypo + mixed strata were empty in the original 6-phenotype set).
 PHENOTYPES = [
-    (95,  15, "Type1"),   # well-controlled T1D
-    (140, 30, "Type1"),   # poorly-controlled T1D
-    (110, 20, "Type2"),   # well-controlled T2D
-    (160, 40, "Type2"),   # poorly-controlled T2D
-    (100, 12, "Type1"),   # tight control
-    (175, 45, "Type2"),   # high baseline
+    (95,  15, "Type1"),   # well-controlled T1D            → normal_stable
+    (140, 30, "Type1"),   # poorly-controlled T1D          → normal_stable/borderline-hyper
+    (110, 20, "Type2"),   # well-controlled T2D            → normal_stable
+    (160, 40, "Type2"),   # poorly-controlled T2D          → hyper_prone
+    (100, 12, "Type1"),   # tight control                  → normal_stable
+    (175, 45, "Type2"),   # high baseline                  → hyper_prone
+    (75,  20, "Type1"),   # hypo-prone (added 2026-05-26)  → hypo_prone (>15% readings <70)
+    (135, 55, "Type1"),   # brittle/labile (added 2026-05-26) → mixed (high-var, no single dominant range)
 ]
 
 # Meal schedule: (hour, carb_g_mean, bolus_mean)
