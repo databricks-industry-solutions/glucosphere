@@ -401,7 +401,7 @@ print(f"All physiological constraints satisfied!")
 # DBTITLE 1,Classify baseline patients into glucose strata
 # ------------------------
 # Classify baseline patients by glucose profile for stratified sampling
-# Goal: Match baseline distribution (ratios derived from source per stratum — #77)
+# Goal: Match baseline distribution (ratios derived from source per stratum)
 # ------------------------
 
 print("Classifying baseline patients by glucose profile...")
@@ -476,21 +476,10 @@ print("segments:", seg.count())
 # COMMAND ----------
 
 # DBTITLE 1,Stratified Sampling Plan
-# ------------------------
-# STRATIFIED sampling plan — targets DERIVED FROM the source's own stratum
-# distribution. Each baseline mode produces a pseudo cohort matching its own
-# source shape:
-#   - from_source (HUPA-UCM):    ~HUPA-UCM ratios
-#   - synthetic:                 synthetic-distribution ratios
-#   - from_table (any UC table): that source's actual ratios
-# Earlier versions of this block hardcoded HUPA-UCM's specific 6.4/71.8/21.8%
-# hypo/normal/hyper ratios as the universal target — that biased non-HUPA-UCM
-# sources (e.g. shifted synthetic pseudo cohort ~15 pp hyper-ward). Resolved by
-# #77 (source-adaptive ratios). See target computation comment below for full
-# rationale.
-# (The 4th "mixed" stratum was also dropped from sampling targets — residual
-#  classification, no downstream consumer; absorbed into normal_stable.)
-# ------------------------
+# Stratified sampling: per-stratum targets derive from the source's own
+# distribution, so the pseudo cohort shape matches the baseline regardless
+# of mode (synthetic / from_source / from_table). The `mixed` stratum is
+# classified but not sampled — see target computation below.
 
 print("Stratified sampling to match baseline distribution...")
 
@@ -510,34 +499,11 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
                                    seg_capped.source_patient_id == patient_strata.patient_id,
                                    "inner").drop(patient_strata.patient_id)
 
-# Calculate target counts per stratum — DERIVED FROM SOURCE DISTRIBUTION (#77).
-#
-# Why source-adaptive: pseudo-patient stratum targets must MATCH the shape of
-# whichever baseline source they're sampling from. Any other choice imposes a
-# foreign distribution on the sampler and biases the pseudo cohort.
-#
-# Concretely: HUPA-UCM real data's natural distribution is ~6.4/71.8/21.8%
-# (hypo/normal/hyper). That ratio is HUPA-UCM-specific — a property of those
-# 25 real patients — NOT a universal target. The earlier hardcoded version of
-# this block treated 6.4/71.8/21.8% as the universal target across all source
-# modes, which:
-#   - worked fine for `from_source` (sampling from HUPA-UCM → targets match)
-#   - silently right-shifted pseudo cohorts for `synthetic` mode (synthetic
-#     baseline distribution is ~4.7/89.2/6.1% by construction; sampler
-#     oversampled the synth source's few hyper patients → pseudo cohort
-#     landed ~15 percentage points hyper-shifted vs the synth baseline)
-#   - would have done the same for `from_table` against any non-HUPA-UCM source
-#
-# Source-adaptive fix below: compute ratios from `stratum_counts` of THIS run's
-# actual source data. Each baseline mode now gets pseudo targets matching its
-# own source:
-#   - from_source (HUPA-UCM):    targets ≈ 6.6/71.7/21.7%  (~unchanged)
-#   - synthetic:                 targets ≈ synth's own ratios (e.g., 22/72/7%)
-#   - from_table (any UC table): targets ≈ that source's actual distribution
-#
-# The 4th "mixed" stratum target stays 0 — residual classification with no
-# downstream consumer; see CHANGELOG (2026-05-26 entry) and
-# docs/2026-05-26_synth_e2e_findings.md for the design rationale.
+# Compute per-stratum targets from the source's own distribution.
+# Pseudo cohort matches baseline shape regardless of mode — each mode uses
+# its own source's ratios, not a fixed ratio borrowed from another source.
+# `mixed` target stays 0 (residual classification, no downstream consumer).
+# See CHANGELOG and docs/2026-05-26_synth_e2e_findings.md for the rationale.
 src_strata = {row['stratum']: row['n_patients']
               for row in stratum_counts.to_dict('records')}
 # Exclude `mixed` from ratio computation; absorb into normal_stable as residual.
@@ -639,16 +605,10 @@ actual_plan_size = plan.count()
 print(f"\nStratified sampling plan created: {actual_plan_size} pseudo patients")
 print("   Distribution will match baseline after generation")
 
-# Hard assertion: plan size MUST equal NUM_PSEUDO. The deterministic cycling
-# sampler above guarantees this by construction — for each stratum, exactly
-# target_count rows are produced via modulo-cycling over the available source
-# segments. The assertion guards against future regressions:
-#   - Reintroducing stochastic sampling (e.g. .sample(withReplacement=True))
-#     would produce variable counts and break the invariant.
-#   - A stratum with zero source patients gets skipped (per the n_available
-#     == 0 branch above), causing the sum to fall short.
-# Catching the violation HERE prevents the off-by-one from propagating into
-# downstream tables (gold layer, dashboard KPIs).
+# Assert plan size matches NUM_PSEUDO. The cycling sampler above produces
+# exact counts per stratum, so this holds by construction. Guards against
+# regressions (e.g. stochastic sampling reintroduced, or a stratum skipped
+# due to zero source patients) before the off-by-one propagates downstream.
 assert actual_plan_size == NUM_PSEUDO, (
     f"[plan-size] expected {NUM_PSEUDO} pseudo patients in {plan_tbl}, got {actual_plan_size}. "
     f"Per-stratum targets were: hypo={target_hypo}, normal={target_normal}, "
@@ -857,7 +817,7 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 # MAGIC * Anchor: p25 (25th percentile)
 # MAGIC * Features: Simple lags + rolling windows (no IOB/COB)
 # MAGIC * Class weights: None
-# MAGIC * Stratification target: derived from source distribution (#77)
+# MAGIC * Stratification target: derived from source distribution
 # MAGIC   — HUPA-UCM source → ~6.4/71.7/21.8%; synthetic source → its own ratios
 # MAGIC
 # MAGIC **Goal:** Preserve baseline distribution while creating diverse pseudo patients
@@ -910,7 +870,7 @@ normal_pct = glucose_dist['normal_points'] / glucose_dist['total_points'] * 100
 hyper_pct = glucose_dist['hyper_points'] / glucose_dist['total_points'] * 100
 
 # Source-derived expected ratios — each baseline mode's pseudo cohort is checked
-# against the source's own stratum distribution (#77; see the source-adaptive
+# against the source's own stratum distribution (see the source-adaptive
 # sampler comment block above for the full rationale). Tolerance bands: 2%
 # absolute for hypo/hyper, 5% for normal — chosen to allow AR(1) + meal-spike
 # + sampling variance while still catching gross drift.

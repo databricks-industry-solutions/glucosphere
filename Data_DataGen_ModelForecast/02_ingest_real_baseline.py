@@ -15,7 +15,7 @@
 # MAGIC     Ported from `01_download_data.py` + `02_parseNcombine_processed_data.py`
 # MAGIC     on `origin/hls-buildathon-main`.
 # MAGIC   - `from_table` — copy from an existing UC table. Source resolved in this
-# MAGIC     priority order (per #72 auto-detect, implemented in this notebook + the
+# MAGIC     priority order (per the auto-detect logic, implemented in this notebook + the
 # MAGIC     validate task):
 # MAGIC     1. Explicit `SOURCE_CATALOG` / `SOURCE_SCHEMA` / `SOURCE_TABLE` widgets
 # MAGIC        if all three set (deterministic; the e2e harness targets use this).
@@ -99,7 +99,7 @@ for stmt in [
 #                      so they only run when BASELINE_SOURCE == "from_source".
 #   - from_source: pass through; download + parse cells handle the rest.
 if BASELINE_SOURCE == "from_table":
-    # #72 — prioritized source auto-detect:
+    # Prioritized source auto-detect:
     #   1. If SOURCE_CATALOG/SCHEMA/TABLE widgets are ALL explicitly set,
     #      use them verbatim (deterministic; this is what the e2e harness
     #      targets use, and what an operator gets when they override via

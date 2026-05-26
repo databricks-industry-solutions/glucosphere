@@ -48,7 +48,7 @@ if BASELINE_SOURCE not in ALLOWED_MODES:
         f"'syntethic' or a stray quote/space.)"
     )
 
-# from_table source resolution — match 02_ingest_real_baseline's auto-detect (#72):
+# from_table source resolution — match 02_ingest_real_baseline's auto-detect logic:
 #   1. Explicit SOURCE_CATALOG/SCHEMA/TABLE widgets win if all three set.
 #   2. Otherwise auto-detect against priority list under CATALOG_NAME.
 #   3. If neither resolves, fail fast here (before the real-baseline notebook

@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Initialize Lakebase Alert State Cache Schema
 # MAGIC
-# MAGIC Plan's Commit F (#42) — step 2: create the `alerts` + `alert_transitions` tables
+# MAGIC Plan's Commit F — step 2: create the `alerts` + `alert_transitions` tables
 # MAGIC in the Lakebase Postgres instance. Idempotent — safe to re-run.
 # MAGIC
 # MAGIC **Inputs (widgets):**
@@ -15,7 +15,7 @@
 # MAGIC - Indexes on alerts(status, severity) / lot_id / detected_at
 # MAGIC
 # MAGIC **Connection pattern:** Databricks OAuth via WorkspaceClient → standard psycopg2
-# MAGIC connection. App SP will use the same pattern for runtime reads/writes (task #42 step 3).
+# MAGIC connection. App SP will use the same pattern for runtime reads/writes (step 3).
 
 # COMMAND ----------
 

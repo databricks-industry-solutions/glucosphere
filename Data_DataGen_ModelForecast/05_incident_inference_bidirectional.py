@@ -9,7 +9,7 @@
 # MAGIC → MAE breakouts. MAE summary print breaks out by direction (both should be ~equal, proving
 # MAGIC direction-agnostic anomaly detection).
 # MAGIC
-# MAGIC Implemented (2026-05-18 two-window mirror design, supersedes #41 Option 3):
+# MAGIC Implemented as a two-window mirror design (supersedes the earlier single-incident variant):
 # MAGIC
 # MAGIC 1. ✅ Two incident windows on MUTUALLY EXCLUSIVE cohorts driven by device_model:
 # MAGIC    Window 1 (Day 2, +bias_magnitude) draws from {Alpha, Gamma}; Window 2 (Day 5,
@@ -26,7 +26,7 @@
 # MAGIC
 # MAGIC See `ref_notes/2026-05-16_app-display-and-incident-simulation.md` for full design + code sketch.
 # MAGIC
-# MAGIC **Lakebase F (task #42) integration:** the new `incident_direction` column on
+# MAGIC **Lakebase F integration:** the new `incident_direction` column on
 # MAGIC `pseudo_incident_7d_labeled` is what populates the `bias_direction` field on the alerts table.
 # MAGIC
 # MAGIC **Sibling notebook:** `06_incident_inference_single.py` retains the unidirectional
@@ -450,7 +450,7 @@ for label, ws, we in [("Window 1", window1_start_ts, window1_end_ts),
     else:
         print(f"   ✅ {label} is within data timerange")
 
-# Select cohorts with DEVICE-MODEL correlation (2026-05-18, #61 tweak F):
+# Select cohorts with DEVICE-MODEL correlation:
 # Demo story: certain device models have a calibration-bias bug. Positive
 # cohort is drawn preferentially from {Alpha, Gamma} (positive-bias models);
 # negative cohort from {Beta, Delta} (negative-bias models); Epsilon + Zeta
