@@ -477,8 +477,10 @@ print("segments:", seg.count())
 
 # DBTITLE 1,Stratified Sampling Plan
 # ------------------------
-# STRATIFIED sampling plan to match baseline distribution
-# Target: 6.4% hypo, 71.7% normal, 21.8% hyper (from baseline)
+# STRATIFIED sampling plan to match baseline distribution.
+# Targets: 6.4% hypo, ~71.8% normal, 21.8% hyper (from HUPA-UCM baseline).
+# (Originally 4 strata with 0.1% "mixed" residual; dropped 2026-05-26 and
+#  absorbed into normal — see target computation below.)
 # ------------------------
 
 print("Stratified sampling to match baseline distribution...")
@@ -499,18 +501,31 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
                                    seg_capped.source_patient_id == patient_strata.patient_id,
                                    "inner").drop(patient_strata.patient_id)
 
-# Calculate target counts per stratum to match baseline distribution
-# Baseline: 6.4% hypo, 71.7% normal, 21.8% hyper
-target_hypo = int(NUM_PSEUDO * 0.064)  # ~64 patients
-target_normal = int(NUM_PSEUDO * 0.717)  # ~717 patients
-target_hyper = int(NUM_PSEUDO * 0.218)  # ~218 patients
-target_mixed = NUM_PSEUDO - target_hypo - target_normal - target_hyper  # Remainder
+# Calculate target counts per stratum to match baseline distribution.
+#
+# Baseline ratios sourced from HUPA-UCM real distribution (6.4% hypo,
+# 21.8% hyper, ~71.8% normal). The original 4th "mixed" category was a
+# classification residual (patients with no single dominant glucose
+# range) and represented 0.1% of HUPA-UCM source patients — numerically
+# negligible for forecast model training and not surfaced in the demo
+# dashboard. Dropped from sampling targets 2026-05-26 after empirical
+# evidence that synthetic baseline can't reliably produce mixed-classified
+# patients (AR(1) autocorrelation + np.clip(40, 400) inflates time-in-normal
+# above the 60% normal_stable threshold). The 0.1% mixed allocation is
+# absorbed into normal_stable; total still sums to NUM_PSEUDO. Patients
+# classified as `mixed` in gen_patient_strata still exist (classification
+# is 4-way exhaustive); they just don't get sampled into the pseudo plan.
+# Symmetric behavior for synthetic + real_from_source modes.
+target_hypo   = int(NUM_PSEUDO * 0.064)            # ~64 patients (6.4%)
+target_hyper  = int(NUM_PSEUDO * 0.218)            # ~218 patients (21.8%)
+target_normal = NUM_PSEUDO - target_hypo - target_hyper  # ~718 (absorbs the 0.1% mixed)
+target_mixed  = 0                                  # dropped (was residual, no consumer)
 
-print(f"\nTarget distribution (matching baseline):")
+print(f"\nTarget distribution (matching baseline; mixed-residual absorbed into normal):")
 print(f"   Hypo-prone:     {target_hypo:3d} patients (6.4%)")
-print(f"   Normal-stable:  {target_normal:3d} patients (71.7%)")
+print(f"   Normal-stable:  {target_normal:3d} patients (~71.8%, +0.1% absorbed from mixed)")
 print(f"   Hyper-prone:    {target_hyper:3d} patients (21.8%)")
-print(f"   Mixed:          {target_mixed:3d} patients (remainder)")
+print(f"   Mixed:          {target_mixed:3d} patients (sampling target dropped 2026-05-26)")
 
 # Sample from each stratum
 from pyspark.sql.functions import lit, row_number, monotonically_increasing_id
@@ -589,8 +604,11 @@ assert actual_plan_size == NUM_PSEUDO, (
     f"Per-stratum targets were: hypo={target_hypo}, normal={target_normal}, "
     f"hyper={target_hyper}, mixed={target_mixed} "
     f"(sum={target_hypo + target_normal + target_hyper + target_mixed}). "
-    f"If a stratum was skipped (n_available == 0), the sum will fall short — adjust "
-    f"NUM_PSEUDO or redistribute the missing stratum's quota to a populated one."
+    f"If a non-zero-target stratum was skipped (n_available == 0), the sum will fall short. "
+    f"mixed is intentionally target=0 (dropped 2026-05-26); other strata gaps indicate the "
+    f"source dataset doesn't satisfy the hypo/hyper/normal phenotype coverage. Fix either "
+    f"by adjusting source phenotypes (dual_01 PHENOTYPES) or by absorbing the missing "
+    f"stratum's target into normal_stable in the target computation above."
 )
 
 # COMMAND ----------

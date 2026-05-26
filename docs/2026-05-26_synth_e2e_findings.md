@@ -11,7 +11,7 @@ Phase 1 (#68) E2E validation of the **synthetic baseline path** surfaced **two l
 | Bug | Where | Why latent | Fix |
 |---|---|---|---|
 | 1. `SCHEMA_NOT_FOUND` in `validate_baseline_source` | First task of `glucosphere_full_setup` | Live target's `glucosphere_dev` schema pre-existed from prior deploys; fresh sandbox schemas don't | Added `CREATE SCHEMA IF NOT EXISTS` before `CREATE TABLE baseline_provenance` (commit `398d637`) |
-| 2. Stratified-sampler plan-size assertion fails | `dual_04_*` line 109 | Synthetic phenotypes produced 0 patients in `hypo_prone` + `mixed` strata; real HUPA-UCM naturally covers all 4 | Added 2 phenotypes: hypo-prone (mean 75, std 20) + brittle T1D — initial `(135, 55)` closed gap to 999/1000 but landed in `normal_stable`; tuned to `(150, 70)` for `mixed` placement (commits `21baa5e` + follow-up tune) |
+| 2. Stratified-sampler plan-size assertion fails | `dual_04_*` line 109 | Synthetic phenotypes produced 0 patients in `hypo_prone` + `mixed` strata; AR(1) autocorrelation + clip make `mixed` (residual category, "no single dominant range") effectively unreachable by any synthetic phenotype design | 3 iterations: added phenotypes (C9), tuned brittle (C12), then **dropped mixed from sampling targets entirely** (C14) — `mixed` was a 0.1% classification residual with no downstream consumer. Allocation absorbed into `normal_stable`. Symmetric behavior across synthetic + real. |
 
 ## Context
 
@@ -159,8 +159,18 @@ databricks bundle destroy -t mmt_aws_usw2_from_table_e2e --auto-approve --profil
 # Then manually DROP SCHEMA glucosphere_synth_e2e + glucosphere_from_table_e2e CASCADE
 ```
 
-## Open question for team
+## Architectural pivot 2026-05-26 (resolves the open question below)
 
-`dual_04`'s target ratios are HARDCODED to HUPA-UCM proportions. Should they adapt to the source distribution dynamically (would make the sampler robust to any future cohort shift), or should we treat the hardcoded ratios as a contract that source data must satisfy (current state, with this fix the contract is now satisfied for synthetic too)? Either's defensible — flagging because someone may want to revisit.
+The phenotype-tuning path (iterations 1 + 2 above) closed hypo coverage but couldn't reliably populate the `mixed` stratum — AR(1) autocorrelation + np.clip(40, 400) inflate time-in-normal above the 60% normal_stable threshold for any phenotype that doesn't ALSO trigger hypo_prone or hyper_prone. Two empirical attempts confirmed this.
 
-For now: phenotype change is the minimal fix that ships #68. Sampler adaptivity = follow-up if surfaced as friction later.
+Iteration 3 dropped `mixed` from sampling targets entirely. Rationale:
+- `mixed` was a residual classification (`.otherwise("mixed")` in `dual_04` line 427) — not a designed category
+- 0.1% allocation (1 patient out of 1000) — numerically negligible for forecast model training
+- Dashboard does not reference `mixed` anywhere — KPIs use hypo / hyper / time-in-range
+- Real HUPA-UCM had ~1 mixed-classified patient out of 25; that 1 patient is reallocated from mixed-residual sampling to normal_stable. Effectively same cohort composition.
+
+New target ratios: 6.4% hypo / ~71.8% normal / 21.8% hyper / 0 mixed = 1000 total. Symmetric behavior across synthetic + real_from_source / from_table modes. Patient classification (`gen_patient_strata`) keeps all 4 labels for completeness; sampler just doesn't pull from mixed.
+
+## Original open question for team (now resolved)
+
+`dual_04`'s target ratios were HARDCODED to HUPA-UCM proportions including a 0.1% mixed slot. The question was whether to adapt them dynamically or keep hardcoded. **Resolved 2026-05-26 by dropping the mixed slot entirely** — it was a residual classification artifact, not a designed feature. If a future change needs to re-introduce a 4th "mixed-pattern" cohort, design it intentionally rather than recovering it as residual.
