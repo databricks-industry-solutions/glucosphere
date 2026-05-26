@@ -98,6 +98,14 @@ source_detail = (
     else "HUPA-UCM Mendeley dataset" if BASELINE_SOURCE == "from_source"
     else "synthetic generator (textbook phenotypes + AR(1))"
 )
+# Ensure schema exists before writing provenance. dual_01_* notebooks (which
+# create the schema themselves) run AFTER this validate task, so for any fresh
+# sandbox deploy (e.g., the mmt_aws_usw2_synth_e2e / from_table_e2e harness
+# targets, or any new workspace bootstrap) the schema doesn't exist yet at
+# this point. Idempotent CREATE SCHEMA IF NOT EXISTS — no-op for existing
+# schemas (e.g., the live mmt_aws_usw2.glucosphere_dev target).
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}")
+
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance (
         baseline_source STRING,
