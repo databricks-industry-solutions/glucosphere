@@ -15,8 +15,10 @@
 # MAGIC     and understand what each path produces
 # MAGIC
 # MAGIC NOT part of `glucosphere_full_setup` job — operators run this manually
-# MAGIC after they have at least 2 modes populated. Set any mode's schema widget
-# MAGIC to empty string ("") to skip that mode in the comparison.
+# MAGIC after they have at least 2 modes populated. To skip a mode in the
+# MAGIC comparison: clear that mode's schema widget to empty string, OR leave
+# MAGIC the `<placeholder>` default in place (angle-bracketed values are
+# MAGIC treated as "not set" by `_resolve_schema()`).
 # MAGIC
 # MAGIC Stats computed per mode (whatever modes are configured):
 # MAGIC   - `n_rows`, `n_patients`
@@ -29,28 +31,39 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME",            "mmt_aws_usw2_catalog", "Catalog containing the schemas to compare")
-dbutils.widgets.text("SYNTHETIC_SCHEMA",        "",                     "Schema where synthetic-mode diabetes_data lives (empty to skip; e.g. glucosphere_synth_e2e)")
-dbutils.widgets.text("FROM_SOURCE_SCHEMA",      "",                     "Schema where from_source-mode diabetes_data lives (empty to skip; e.g. glucosphere_from_source_e2e, or the live glucosphere_dev)")
-dbutils.widgets.text("FROM_TABLE_SCHEMA",       "",                     "Schema where from_table-mode diabetes_data lives (empty to skip; e.g. glucosphere_from_table_e2e)")
-dbutils.widgets.text("WRITE_SUMMARY_TO_SCHEMA", "",                     "Optional: write summary table to this schema (empty = print only)")
+# Widget defaults use <placeholder> markers — angle-bracket-wrapped values are
+# treated as "not set" by `_resolve_schema()` below, so they're skipped just
+# like empty strings. The placeholders signal to operators what a typical
+# value looks like (e.g. harness schemas from #68 validation: glucosphere_synth_e2e
+# / glucosphere_from_source_e2e / glucosphere_from_table_e2e). Replace the
+# placeholder with a real schema name, OR clear the widget, to skip that mode.
+dbutils.widgets.text("CATALOG_NAME",            "mmt_aws_usw2_catalog",          "Catalog containing the schemas to compare")
+dbutils.widgets.text("SYNTHETIC_SCHEMA",        "<glucosphere_synth_e2e>",       "Schema for synthetic-mode diabetes_data — replace placeholder or clear to skip")
+dbutils.widgets.text("FROM_SOURCE_SCHEMA",      "<glucosphere_from_source_e2e>", "Schema for from_source-mode diabetes_data — replace placeholder (or use live glucosphere_dev) or clear to skip")
+dbutils.widgets.text("FROM_TABLE_SCHEMA",       "<glucosphere_from_table_e2e>",  "Schema for from_table-mode diabetes_data — replace placeholder or clear to skip")
+dbutils.widgets.text("WRITE_SUMMARY_TO_SCHEMA", "",                              "Optional: write summary table to this schema (empty = print only)")
 
-CATALOG_NAME           = dbutils.widgets.get("CATALOG_NAME")
-SYNTHETIC_SCHEMA       = dbutils.widgets.get("SYNTHETIC_SCHEMA")
-FROM_SOURCE_SCHEMA = dbutils.widgets.get("FROM_SOURCE_SCHEMA")
-FROM_TABLE_SCHEMA = dbutils.widgets.get("FROM_TABLE_SCHEMA")
+def _resolve_schema(value):
+    """Return schema name if real, '' if empty OR <angle-bracket placeholder>."""
+    value = (value or "").strip()
+    return "" if (not value or (value.startswith("<") and value.endswith(">"))) else value
+
+CATALOG_NAME            = dbutils.widgets.get("CATALOG_NAME")
+SYNTHETIC_SCHEMA        = _resolve_schema(dbutils.widgets.get("SYNTHETIC_SCHEMA"))
+FROM_SOURCE_SCHEMA      = _resolve_schema(dbutils.widgets.get("FROM_SOURCE_SCHEMA"))
+FROM_TABLE_SCHEMA       = _resolve_schema(dbutils.widgets.get("FROM_TABLE_SCHEMA"))
 WRITE_SUMMARY_TO_SCHEMA = dbutils.widgets.get("WRITE_SUMMARY_TO_SCHEMA")
 
-# Build mode → schema mapping, skipping any with empty schema
+# Build mode → schema mapping, skipping any with empty/placeholder schema
 MODES = {}
-if SYNTHETIC_SCHEMA:        MODES["synthetic"]        = SYNTHETIC_SCHEMA
+if SYNTHETIC_SCHEMA:   MODES["synthetic"]   = SYNTHETIC_SCHEMA
 if FROM_SOURCE_SCHEMA: MODES["from_source"] = FROM_SOURCE_SCHEMA
 if FROM_TABLE_SCHEMA:  MODES["from_table"]  = FROM_TABLE_SCHEMA
 
 if len(MODES) < 2:
     raise ValueError(
         f"Need at least 2 baseline modes configured to compare. Got {len(MODES)}: {list(MODES.keys())}. "
-        f"Set the schema widgets for the modes you want to include (or non-empty to enable)."
+        f"Set the schema widgets to real schema names (replace any `<placeholder>` defaults) for the modes you want to include."
     )
 
 print(f"Comparing {len(MODES)} baseline modes: {list(MODES.keys())}")

@@ -202,7 +202,7 @@ databricks bundle run -t <target> glucosphere_distribution_comparison \
   --profile <profile>
 ```
 
-Or click "Run now with different parameters" in Workflows UI and point `SYNTHETIC_SCHEMA` / `REAL_FROM_SOURCE_SCHEMA` at the schemas you want compared. Emits side-by-side stats (n, percentiles, glycemic buckets), pairwise Kolmogorov-Smirnov test, and three inline matplotlib plots (overlaid histograms, boxplot, bucket %). PNGs auto-save to a UC Volume.
+Or click "Run now with different parameters" in Workflows UI and point at least 2 of `SYNTHETIC_SCHEMA` / `FROM_SOURCE_SCHEMA` / `FROM_TABLE_SCHEMA` at the schemas you want compared (replace the `<placeholder>` defaults with real schema names; leave or clear the others to skip). Emits side-by-side stats (n, percentiles, glycemic buckets), pairwise Kolmogorov-Smirnov test, and three inline matplotlib plots (overlaid histograms, boxplot, bucket %). PNGs auto-save to a UC Volume.
 
 ### See also
 
