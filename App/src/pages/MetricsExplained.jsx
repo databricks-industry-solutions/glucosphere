@@ -6,7 +6,7 @@ import { getConfig } from '../api/config';
 // (App/databricks/app.py:serve_uc_asset). No vite-bundled static copy needed —
 // the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/landing_zone/dual_05_assets/
 // and the App fetches it live. Refresh PNG = rerun the pipeline; no rebuild needed.
-const FIG4_UC_PATH = '/uc-assets/dual_05_assets/fig4_distribution_comparison_4panel.png';
+const FIG4_UC_PATH = '/uc-assets/dual_05_assets/distribution_comparison_4panel.png';
 
 export default function MetricsExplained() {
   const navigate = useNavigate();

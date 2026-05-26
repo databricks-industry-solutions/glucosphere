@@ -64,37 +64,37 @@ In short, the flow is:
 
 This is a quick sanity check that pseudo-patients preserve key distributional properties of baseline glucose (overall distribution, range buckets, and quantile alignment).
 
-![Baseline vs pseudo glucose distribution](assets/GlucoseDistribution_real%28baseline%29_vs_simulated%28pseudo%29.png)
+![Baseline vs pseudo glucose distribution](assets/glucose_distribution_real_vs_simulated.png)
 
 - **Forecast accuracy (15m vs 30m)**:
 
 Evaluation on clean data: scatter of predicted vs observed, error distribution (MAE), and error by glucose range (hypo/normal/hyper).
 
-![Forecast accuracy (15m vs 30m)](assets/Forecast_15min_30min_MAE.png)
+![Forecast accuracy (15m vs 30m)](assets/forecast_15min_30min_mae.png)
 
 - **Incident impact summary (MAE spike + bidirectional ±40 mg/dL glucose timeline)**:
 
 Top-level “what went wrong” view: MAE spikes during incident windows while the bidirectional glucose timeline shows the positive cohort (red, over-reads UP) on Day 2 and the negative cohort (blue, under-reads DOWN) on Day 5.
 
-![Incident impact summary](assets/fig1_mae_glucose_bidirectional_2panel.png)
+![Incident impact summary](assets/incident_impact_2panel.png)
 
 - **Incident MAE breakdown (all vs affected vs unaffected — fleet-wide dilution effect)**:
 
 Three-panel breakdown to avoid dilution: fleet-wide average can hide the true impact on the affected subset (which spikes to ~25 mg/dL MAE) vs unaffected patients where performance stays stable.
 
-![Incident MAE breakdown](assets/fig2_mae_breakdown_3panel.png)
+![Incident MAE breakdown](assets/mae_breakdown_3panel.png)
 
 - **True vs observed glucose during incident (±40 mg/dL bidirectional bias)**:
 
 Three-panel illustration of the incident mechanism: fleet-wide observed (mediumturquoise) vs true (darkgray) shows diluted bias on top; affected-only panel breaks into positive (red, over-reads) and negative (blue, under-reads) cohorts; unaffected panel shows stable readings (device OK).
 
-![True vs observed glucose during incident](assets/fig3_glucose_timeline_3panel.png)
+![True vs observed glucose during incident](assets/glucose_timeline_3panel.png)
 
 - **Distribution shift (4-class: baseline vs clean vs Inc+ cohort vs Inc− cohort)**:
 
 Shows how the incident shifts glucose distribution (density + range breakdown + CDF + boxplots), broken out 4 ways: baseline (darkgray), clean period (mediumturquoise), Inc+ over-reads cohort (red — shifts into hyper >180), Inc− under-reads cohort (blue — shifts into hypo <70). Helps explain why the clean-trained model fails on both directions.
 
-![Distribution shift 4-class](assets/fig4_distribution_comparison_4panel.png)
+![Distribution shift 4-class](assets/distribution_comparison_4panel.png)
 
 ---
 

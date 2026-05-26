@@ -513,8 +513,8 @@ def serve_uc_asset(filename):
     vite build — the App fetches them live from UC Volume. Pipeline reruns
     overwrite the UC Volume file; this route serves the latest with no-cache.
 
-    Example: <img src="/uc-assets/dual_05_assets/fig4_distribution_comparison_4panel.png">
-    Resolves to: /Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/landing_zone/dual_05_assets/fig4_distribution_comparison_4panel.png
+    Example: <img src="/uc-assets/dual_05_assets/distribution_comparison_4panel.png">
+    Resolves to: /Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/landing_zone/dual_05_assets/distribution_comparison_4panel.png
     """
     host, token = get_auth()
     if not token:

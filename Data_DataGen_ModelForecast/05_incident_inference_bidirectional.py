@@ -1151,7 +1151,7 @@ plt.tight_layout()
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
-    _asset_path = f"{_ASSET_DIR}/fig1_mae_glucose_bidirectional_2panel.png"
+    _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
 except Exception as _e:
@@ -1329,7 +1329,7 @@ plt.tight_layout()
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
-    _asset_path = f"{_ASSET_DIR}/fig2_mae_breakdown_3panel.png"
+    _asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
 except Exception as _e:
@@ -1579,7 +1579,7 @@ plt.tight_layout()
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
-    _asset_path = f"{_ASSET_DIR}/fig3_glucose_timeline_3panel.png"
+    _asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
 except Exception as _e:
@@ -1878,7 +1878,7 @@ plt.tight_layout()
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
-    _asset_path = f"{_ASSET_DIR}/fig4_distribution_comparison_4panel.png"
+    _asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
 except Exception as _e:
