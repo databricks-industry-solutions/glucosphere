@@ -81,6 +81,8 @@ Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild 
 
 - `docs/2026-05-26_synth_e2e_findings.md` (`09d2239`) — team-shareable engineering write-up of the two latent bugs surfaced by the synth_e2e harness validation (see "Fixed" below). Self-contained with context, root cause analysis, fixes, retry commands, and an open question on stratified-sampler adaptivity for team review.
 
+  - **Doc extension 2026-05-26** (uncommitted): added a new "Synthetic vs real data — structural realism for incident simulation" section capturing the architectural lesson from the validation iteration log — synthetic distributions are narrow (require curated phenotypes to populate hypo + hyper strata) while real HUPA-UCM provides both tails naturally. Empirically reaffirms the 2026-05-16 default flip to `baseline_source=from_source` AND clarifies why bidirectional incident simulation (#41 — over-reading + under-reading device calibration bugs) needs real-baseline mode specifically. Linked threads: #41 / #72 / #77 / #78. README's "Why `from_source` is the default" para extended to cross-reference the new findings-doc section.
+
 ### Fixed
 
 - **Bug 1 — `SCHEMA_NOT_FOUND` in `validate_baseline_source`** (`398d637`). The validate task is the FIRST task in `glucosphere_full_setup` and tried to `CREATE TABLE IF NOT EXISTS baseline_provenance` — but the schema didn't exist yet on fresh-schema deploys (dual_01's `CREATE SCHEMA` runs AFTER dispatch, which is AFTER validate). Latent because live `mmt_aws_usw2.glucosphere_dev` has existed since 2026-05-15. Fix: idempotent `CREATE SCHEMA IF NOT EXISTS` before the table write in `dual_validate_baseline_source.py:107`. Verified via run `891637990308752` validate task: SUCCESS.
