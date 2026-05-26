@@ -49,23 +49,19 @@ DAYS_PER_PAT  = 14          # Days of data per patient
 CADENCE_MIN   = 5           # CGM reading every 5 minutes
 START_DATE    = datetime(2025, 10, 1)
 
-# Per-patient (mean, std) continuous draws — replaces the previous discrete
-# phenotype library design.
+# Per-patient (mean, std) continuous draws — produces a right-skewed
+# continuous aggregate glucose distribution matching the HUPA-UCM real-data
+# shape. Replaces an earlier discrete phenotype library design that
+# produced bimodal artifacts when phenotype means clustered into distinct
+# groups. Iteration history + the prior-design failures are documented in
+# CHANGELOG (2026-05-26 entry) and docs/2026-05-26_synth_e2e_findings.md.
 #
-# Why: the original 8-phenotype discrete design (commits 21baa5e + df0dc7c)
-# produced a BIMODAL aggregate glucose distribution (peaks ~100 + ~150) because
-# phenotype means clustered into two groups. Real HUPA-UCM population glucose
-# is RIGHT-SKEWED CONTINUOUS — see project_dual_baseline_comparison_results.md
-# 2026-05-16 numbers. Continuous per-patient draws eliminate the cluster
-# artifact.
-#
-# Distribution design (tuned 2026-05-26 across iterations C16 → C17):
-#   - Mean: normal(125, 35) clipped to [70, 200]. Shifted slightly below
-#     HUPA-UCM population mean of 141 + widened std=35 (vs initial C16's
-#     135/25) to ensure adequate tails for hypo_prone + hyper_prone strata.
-#     C16's Normal(135, 25) was TOO TIGHT — produced 0 hypo-stratum patients
-#     (verified empirically 2026-05-26 in run 955000016526491 task
-#     datagen_modeling: hypo_prone n_available=0, got 936/1000).
+# Distribution design:
+#   - Mean: normal(125, 35) clipped to [70, 200]. Slightly below HUPA-UCM
+#     population mean of 141; std=35 ensures adequate tails to populate
+#     both hypo_prone (>15% readings <70) and hyper_prone (>40% readings
+#     >180) strata. Tighter distributions (e.g. N(135, 25)) leave the
+#     hypo stratum unpopulated under the threshold criteria.
 #   - Std: V-shaped with patient mean — `20 + 0.10*|mean - 130| + N(0,3)`,
 #     clipped to [15, 60]. Higher std at BOTH extremes (low + high mean) so
 #     low-mean patients produce enough <70 readings to cross hypo threshold,

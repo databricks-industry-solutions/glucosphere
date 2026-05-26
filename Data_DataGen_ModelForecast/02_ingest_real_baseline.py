@@ -29,7 +29,7 @@
 
 # COMMAND ----------
 
-# Widgets — all parameterized per codex C1 (no hardcoded sources)
+# Widgets — all parameterized via bundle variables (no hardcoded sources)
 dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog (target)")
 dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema (target)")
 dbutils.widgets.text("BASELINE_SOURCE", "from_source", "Mode: from_source | from_table")

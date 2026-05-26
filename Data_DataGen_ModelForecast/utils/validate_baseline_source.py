@@ -16,7 +16,8 @@
 # MAGIC    `/api/config` route queries this row (with 60s TTL cache) so the
 # MAGIC    Metrics Explained page can render mode-accurate prose without
 # MAGIC    relying on deploy-time env vars (which can skew from the pipeline's
-# MAGIC    actual run mode). See `~/.claude/projects/.../memory/reference_provenance_table_pattern.md`.
+# MAGIC    actual run mode). See `docs/2026-05-26_synth_e2e_findings.md` for the
+# MAGIC    runtime-dynamic provenance pattern + downstream consumer chain.
 
 # COMMAND ----------
 

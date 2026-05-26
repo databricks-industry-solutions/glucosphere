@@ -515,12 +515,13 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
 # 4.7/89.2/6.1% but sampler targeted 6.4/71.8/21.8% → pseudo +15% hyper).
 #
 # Pseudo cohort now matches BASELINE shape per mode:
-#   - real_from_source (HUPA-UCM): targets ≈ 6.6/71.7/21.7% (~unchanged)
-#   - synthetic (C17 phenotypes):   targets ≈ source-derived (e.g., 22/72/7%)
-#   - from_table (any UC table):    targets ≈ that source's actual distribution
+#   - from_source (HUPA-UCM):    targets ≈ 6.6/71.7/21.7% (~unchanged)
+#   - synthetic:                 targets ≈ source-derived (e.g., 22/72/7%)
+#   - from_table (any UC table): targets ≈ that source's actual distribution
 #
-# The 4th "mixed" stratum target stays 0 (residual classification, no consumer
-# — see git history for the 2026-05-26 mixed-drop rationale).
+# The 4th "mixed" stratum target stays 0 — residual classification with no
+# downstream consumer; see CHANGELOG (2026-05-26 entry) and
+# docs/2026-05-26_synth_e2e_findings.md for the design rationale.
 src_strata = {row['stratum']: row['n_patients']
               for row in stratum_counts.to_dict('records')}
 # Exclude `mixed` from ratio computation; absorb into normal_stable as residual.
