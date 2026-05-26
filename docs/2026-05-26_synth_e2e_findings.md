@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-Phase 1 (#68) E2E validation of the **synthetic baseline path** surfaced **two latent bugs** that had been masked by the live deploy always running `from_source` (real HUPA-UCM data). Both are now fixed locally on branch `feature/dual-baseline-mmt-aws-usw2`. Pre-merge-to-main retest in flight.
+Phase 1 (#68) E2E validation of the **synthetic baseline path** surfaced **two correctness bugs + one visual-quality bug** that had been masked by the live deploy always running `from_source` (real HUPA-UCM data). All three are now fixed locally on branch `feature/dual-baseline-mmt-aws-usw2`.
 
 | Bug | Where | Why latent | Fix |
 |---|---|---|---|
@@ -158,6 +158,37 @@ databricks bundle destroy -t mmt_aws_usw2_synth_e2e --auto-approve --profile fev
 databricks bundle destroy -t mmt_aws_usw2_from_table_e2e --auto-approve --profile fevm-mmt-aws-usw2
 # Then manually DROP SCHEMA glucosphere_synth_e2e + glucosphere_from_table_e2e CASCADE
 ```
+
+## Bug 3 (visual / quality) — bimodal synthetic distribution
+
+After Bugs 1 + 2 cleared and synth_e2e ran successfully to `datagen_modeling`, the `dual_02_compare_baseline_modes.py` comparison output revealed a **bimodal aggregate glucose distribution** in synthetic baseline (peaks ~100 + ~150 mg/dL, valley ~130). Real HUPA-UCM by contrast is **right-skewed continuous** — see `project_dual_baseline_comparison_results.md` 2026-05-16 numbers (mean 141, median 132, p95 251, single peak).
+
+### Root cause
+
+The 8-phenotype discrete design in `dual_01_generate_synthetic_baseline.py` lines 53-70 (after C9 + C12 additions) had phenotype means clustered into TWO groups:
+
+| Low cluster (~75-110) | High cluster (~140-175) |
+|---|---|
+| (95, 15) well-controlled T1D | (140, 30) poorly-controlled T1D |
+| (110, 20) well-controlled T2D | (160, 40) poorly-controlled T2D |
+| (100, 12) tight control | (175, 45) high baseline |
+| (75, 20) hypo-prone (C9) | (150, 70) brittle (C12) |
+
+With N=60 patients cycling through 8 phenotypes (7-8 per phenotype) and AR(1) autocorrelation (α=0.97 in dual_01 line 88) keeping each patient's glucose near its phenotype mean, the AGGREGATED histogram inherited the bimodal cluster pattern. No phenotype mean lived in 110-140 → valley.
+
+**This is not a correctness bug** — KPIs/forecast are fine — but is visually unrealistic and would confuse anyone comparing against real CGM population data.
+
+### Fix (C16)
+
+Replaced the discrete `PHENOTYPES` list with continuous per-patient draws:
+```python
+patient_means = np.clip(np.random.normal(135, 25, N_PATIENTS), 75, 195)
+patient_stds  = np.clip(15 + 0.15 * (patient_means - 100) + np.random.normal(0, 3, N_PATIENTS), 10, 60)
+```
+
+Per-patient `(mean, std)` continuous → aggregate becomes unimodal right-skewed, matching real HUPA-UCM shape. Stratum coverage in dual_04 still satisfied (some patients have low means → hypo_prone; some high → hyper_prone; majority normal_stable).
+
+Filed originally as task #75 "smooth synthetic distribution" but escalated into this session when the user noticed the bimodal pattern in the comparison plot.
 
 ## Architectural pivot 2026-05-26 (resolves the open question below)
 

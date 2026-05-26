@@ -49,25 +49,36 @@ DAYS_PER_PAT  = 14          # Days of data per patient
 CADENCE_MIN   = 5           # CGM reading every 5 minutes
 START_DATE    = datetime(2025, 10, 1)
 
-# Patient phenotype library — (glucose_mean, glucose_std, diabetes_type)
+# Per-patient (mean, std) continuous draws — replaces the previous discrete
+# phenotype library design.
 #
-# Designed to populate all 4 strata recognized by dual_04's stratified sampler
-# (dual_04 lines 422-428): hypo_prone (>15% readings <70), hyper_prone
-# (>40% readings >180), normal_stable (>60% readings in [70,180]), mixed (else).
-# Without coverage of all 4 strata, dual_04 fails at the plan-size assertion
-# (verified empirically 2026-05-26 via synth_e2e run 891637990308752 task
-# datagen_modeling run_id 767146243479756: 935/1000 pseudo patients because
-# hypo + mixed strata were empty in the original 6-phenotype set).
-PHENOTYPES = [
-    (95,  15, "Type1"),   # well-controlled T1D            → normal_stable
-    (140, 30, "Type1"),   # poorly-controlled T1D          → normal_stable/borderline-hyper
-    (110, 20, "Type2"),   # well-controlled T2D            → normal_stable
-    (160, 40, "Type2"),   # poorly-controlled T2D          → hyper_prone
-    (100, 12, "Type1"),   # tight control                  → normal_stable
-    (175, 45, "Type2"),   # high baseline                  → hyper_prone
-    (75,  20, "Type1"),   # hypo-prone (added 2026-05-26)  → hypo_prone (>15% readings <70)
-    (150, 70, "Type1"),   # brittle T1D (added 2026-05-26, tuned 2026-05-26b — was 135/55 which landed in normal_stable @ 66% > 60% threshold) → mixed (≈54% normal / ≈13% hypo / ≈33% hyper, none dominant)
-]
+# Why: the original 8-phenotype discrete design (commits 21baa5e + df0dc7c
+# added phenotypes #7 + #8) produced a BIMODAL aggregate glucose distribution
+# (peaks ~100 + ~150, valley ~130) because phenotype means clustered into two
+# groups. Real HUPA-UCM population glucose is RIGHT-SKEWED CONTINUOUS — see
+# project_dual_baseline_comparison_results.md 2026-05-16 numbers. Continuous
+# per-patient draws eliminate the cluster artifact and produce a more
+# realistic aggregate shape.
+#
+# Distribution design:
+#   - Mean: normal(135, 25) clipped to [75, 195]. Centered near HUPA-UCM
+#     population mean (~141); std 25 covers ~5th-95th percentile [~95, ~175].
+#   - Std: 15 + 0.15*(mean-100) + N(0,3), clipped to [10, 60]. Sicker patients
+#     (higher mean) have higher variance — clinically realistic.
+#
+# Stratum coverage in dual_04 (after C14 mixed-drop):
+#   - hypo_prone (>15% readings <70): patients with mean in ~75-95
+#   - normal_stable (>60% readings in [70,180]): patients with mean in ~95-165
+#   - hyper_prone (>40% readings >180): patients with mean in ~165-195
+# All three populate naturally from this distribution.
+patient_means = np.clip(
+    np.random.normal(loc=135, scale=25, size=N_PATIENTS),
+    75, 195,
+)
+patient_stds = np.clip(
+    15 + 0.15 * (patient_means - 100) + np.random.normal(0, 3, N_PATIENTS),
+    10, 60,
+)
 
 # Meal schedule: (hour, carb_g_mean, bolus_mean)
 MEALS = [
@@ -85,9 +96,16 @@ def glucose_meal_response(t_min, carbs, amplitude=1.0):
     width  = 30
     return amplitude * carbs * 0.6 * np.exp(-0.5 * ((t_min - peak_t) / width) ** 2)
 
-def generate_patient(patient_id, phenotype_idx):
-    """Generate CADENCE_MIN-resolution CGM timeseries for one patient."""
-    g_mean, g_std, _ = PHENOTYPES[phenotype_idx % len(PHENOTYPES)]
+def generate_patient(patient_id):
+    """Generate CADENCE_MIN-resolution CGM timeseries for one patient.
+
+    Per-patient (mean, std) comes from the patient_means/patient_stds arrays
+    computed above — continuous draws replace the prior discrete phenotype
+    lookup. See `Per-patient (mean, std) continuous draws` block above for
+    distribution design + rationale.
+    """
+    g_mean = patient_means[patient_id - 1]
+    g_std  = patient_stds[patient_id - 1]
     n_steps = int(DAYS_PER_PAT * 24 * 60 / CADENCE_MIN)
     times   = [START_DATE + timedelta(minutes=i * CADENCE_MIN) for i in range(n_steps)]
 
@@ -152,10 +170,11 @@ def generate_patient(patient_id, phenotype_idx):
 # ── Generate all patients ────────────────────────────────────────────────────
 
 print(f"Generating {N_PATIENTS} synthetic patients × {DAYS_PER_PAT} days...")
+print(f"   Mean glucose draw range: [{patient_means.min():.1f}, {patient_means.max():.1f}] mg/dL  (target ~135±25 clipped to [75, 195])")
+print(f"   Std  glucose draw range: [{patient_stds.min():.1f}, {patient_stds.max():.1f}]")
 dfs = []
 for pid in range(N_PATIENTS):
-    ptype = pid % len(PHENOTYPES)
-    dfs.append(generate_patient(pid + 1, ptype))
+    dfs.append(generate_patient(pid + 1))
 
 all_pd = pd.concat(dfs, ignore_index=True)
 print(f"Total rows: {len(all_pd):,}  |  Patients: {all_pd['patient_id'].nunique()}")
