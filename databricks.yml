@@ -105,6 +105,16 @@ targets:
   # via Slack / sign-up before running.
   #
   # Validates synthetic-mode pipeline end-to-end (Mendeley download skipped).
+  #
+  # NOTE on `mode: development` auto-prefix behavior (verified empirically
+  # 2026-05-26 via failed first deploy): the auto-prefix
+  # `[dev ${workspace.current_user.short_name}]` is applied to JOBS and
+  # PIPELINES only — NOT to apps or database_instances (those resource
+  # types have DNS/format constraints that exclude brackets). For those,
+  # we override the name per-target so they don't collide with the live
+  # `mmt_aws_usw2` target's `glucosphere-dashboard` + `glucosphere-oltp-*`.
+  # Also note: dots in short_name become underscores in the actual prefix
+  # (e.g., `may.merkletan` → `[dev may_merkletan]`).
   mmt_aws_usw2_synth_e2e:
     mode: development
     workspace:
@@ -114,11 +124,30 @@ targets:
       schema: glucosphere_synth_e2e
       warehouse_id: dafc5dff8eb8094a
       baseline_source: synthetic
+    resources:
+      # App name must be 2-30 chars (verified empirically 2026-05-26).
+      # Drop `-dashboard` suffix to keep under limit; suffixed name still
+      # clearly distinguishes from live `glucosphere-dashboard` in the
+      # workspace Apps list.
+      apps:
+        glucosphere_dashboard:
+          name: glucosphere-synth-e2e
+      database_instances:
+        glucosphere_oltp:
+          name: glucosphere-oltp-synth-e2e
 
   # Validates the from_table mode end-to-end — never previously tested
   # (commit `1db686e` implemented it but no run-completion record exists).
-  # Source: the live glucosphere_dev.diabetes_data table (whichever mode
-  # last populated it). The from_table CTAS copies into the sandbox schema.
+  #
+  # Source: SELF-BOOTSTRAPPING from the synth_e2e harness output
+  # (`glucosphere_synth_e2e.diabetes_data`). This means:
+  #   1. Run synth_e2e first → populates glucosphere_synth_e2e.diabetes_data
+  #   2. Then deploy + run from_table_e2e → CTAS-copies from synth output
+  #      into glucosphere_from_table_e2e.diabetes_data
+  # Rationale: avoids touching the live `glucosphere_dev` schema (no
+  # concurrency risk, no dependency on live-pipeline state). The from_table
+  # mode is source-agnostic by design — synthetic-populated source works
+  # exactly like any other UC table conforming to the diabetes_data contract.
   mmt_aws_usw2_from_table_e2e:
     mode: development
     workspace:
@@ -129,8 +158,16 @@ targets:
       warehouse_id: dafc5dff8eb8094a
       baseline_source: from_table
       source_catalog: mmt_aws_usw2_catalog
-      source_schema: glucosphere_dev
+      source_schema: glucosphere_synth_e2e
       source_table: diabetes_data
+    resources:
+      # Parallel naming with synth_e2e harness; drop `-from-` to fit 30-char limit.
+      apps:
+        glucosphere_dashboard:
+          name: glucosphere-table-e2e
+      database_instances:
+        glucosphere_oltp:
+          name: glucosphere-oltp-table-e2e
 
 resources:
 
