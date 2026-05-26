@@ -401,7 +401,7 @@ print(f"All physiological constraints satisfied!")
 # DBTITLE 1,Classify baseline patients into glucose strata
 # ------------------------
 # Classify baseline patients by glucose profile for stratified sampling
-# Goal: Match baseline distribution (ratios derived from source per stratum, #77 2026-05-26)
+# Goal: Match baseline distribution (ratios derived from source per stratum — #77)
 # ------------------------
 
 print("Classifying baseline patients by glucose profile...")
@@ -566,7 +566,7 @@ print(f"\nTarget distribution (DERIVED from source; matches baseline shape):")
 print(f"   Hypo-prone:     {target_hypo:3d} patients ({src_hypo_ratio*100:5.1f}%)")
 print(f"   Normal-stable:  {target_normal:3d} patients ({target_normal/NUM_PSEUDO*100:5.1f}%)")
 print(f"   Hyper-prone:    {target_hyper:3d} patients ({src_hyper_ratio*100:5.1f}%)")
-print(f"   Mixed:          {target_mixed:3d} patients (sampling target dropped 2026-05-26)")
+print(f"   Mixed:          {target_mixed:3d} patients (classification only; sampling target=0)")
 
 # Sample from each stratum
 from pyspark.sql.functions import lit, row_number, monotonically_increasing_id
@@ -596,10 +596,14 @@ for stratum_name, target_count in strata_targets:
     #   2. Generate exactly target_count indices 0..target_count-1
     #   3. Map each index to a source segment via modular arithmetic
     # When target_count > n_available, source segments cycle deterministically (each
-    # appears ⌈target_count/n_available⌉ or ⌊target_count/n_available⌋ times). Replaces
-    # the previous stochastic sample(withReplacement=True, fraction=...) approach, which
-    # was Poisson-noisy and could land short of target_count even after .limit() —
-    # surfaced as the "999 patients" off-by-one in the gold table on 2026-05-16.
+    # source segment appears ⌈target_count/n_available⌉ or ⌊target_count/n_available⌋
+    # times). The produced row count therefore equals target_count exactly, which the
+    # hard assertion downstream verifies.
+    #
+    # Replaces an earlier stochastic approach (`sample(withReplacement=True, fraction=...)`)
+    # that was Poisson-noisy: even with `.limit(target_count)`, it could land a few rows
+    # short, producing off-by-one drift in downstream tables. See CHANGELOG for the
+    # original fix history.
     w_seg = Window.orderBy(F.rand(seed=cfg.seed))
     stratum_segs_indexed = stratum_segs.withColumn(
         "seg_idx", F.row_number().over(w_seg) - F.lit(1)
@@ -635,18 +639,23 @@ actual_plan_size = plan.count()
 print(f"\nStratified sampling plan created: {actual_plan_size} pseudo patients")
 print("   Distribution will match baseline after generation")
 
-# Hard assertion: plan size MUST equal NUM_PSEUDO. With the deterministic cycling
-# sampler above (added 2026-05-16), this holds by construction. The assertion catches
-# regressions (e.g. anyone reintroducing stochastic sampling, or a stratum with zero
-# source patients getting silently skipped) BEFORE the off-by-one propagates to the
-# gold table + dashboard. Diagnoses the 2026-05-16 "999 patients" issue at the source.
+# Hard assertion: plan size MUST equal NUM_PSEUDO. The deterministic cycling
+# sampler above guarantees this by construction — for each stratum, exactly
+# target_count rows are produced via modulo-cycling over the available source
+# segments. The assertion guards against future regressions:
+#   - Reintroducing stochastic sampling (e.g. .sample(withReplacement=True))
+#     would produce variable counts and break the invariant.
+#   - A stratum with zero source patients gets skipped (per the n_available
+#     == 0 branch above), causing the sum to fall short.
+# Catching the violation HERE prevents the off-by-one from propagating into
+# downstream tables (gold layer, dashboard KPIs).
 assert actual_plan_size == NUM_PSEUDO, (
     f"[plan-size] expected {NUM_PSEUDO} pseudo patients in {plan_tbl}, got {actual_plan_size}. "
     f"Per-stratum targets were: hypo={target_hypo}, normal={target_normal}, "
     f"hyper={target_hyper}, mixed={target_mixed} "
     f"(sum={target_hypo + target_normal + target_hyper + target_mixed}). "
     f"If a non-zero-target stratum was skipped (n_available == 0), the sum will fall short. "
-    f"mixed is intentionally target=0 (dropped 2026-05-26); other strata gaps indicate the "
+    f"mixed is intentionally target=0 (residual classification, no downstream consumer); other strata gaps indicate the "
     f"source dataset doesn't satisfy the hypo/hyper/normal phenotype coverage. Fix either "
     f"by adjusting source phenotypes (01_synthetic_baseline PHENOTYPES) or by absorbing the missing "
     f"stratum's target into normal_stable in the target computation above."
@@ -848,7 +857,7 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 # MAGIC * Anchor: p25 (25th percentile)
 # MAGIC * Features: Simple lags + rolling windows (no IOB/COB)
 # MAGIC * Class weights: None
-# MAGIC * Stratification target: derived from source distribution (#77 2026-05-26)
+# MAGIC * Stratification target: derived from source distribution (#77)
 # MAGIC   — HUPA-UCM source → ~6.4/71.7/21.8%; synthetic source → its own ratios
 # MAGIC
 # MAGIC **Goal:** Preserve baseline distribution while creating diverse pseudo patients
@@ -900,9 +909,11 @@ hypo_pct = glucose_dist['hypo_points'] / glucose_dist['total_points'] * 100
 normal_pct = glucose_dist['normal_points'] / glucose_dist['total_points'] * 100
 hyper_pct = glucose_dist['hyper_points'] / glucose_dist['total_points'] * 100
 
-# Source-derived expected ratios (replaces hardcoded HUPA-UCM 6.4/71.7/21.8 — #77 2026-05-26).
-# Tolerance bands: 2% absolute for hypo/hyper, 5% for normal — chosen to allow
-# AR(1) + meal-spike + sampling variance while still catching gross drift.
+# Source-derived expected ratios — each baseline mode's pseudo cohort is checked
+# against the source's own stratum distribution (#77; see the source-adaptive
+# sampler comment block above for the full rationale). Tolerance bands: 2%
+# absolute for hypo/hyper, 5% for normal — chosen to allow AR(1) + meal-spike
+# + sampling variance while still catching gross drift.
 exp_hypo_pct   = src_hypo_ratio * 100
 exp_hyper_pct  = src_hyper_ratio * 100
 exp_normal_pct = (1 - src_hypo_ratio - src_hyper_ratio) * 100
