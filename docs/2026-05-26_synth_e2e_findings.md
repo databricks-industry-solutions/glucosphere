@@ -226,7 +226,7 @@ Iteration 3 dropped `mixed` from sampling targets entirely. Rationale:
 - Dashboard does not reference `mixed` anywhere — KPIs use hypo / hyper / time-in-range
 - Real HUPA-UCM had ~1 mixed-classified patient out of 25; that 1 patient is reallocated from mixed-residual sampling to normal_stable. Effectively same cohort composition.
 
-New target ratios: 6.4% hypo / ~71.8% normal / 21.8% hyper / 0 mixed = 1000 total. Symmetric behavior across synthetic + real_from_source / from_table modes. Patient classification (`gen_patient_strata`) keeps all 4 labels for completeness; sampler just doesn't pull from mixed.
+After iteration 3, target ratios for the 3 active strata (hypo/normal/hyper) are **derived from the source's own distribution at runtime** rather than hardcoded — see #77 below. The `mixed` target stays 0 in all modes. Patient classification (`gen_patient_strata`) keeps all 4 labels for completeness; the sampler simply doesn't pull from mixed. For the `from_source` (HUPA-UCM) path the source-derived ratios end up ~6.4/71.8/21.8% (≈ unchanged from the pre-#77 hardcoded numbers); for `synthetic` and `from_table` they reflect whatever the source actually contains.
 
 ## Original open question for team (now resolved)
 
@@ -236,7 +236,7 @@ A second sub-question — whether `04_pseudo_data_modeling`'s remaining stratum-
 
 ## Synthetic vs real data — structural realism for incident simulation
 
-Tonight's iterations made it concrete that **synthetic and real data are not interchangeable for this demo's modeling requirements**, and that the 2026-05-16 default flip to `baseline_source=from_source` is the right architectural choice:
+The validation iterations documented above made it concrete that **synthetic and real data are not interchangeable for this demo's modeling requirements**, and that the 2026-05-16 default flip to `baseline_source=from_source` is the right architectural choice:
 
 ### What synthetic naturally produces
 - Narrow per-patient (mean, std) distribution — even after C16/C17 widening to `N(125, 35)` + V-shape std envelope, the AR(1) dynamics + `np.clip(40, 400)` inflate time-in-normal so most patients land in the `normal_stable` stratum unless we intentionally construct outlier phenotypes.
@@ -266,7 +266,7 @@ Two valid framings, both reflected in the current code:
 
 **The current code lands at a hybrid:** synthetic produces all *sampled* strata with reasonable per-stratum representation, matching the sampler's structural needs. Synthetic still differs from real in tail width, multi-signal correlations, and the natural occurrence of edge cases like the `mixed` residual classification — those gaps are accepted as the cost of in-cluster deterministic generation without external data.
 
-**Stronger framing #2 (full real-emulation) would require:** modeling correlated multi-signal dynamics (e.g., a hypo event simultaneously suppressing bolus + elevating heart rate + missing meals), reproducing the long-tail outliers HUPA-UCM exhibits (sustained excursions to ~450 mg/dL), and engineering enough phenotype variety that the residual `mixed` classification naturally populates without being engineered. None of those are blockers for today's harness validation; they're separate research investments if/when the synthetic path needs to stand alone for richer demos.
+**Stronger framing #2 (full real-emulation) would require:** modeling correlated multi-signal dynamics (e.g., a hypo event simultaneously suppressing bolus + elevating heart rate + missing meals), reproducing the long-tail outliers HUPA-UCM exhibits (sustained excursions to ~450 mg/dL), and engineering enough phenotype variety that the residual `mixed` classification naturally populates without being engineered. None of those are blockers for the current harness validation scope; they're separate research investments if/when the synthetic path needs to stand alone for richer demos.
 
 ### Consequence for default + future demos
 - **Default stays `from_source`** — empirically validated by the iteration log above. Synthetic remains valid for CI / restricted-egress / smoke-test scenarios where a known well-behaved fixture is preferred.

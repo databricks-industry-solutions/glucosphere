@@ -477,14 +477,19 @@ print("segments:", seg.count())
 
 # DBTITLE 1,Stratified Sampling Plan
 # ------------------------
-# STRATIFIED sampling plan — targets derived from SOURCE stratum distribution.
-# Originally hardcoded to HUPA-UCM ratios (6.4/71.8/21.8%); changed 2026-05-26
-# to derive from source so pseudo cohort shape matches baseline shape per mode
-# (real HUPA-UCM → ~HUPA-UCM ratios; synthetic → synthetic-distribution ratios;
-# from_table → whatever source UC table has). Avoids systematic right-shift of
-# pseudo vs baseline when source distribution doesn't match HUPA-UCM (#77).
-# (Originally 4 strata with 0.1% "mixed" residual; dropped 2026-05-26 and
-#  absorbed into normal — see target computation below.)
+# STRATIFIED sampling plan — targets DERIVED FROM the source's own stratum
+# distribution. Each baseline mode produces a pseudo cohort matching its own
+# source shape:
+#   - from_source (HUPA-UCM):    ~HUPA-UCM ratios
+#   - synthetic:                 synthetic-distribution ratios
+#   - from_table (any UC table): that source's actual ratios
+# Earlier versions of this block hardcoded HUPA-UCM's specific 6.4/71.8/21.8%
+# hypo/normal/hyper ratios as the universal target — that biased non-HUPA-UCM
+# sources (e.g. shifted synthetic pseudo cohort ~15 pp hyper-ward). Resolved by
+# #77 (source-adaptive ratios). See target computation comment below for full
+# rationale.
+# (The 4th "mixed" stratum was also dropped from sampling targets — residual
+#  classification, no downstream consumer; absorbed into normal_stable.)
 # ------------------------
 
 print("Stratified sampling to match baseline distribution...")
@@ -505,18 +510,29 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
                                    seg_capped.source_patient_id == patient_strata.patient_id,
                                    "inner").drop(patient_strata.patient_id)
 
-# Calculate target counts per stratum — DERIVED FROM SOURCE DISTRIBUTION
-# (changed 2026-05-26 from hardcoded HUPA-UCM ratios to source-adaptive #77).
+# Calculate target counts per stratum — DERIVED FROM SOURCE DISTRIBUTION (#77).
 #
-# Why source-adaptive: hardcoded ratios (6.4/71.8/21.8%) only matched HUPA-UCM
-# real-data source shape. For synthetic (or any other source whose distribution
-# differs from HUPA-UCM), hardcoded ratios cause systematic right-shift of
-# pseudo vs baseline (verified empirically 2026-05-26: synthetic baseline had
-# 4.7/89.2/6.1% but sampler targeted 6.4/71.8/21.8% → pseudo +15% hyper).
+# Why source-adaptive: pseudo-patient stratum targets must MATCH the shape of
+# whichever baseline source they're sampling from. Any other choice imposes a
+# foreign distribution on the sampler and biases the pseudo cohort.
 #
-# Pseudo cohort now matches BASELINE shape per mode:
-#   - from_source (HUPA-UCM):    targets ≈ 6.6/71.7/21.7% (~unchanged)
-#   - synthetic:                 targets ≈ source-derived (e.g., 22/72/7%)
+# Concretely: HUPA-UCM real data's natural distribution is ~6.4/71.8/21.8%
+# (hypo/normal/hyper). That ratio is HUPA-UCM-specific — a property of those
+# 25 real patients — NOT a universal target. The earlier hardcoded version of
+# this block treated 6.4/71.8/21.8% as the universal target across all source
+# modes, which:
+#   - worked fine for `from_source` (sampling from HUPA-UCM → targets match)
+#   - silently right-shifted pseudo cohorts for `synthetic` mode (synthetic
+#     baseline distribution is ~4.7/89.2/6.1% by construction; sampler
+#     oversampled the synth source's few hyper patients → pseudo cohort
+#     landed ~15 percentage points hyper-shifted vs the synth baseline)
+#   - would have done the same for `from_table` against any non-HUPA-UCM source
+#
+# Source-adaptive fix below: compute ratios from `stratum_counts` of THIS run's
+# actual source data. Each baseline mode now gets pseudo targets matching its
+# own source:
+#   - from_source (HUPA-UCM):    targets ≈ 6.6/71.7/21.7%  (~unchanged)
+#   - synthetic:                 targets ≈ synth's own ratios (e.g., 22/72/7%)
 #   - from_table (any UC table): targets ≈ that source's actual distribution
 #
 # The 4th "mixed" stratum target stays 0 — residual classification with no
