@@ -47,16 +47,40 @@ if BASELINE_SOURCE not in ALLOWED_MODES:
         f"'syntethic' or a stray quote/space.)"
     )
 
-# from_table also requires SOURCE_* widgets — fail fast here rather than
-# letting the real-baseline notebook fail later
+# from_table source resolution — match dual_01's auto-detect (#72):
+#   1. Explicit SOURCE_CATALOG/SCHEMA/TABLE widgets win if all three set.
+#   2. Otherwise auto-detect against priority list under CATALOG_NAME.
+#   3. If neither resolves, fail fast here (before the real-baseline notebook
+#      attempts the read).
+# The resolved values are surfaced in the banner below + the provenance row,
+# AND re-exported as widget defaults so dual_01 sees the same selection.
+SOURCE_FQN = None
 if BASELINE_SOURCE == "from_table":
-    if not (SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE):
-        raise ValueError(
-            "baseline_source=from_table requires SOURCE_CATALOG, "
-            "SOURCE_SCHEMA, SOURCE_TABLE widgets to be set. "
-            f"Got SOURCE_CATALOG={SOURCE_CATALOG!r}, "
-            f"SOURCE_SCHEMA={SOURCE_SCHEMA!r}, SOURCE_TABLE={SOURCE_TABLE!r}."
-        )
+    if SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE:
+        SOURCE_FQN = f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}"
+        SOURCE_PROVENANCE = f"{SOURCE_FQN} (explicit widgets)"
+    else:
+        priority_candidates = [
+            (f"{CATALOG_NAME}.glucosphere_dev.diabetes_data",             "live production"),
+            (f"{CATALOG_NAME}.glucosphere_from_source_e2e.diabetes_data", "real-data harness"),
+            (f"{CATALOG_NAME}.glucosphere_synth_e2e.diabetes_data",       "synth harness"),
+        ]
+        selected_label = None
+        for fqn, label in priority_candidates:
+            if spark.catalog.tableExists(fqn):
+                SOURCE_FQN = fqn
+                selected_label = label
+                break
+        if SOURCE_FQN is None:
+            tried = "\n  - ".join(f"{fqn} ({label})" for fqn, label in priority_candidates)
+            raise ValueError(
+                "baseline_source=from_table could not auto-detect a source table. "
+                "Tried (in priority order):\n  - "
+                f"{tried}\n"
+                "Either populate one of those, or set SOURCE_CATALOG/SCHEMA/TABLE "
+                "explicitly via bundle vars or widget UI."
+            )
+        SOURCE_PROVENANCE = f"{SOURCE_FQN} (auto-detected: {selected_label})"
 
 # COMMAND ----------
 
@@ -73,7 +97,7 @@ print(f"  dispatch branch       = {branch}")
 print(f"  target catalog.schema = {CATALOG_NAME}.{SCHEMA_NAME}")
 print(f"  target diabetes table = {target_table}")
 if BASELINE_SOURCE == "from_table":
-    print(f"  source table          = {SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}")
+    print(f"  source table          = {SOURCE_PROVENANCE}")
 elif BASELINE_SOURCE == "from_source":
     print(f"  source                = HUPA-UCM Mendeley dataset (downloaded fresh)")
 else:
@@ -94,7 +118,7 @@ print(bar)
 # COMMAND ----------
 
 source_detail = (
-    f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}" if BASELINE_SOURCE == "from_table"
+    SOURCE_FQN if BASELINE_SOURCE == "from_table"
     else "HUPA-UCM Mendeley dataset" if BASELINE_SOURCE == "from_source"
     else "synthetic generator (textbook phenotypes + AR(1))"
 )

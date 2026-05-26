@@ -14,9 +14,14 @@
 # MAGIC     a UC volume → parse per-patient CSVs → write `diabetes_data`.
 # MAGIC     Ported from `01_download_data.py` + `02_parseNcombine_processed_data.py`
 # MAGIC     on `origin/hls-buildathon-main`.
-# MAGIC   - `from_table` — copy from an existing UC table (set via
-# MAGIC     `SOURCE_CATALOG` / `SOURCE_SCHEMA` / `SOURCE_TABLE`).
-# MAGIC     **NOT YET IMPLEMENTED — plan's Commit C.3.**
+# MAGIC   - `from_table` — copy from an existing UC table. Source resolved in this
+# MAGIC     priority order (per #72 auto-detect, implemented in this notebook + the
+# MAGIC     validate task):
+# MAGIC     1. Explicit `SOURCE_CATALOG` / `SOURCE_SCHEMA` / `SOURCE_TABLE` widgets
+# MAGIC        if all three set (deterministic; the e2e harness targets use this).
+# MAGIC     2. Otherwise auto-detect against priority list under `CATALOG_NAME`:
+# MAGIC        `glucosphere_dev.diabetes_data` → `glucosphere_from_source_e2e.diabetes_data`
+# MAGIC        → `glucosphere_synth_e2e.diabetes_data`. First hit wins.
 # MAGIC
 # MAGIC The dispatch task in `glucosphere_full_setup` runs this notebook only when
 # MAGIC `baseline_source != "synthetic"`. The synthetic path runs the other
@@ -94,17 +99,42 @@ for stmt in [
 #                      so they only run when BASELINE_SOURCE == "from_source".
 #   - from_source: pass through; download + parse cells handle the rest.
 if BASELINE_SOURCE == "from_table":
-    # codex C1: parameterized source — fail fast if widgets aren't set.
-    if not (SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE):
-        raise ValueError(
-            "from_table mode requires SOURCE_CATALOG, SOURCE_SCHEMA, "
-            "SOURCE_TABLE widgets to be set. "
-            f"Got SOURCE_CATALOG={SOURCE_CATALOG!r}, SOURCE_SCHEMA={SOURCE_SCHEMA!r}, "
-            f"SOURCE_TABLE={SOURCE_TABLE!r}. Set them via job parameters or the "
-            "widget UI before re-running."
-        )
-    source_fqn = f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}"
-    print(f"[ingest:table] source = {source_fqn}")
+    # #72 — prioritized source auto-detect:
+    #   1. If SOURCE_CATALOG/SCHEMA/TABLE widgets are ALL explicitly set,
+    #      use them verbatim (deterministic; this is what the e2e harness
+    #      targets use, and what an operator gets when they override via
+    #      `bundle deploy --var source_schema=...`).
+    #   2. Otherwise iterate a fixed priority list under CATALOG_NAME and
+    #      pick the first `<schema>.<table>` that exists. Priority is live
+    #      production first, then real-data harness, then synth harness —
+    #      so a from_table run "just works" against whatever the workspace
+    #      has lying around.
+    #   3. If none of the priority candidates exist, raise with the
+    #      full candidate list so the operator knows what to populate.
+    if SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE:
+        source_fqn = f"{SOURCE_CATALOG}.{SOURCE_SCHEMA}.{SOURCE_TABLE}"
+        print(f"[ingest:table] source = {source_fqn} (explicit widgets)")
+    else:
+        priority_candidates = [
+            (f"{CATALOG_NAME}.glucosphere_dev.diabetes_data",                "live production"),
+            (f"{CATALOG_NAME}.glucosphere_from_source_e2e.diabetes_data",    "real-data harness"),
+            (f"{CATALOG_NAME}.glucosphere_synth_e2e.diabetes_data",          "synth harness"),
+        ]
+        source_fqn = None
+        for fqn, label in priority_candidates:
+            if spark.catalog.tableExists(fqn):
+                source_fqn = fqn
+                print(f"[ingest:table] source = {fqn} (auto-detected: {label})")
+                break
+        if source_fqn is None:
+            tried = "\n  - ".join(f"{fqn} ({label})" for fqn, label in priority_candidates)
+            raise ValueError(
+                "from_table mode could not auto-detect a source table. "
+                "Tried (in priority order):\n  - "
+                f"{tried}\n"
+                "Either populate one of those, or set SOURCE_CATALOG/SCHEMA/TABLE "
+                "explicitly via bundle vars or widget UI."
+            )
     print(f"[ingest:table] target = {target_table}")
 
     df = spark.table(source_fqn)
