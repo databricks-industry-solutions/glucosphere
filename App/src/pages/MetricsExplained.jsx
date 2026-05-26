@@ -4,9 +4,9 @@ import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
 // fig4 PNG is served at runtime from UC Volume via Flask /uc-assets/ route
 // (App/databricks/app.py:serve_uc_asset). No vite-bundled static copy needed —
-// the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/landing_zone/dual_05_assets/
+// the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/landing_zone/incident_inference_assets/
 // and the App fetches it live. Refresh PNG = rerun the pipeline; no rebuild needed.
-const FIG4_UC_PATH = '/uc-assets/dual_05_assets/distribution_comparison_4panel.png';
+const FIG4_UC_PATH = '/uc-assets/incident_inference_assets/distribution_comparison_4panel.png';
 
 export default function MetricsExplained() {
   const navigate = useNavigate();

@@ -1148,7 +1148,7 @@ ax2.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed
 # (transparent bg so the image inherits parent card color in any theme — dark or light)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
     _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
@@ -1326,7 +1326,7 @@ ax3.grid(True, alpha=0.3)
 
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
     _asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
@@ -1576,7 +1576,7 @@ ax3.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
     _asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
@@ -1875,7 +1875,7 @@ plt.tight_layout()
 # the rcParams override above — works on BOTH the dark React app theme AND
 # notebook UI light bg (passes WCAG AA ~4.5:1 on both). Single PNG, no
 # per-theme regeneration needed.
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/dual_05_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
     os.makedirs(_ASSET_DIR, exist_ok=True)
     _asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
