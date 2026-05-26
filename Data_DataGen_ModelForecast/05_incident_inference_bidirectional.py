@@ -1064,7 +1064,7 @@ if incident_blocks_1:
 
 # Plot 2: Glucose Timeline (bidirectional)
 # Unified palette (post-v7): DARKGRAY = True glucose reference, RED = positive cohort,
-# BLUE = negative cohort. Same convention across all dual_05 figures.
+# BLUE = negative cohort. Same convention across all 05_incident_inference_bidirectional figures.
 # DARKGRAY = True glucose (actual baseline)
 # RED  = Positive-bias cohort device readings (over-reads — spikes UP +bias_magnitude during incident)
 # BLUE = Negative-bias cohort device readings (under-reads — drops DOWN -bias_magnitude during incident)

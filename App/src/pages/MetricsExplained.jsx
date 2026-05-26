@@ -303,7 +303,7 @@ WHERE glucose_out_of_range = 1
             <p className="text-sm text-slate-300 leading-relaxed mt-3">
               The detection chain spans three views, each documented in detail below:
               <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view). <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
-              <span className="block ml-4">(2) <span className="text-cyan-300 font-medium">How MAE alerts are triggered</span> — distribution shift explains <em>why</em> MAE spiked. <span className="text-xs text-slate-500">Snapshot PNG from the most recent incident-simulation pipeline run (dual_05 notebook), embedded only in this Metrics Explained tab.</span></span>
+              <span className="block ml-4">(2) <span className="text-cyan-300 font-medium">How MAE alerts are triggered</span> — distribution shift explains <em>why</em> MAE spiked. <span className="text-xs text-slate-500">Snapshot PNG from the most recent incident-simulation pipeline run (05_incident_inference_bidirectional notebook), embedded only in this Metrics Explained tab.</span></span>
               <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted. <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
             </p>
           </div>
@@ -397,7 +397,7 @@ ORDER BY minute`}
             </div>
           </div>
 
-          {/* How MAE alerts are triggered — distribution shift view (4-panel snapshot from dual_05 notebook) */}
+          {/* How MAE alerts are triggered — distribution shift view (4-panel snapshot from 05_incident_inference_bidirectional notebook) */}
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
             <div className="flex items-start justify-between mb-4">
               <div>

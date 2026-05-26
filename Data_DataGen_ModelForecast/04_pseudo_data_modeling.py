@@ -530,7 +530,7 @@ src_active_total = (src_strata.get('hypo_prone', 0) +
 if src_active_total == 0:
     raise RuntimeError(
         "No source patients in any active stratum (hypo/normal/hyper). "
-        "Source baseline is empty or all-mixed. Check dual_01 output + "
+        "Source baseline is empty or all-mixed. Check 01_synthetic_baseline / 02_ingest_real_baseline output + "
         "patient_strata classification at the top of this notebook."
     )
 src_hypo_ratio  = src_strata.get('hypo_prone', 0)  / src_active_total
@@ -631,7 +631,7 @@ assert actual_plan_size == NUM_PSEUDO, (
     f"If a non-zero-target stratum was skipped (n_available == 0), the sum will fall short. "
     f"mixed is intentionally target=0 (dropped 2026-05-26); other strata gaps indicate the "
     f"source dataset doesn't satisfy the hypo/hyper/normal phenotype coverage. Fix either "
-    f"by adjusting source phenotypes (dual_01 PHENOTYPES) or by absorbing the missing "
+    f"by adjusting source phenotypes (01_synthetic_baseline PHENOTYPES) or by absorbing the missing "
     f"stratum's target into normal_stable in the target computation above."
 )
 

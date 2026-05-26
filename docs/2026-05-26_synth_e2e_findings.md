@@ -11,7 +11,7 @@ Phase 1 (#68) E2E validation of the **synthetic baseline path** surfaced **two c
 | Bug | Where | Why latent | Fix |
 |---|---|---|---|
 | 1. `SCHEMA_NOT_FOUND` in `validate_baseline_source` | First task of `glucosphere_full_setup` | Live target's `glucosphere_dev` schema pre-existed from prior deploys; fresh sandbox schemas don't | Added `CREATE SCHEMA IF NOT EXISTS` before `CREATE TABLE baseline_provenance` (commit `398d637`) |
-| 2. Stratified-sampler plan-size assertion fails | `dual_04_*` line 109 | Plan-size short of `NUM_PSEUDO=1000` (e.g. 935/1000). The diagnostic hint points to `n_available == 0` for one or more strata. Core architectural issue: `mixed` was hardcoded as a sampling TARGET despite being a residual `.otherwise()` classification (not a designed cohort) — AR(1) autocorrelation + clip dynamics make `mixed` effectively unreachable by any synthetic phenotype design. | 3 iterations: added phenotypes (C9), tuned brittle (C12), then **dropped mixed from sampling targets entirely** (C14) — `mixed` was a 0.1% classification residual with no downstream consumer. Allocation absorbed into `normal_stable`. Symmetric behavior across synthetic + real. |
+| 2. Stratified-sampler plan-size assertion fails | `04_pseudo_data_modeling.py` line 109 | Plan-size short of `NUM_PSEUDO=1000` (e.g. 935/1000). The diagnostic hint points to `n_available == 0` for one or more strata. Core architectural issue: `mixed` was hardcoded as a sampling TARGET despite being a residual `.otherwise()` classification (not a designed cohort) — AR(1) autocorrelation + clip dynamics make `mixed` effectively unreachable by any synthetic phenotype design. | 3 iterations: added phenotypes (C9), tuned brittle (C12), then **dropped mixed from sampling targets entirely** (C14) — `mixed` was a 0.1% classification residual with no downstream consumer. Allocation absorbed into `normal_stable`. Symmetric behavior across synthetic + real. |
 
 ## Context
 
@@ -48,14 +48,15 @@ For the live `mmt_aws_usw2` target, `glucosphere_dev` was created on the first d
 `Data_DataGen_ModelForecast/utils/validate_baseline_source.py:107` (commit `398d637`):
 
 ```python
-# Ensure schema exists before writing provenance. dual_01_* notebooks (which
-# create the schema themselves) run AFTER this validate task, so for any fresh
-# sandbox deploy ... the schema doesn't exist yet at this point. Idempotent
-# CREATE SCHEMA IF NOT EXISTS — no-op for existing schemas.
+# Ensure schema exists before writing provenance. 01_synthetic_baseline +
+# 02_ingest_real_baseline notebooks (which create the schema themselves) run
+# AFTER this validate task, so for any fresh sandbox deploy ... the schema
+# doesn't exist yet at this point. Idempotent CREATE SCHEMA IF NOT EXISTS —
+# no-op for existing schemas.
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}")
 ```
 
-The redundant `CREATE SCHEMA` calls in `dual_01_*.py` are left intact — defensive, idempotent, no harm.
+The redundant `CREATE SCHEMA` calls in `01_synthetic_baseline.py` + `02_ingest_real_baseline.py` are left intact — defensive, idempotent, no harm.
 
 ### Verified by
 
@@ -85,22 +86,22 @@ Per-stratum targets: hypo=64, normal=717, hyper=218, mixed=1 (sum=1000).
 | normal_stable | >60% readings in [70, 180] |
 | mixed | else (residual) |
 
-`dual_04:504-507` then HARDCODES per-stratum sample targets to match HUPA-UCM real-distribution ratios (`hypo=64`, `normal=717`, `hyper=218`, `mixed=1` for `NUM_PSEUDO=1000`). The sampler oversamples WITH REPLACEMENT from each stratum's source patients to hit the target.
+`04_pseudo_data_modeling:504-507` then HARDCODES per-stratum sample targets to match HUPA-UCM real-distribution ratios (`hypo=64`, `normal=717`, `hyper=218`, `mixed=1` for `NUM_PSEUDO=1000`). The sampler oversamples WITH REPLACEMENT from each stratum's source patients to hit the target.
 
-**The assertion message itself reports only the targets + the diagnostic hint**, not the per-stratum `n_available`. The line that *does* print actual availability (`dual_04:560`: `{stratum}: {target} requested, {n_available} available, returned exactly {target}`) writes to stdout but is not captured in the run artifact retrievable via `databricks jobs get-run-output`. To identify the empty stratum precisely, the Databricks UI cell output is the authoritative source.
+**The assertion message itself reports only the targets + the diagnostic hint**, not the per-stratum `n_available`. The line that *does* print actual availability (`04_pseudo_data_modeling:560`: `{stratum}: {target} requested, {n_available} available, returned exactly {target}`) writes to stdout but is not captured in the run artifact retrievable via `databricks jobs get-run-output`. To identify the empty stratum precisely, the Databricks UI cell output is the authoritative source.
 
 **What is structurally provable** (from code + design, independent of which specific stratum was at zero in any given run):
 
-- The classification at `dual_04:424-427` makes `mixed` the `.otherwise()` catch-all — patients who fail *all three* of "hypo_pct>15", "hyper_pct>40", "normal_pct>60". This is a residual category, not a designed cohort.
+- The classification at `04_pseudo_data_modeling:424-427` makes `mixed` the `.otherwise()` catch-all — patients who fail *all three* of "hypo_pct>15", "hyper_pct>40", "normal_pct>60". This is a residual category, not a designed cohort.
 - AR(1) glucose dynamics + `np.clip(40, 400)` + any phenotype with a single dominant mean tend to produce patients that satisfy ONE of the three thresholds, not none. Iterations C9 + C12 attempted to construct a "brittle T1D" phenotype that would land in `mixed` (~54% normal, just below the 60% threshold) — and empirically still landed in `normal_stable`.
 - Therefore: **`mixed` is effectively unreachable by any synthetic phenotype design that uses single-mean AR(1) dynamics.** Hardcoding `target_mixed=1` as a sampling requirement creates an unfillable demand.
 - For the live `from_source` path, real HUPA-UCM data naturally covers all 4 strata across its 25 patients with diverse dynamics, so the same hardcoded targets succeed.
 
 ### Why was `mixed` even in the datagen — and why dropping it as a sampling target was right
 
-The `mixed` label at `dual_04:427` (`.otherwise("mixed")`) is **legitimately needed as a classification label** — every patient must land somewhere in the partition, and a residual category captures patients who don't satisfy any dominant-range threshold.
+The `mixed` label at `04_pseudo_data_modeling:427` (`.otherwise("mixed")`) is **legitimately needed as a classification label** — every patient must land somewhere in the partition, and a residual category captures patients who don't satisfy any dominant-range threshold.
 
-The mistake was at `dual_04:504-507` (at commit `398d637`), which **also** used `mixed` as a *sampling target* — `target_mixed = NUM_PSEUDO - target_hypo - target_normal - target_hyper`. This hardcoded the residual quota to mirror HUPA-UCM's accidental proportion (~1 mixed patient out of 25 ≈ 0.1% × 1000 = 1). For synthetic data — where the generator can't produce true mixed-pattern patients by construction — this asks the sampler to find something that doesn't exist.
+The mistake was at `04_pseudo_data_modeling:504-507` (at commit `398d637`), which **also** used `mixed` as a *sampling target* — `target_mixed = NUM_PSEUDO - target_hypo - target_normal - target_hyper`. This hardcoded the residual quota to mirror HUPA-UCM's accidental proportion (~1 mixed patient out of 25 ≈ 0.1% × 1000 = 1). For synthetic data — where the generator can't produce true mixed-pattern patients by construction — this asks the sampler to find something that doesn't exist.
 
 C14 (`d377d93`) resolved this cleanly by:
 - **Keeping `mixed` as a classification label** (every patient still classifies correctly).
@@ -140,7 +141,7 @@ With `N_PATIENTS=60` cycling through 8 phenotypes, expect 7-8 patients per pheno
 
 ### Validation pending
 
-Re-run synth_e2e after this fix. Read `dual_04`'s "Patient Classification Complete" stratum-counts print (lines 442-448) to verify all 4 strata are non-empty.
+Re-run synth_e2e after this fix. Read `04_pseudo_data_modeling`'s "Patient Classification Complete" stratum-counts print (lines 442-448) to verify all 4 strata are non-empty.
 
 ### Stats-drift expectation
 
@@ -171,7 +172,7 @@ Lesson: **harness-based validation against fresh state catches what production-i
 databricks bundle deploy -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2
 databricks bundle run glucosphere_full_setup -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2 --no-wait
 
-# Watch the stratum classification cell output in dual_04 to confirm
+# Watch the stratum classification cell output in 04_pseudo_data_modeling to confirm
 # all 4 strata have non-zero patient counts before the plan-size assertion fires.
 
 # After SUCCESS — from_table E2E (sources from synth output)
@@ -199,7 +200,7 @@ The 8-phenotype discrete design in `01_synthetic_baseline.py` lines 53-70 (after
 | (100, 12) tight control | (175, 45) high baseline |
 | (75, 20) hypo-prone (C9) | (150, 70) brittle (C12) |
 
-With N=60 patients cycling through 8 phenotypes (7-8 per phenotype) and AR(1) autocorrelation (α=0.97 in dual_01 line 88) keeping each patient's glucose near its phenotype mean, the AGGREGATED histogram inherited the bimodal cluster pattern. No phenotype mean lived in 110-140 → valley.
+With N=60 patients cycling through 8 phenotypes (7-8 per phenotype) and AR(1) autocorrelation (α=0.97 in 01_synthetic_baseline.py line 88) keeping each patient's glucose near its phenotype mean, the AGGREGATED histogram inherited the bimodal cluster pattern. No phenotype mean lived in 110-140 → valley.
 
 **This is not a correctness bug** — KPIs/forecast are fine — but is visually unrealistic and would confuse anyone comparing against real CGM population data.
 
@@ -211,16 +212,16 @@ patient_means = np.clip(np.random.normal(135, 25, N_PATIENTS), 75, 195)
 patient_stds  = np.clip(15 + 0.15 * (patient_means - 100) + np.random.normal(0, 3, N_PATIENTS), 10, 60)
 ```
 
-Per-patient `(mean, std)` continuous → aggregate becomes unimodal right-skewed, matching real HUPA-UCM shape. Stratum coverage in dual_04 still satisfied (some patients have low means → hypo_prone; some high → hyper_prone; majority normal_stable).
+Per-patient `(mean, std)` continuous → aggregate becomes unimodal right-skewed, matching real HUPA-UCM shape. Stratum coverage in 04_pseudo_data_modeling still satisfied (some patients have low means → hypo_prone; some high → hyper_prone; majority normal_stable).
 
-Filed originally as task #75 "smooth synthetic distribution" but escalated during harness validation when the bimodal pattern surfaced in the dual_02 comparison plot.
+Filed originally as task #75 "smooth synthetic distribution" but escalated during harness validation when the bimodal pattern surfaced in the 03_compare_baseline_modes comparison plot.
 
 ## Architectural pivot 2026-05-26 (resolves the open question below)
 
 The phenotype-tuning path (iterations 1 + 2 above) closed hypo coverage but couldn't reliably populate the `mixed` stratum — AR(1) autocorrelation + np.clip(40, 400) inflate time-in-normal above the 60% normal_stable threshold for any phenotype that doesn't ALSO trigger hypo_prone or hyper_prone. Two empirical attempts confirmed this.
 
 Iteration 3 dropped `mixed` from sampling targets entirely. Rationale:
-- `mixed` was a residual classification (`.otherwise("mixed")` in `dual_04` line 427) — not a designed category
+- `mixed` was a residual classification (`.otherwise("mixed")` in `04_pseudo_data_modeling` line 427) — not a designed category
 - 0.1% allocation (1 patient out of 1000) — numerically negligible for forecast model training
 - Dashboard does not reference `mixed` anywhere — KPIs use hypo / hyper / time-in-range
 - Real HUPA-UCM had ~1 mixed-classified patient out of 25; that 1 patient is reallocated from mixed-residual sampling to normal_stable. Effectively same cohort composition.
@@ -229,9 +230,9 @@ New target ratios: 6.4% hypo / ~71.8% normal / 21.8% hyper / 0 mixed = 1000 tota
 
 ## Original open question for team (now resolved)
 
-`dual_04`'s target ratios were HARDCODED to HUPA-UCM proportions including a 0.1% mixed slot. The question was whether to adapt them dynamically or keep hardcoded. **Resolved 2026-05-26 by dropping the mixed slot entirely** — it was a residual classification artifact, not a designed feature. If a future change needs to re-introduce a 4th "mixed-pattern" cohort, design it intentionally rather than recovering it as residual.
+`04_pseudo_data_modeling`'s target ratios were HARDCODED to HUPA-UCM proportions including a 0.1% mixed slot. The question was whether to adapt them dynamically or keep hardcoded. **Resolved 2026-05-26 by dropping the mixed slot entirely** — it was a residual classification artifact, not a designed feature. If a future change needs to re-introduce a 4th "mixed-pattern" cohort, design it intentionally rather than recovering it as residual.
 
-A second sub-question — whether `dual_04`'s remaining stratum-ratio targets should adapt to whichever baseline source is in use — was resolved 2026-05-26 by **#77 (commit `6fc74e7`)**: source-adaptive stratum targets that derive ratios from the baseline_source distribution itself (e.g., synth's 0/60/0 hypo/normal/hyper classification feeds a 0%/100%/0% sampling plan; real HUPA-UCM's 6.4%/71.8%/21.8% feeds the matching pseudo plan). Previously hardcoded HUPA-UCM ratios oversampled synth's few hyper patients and caused the pseudo right-shift the user spotted in dual_02 plots.
+A second sub-question — whether `04_pseudo_data_modeling`'s remaining stratum-ratio targets should adapt to whichever baseline source is in use — was resolved 2026-05-26 by **#77 (commit `6fc74e7`)**: source-adaptive stratum targets that derive ratios from the baseline_source distribution itself (e.g., synth's 0/60/0 hypo/normal/hyper classification feeds a 0%/100%/0% sampling plan; real HUPA-UCM's 6.4%/71.8%/21.8% feeds the matching pseudo plan). Previously hardcoded HUPA-UCM ratios oversampled synth's few hyper patients and caused the pseudo right-shift the user spotted in 03_compare_baseline_modes plots.
 
 ## Synthetic vs real data — structural realism for incident simulation
 
@@ -240,7 +241,7 @@ Tonight's iterations made it concrete that **synthetic and real data are not int
 ### What synthetic naturally produces
 - Narrow per-patient (mean, std) distribution — even after C16/C17 widening to `N(125, 35)` + V-shape std envelope, the AR(1) dynamics + `np.clip(40, 400)` inflate time-in-normal so most patients land in the `normal_stable` stratum unless we intentionally construct outlier phenotypes.
 - Stratum coverage required iterative phenotype curation — the C9/C12 iterations explicitly added hypo-prone (75, 20) and brittle (135→150, 55→70) phenotypes to ensure hypo + hyper strata had non-zero source patients available to the sampler. A `mixed` patient (the `.otherwise()` residual) was never reachable by any single-mean AR(1) phenotype; C14 dropped it from sampling targets.
-- Distribution shape can drift bimodal when generated as a mixture of small-cluster phenotypes (Bug 3 — discrete clusters → bimodal aggregate plot in dual_02). C16 moved to continuous per-patient draws to unify the distribution.
+- Distribution shape can drift bimodal when generated as a mixture of small-cluster phenotypes (Bug 3 — discrete clusters → bimodal aggregate plot in 03_compare_baseline_modes). C16 moved to continuous per-patient draws to unify the distribution.
 - Lacks naturally-correlated multi-signal extremes (e.g., a hypo event with simultaneously suppressed bolus, elevated heart rate, missed meal) — synthetic signals are independently generated.
 
 ### What real HUPA-UCM gives for free

@@ -375,7 +375,7 @@ This removes the job, DLT pipeline, and app resource from the workspace. It does
 | App "Deeper Analysis" returns 403 PERMISSION_DENIED | App SP not granted CAN_QUERY on MAS endpoint — re-run `grant_app_permissions` |
 | `databricks bundle run` fails with variable error | Pass `--profile <your-profile>` and (if overriding) `--var` flags on `bundle deploy`, not `bundle run` |
 | Genie auto-discovery fails | Set `GENIE_SPACE_ID` parameter explicitly in the job task parameters or via `--var genie_space_id=<id>` |
-| DLT pipeline fails on `pseudo_incident_7d_labeled` | Run the setup job first; `dual_05_*_Bidirectional.py` creates this table |
+| DLT pipeline fails on `pseudo_incident_7d_labeled` | Run the setup job first; `05_incident_inference_bidirectional.py` creates this table |
 | DLT pipeline fails on landing zone paths | Run `generate_patient_device_data` task first |
 | SQL queries return no data | Verify DLT pipeline ran successfully and gold table exists |
 | Catalog creation permission error | Request `CREATE CATALOG` privilege or use an existing catalog |

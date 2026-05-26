@@ -150,7 +150,7 @@ if BASELINE_SOURCE == "from_table":
 
     # Partition by patient_id when present (the contract requires it; matches
     # what `from_source` writes). If the source table is missing it,
-    # writing unpartitioned still works and the dual_validate check at the end
+    # writing unpartitioned still works and the validate check at the end
     # will surface the missing-required-column violation clearly.
     writer = (
         df.write

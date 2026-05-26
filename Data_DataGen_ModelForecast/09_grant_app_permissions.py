@@ -136,7 +136,7 @@ sql_grants = [
     f"GRANT USE SCHEMA ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     f"GRANT SELECT ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     # READ VOLUME on landing_zone — required for the Flask /uc-assets/ route in
-    # App/databricks/app.py to fetch notebook-generated PNGs (e.g., dual_05's
+    # App/databricks/app.py to fetch notebook-generated PNGs (e.g., 05_incident_inference_bidirectional's
     # fig1/2/3/4) live from UC Volume at runtime. Without this grant, the App
     # gets 403 PERMISSION_DENIED when MetricsExplained.jsx tries to load the
     # 4-panel distribution comparison PNG. Volume name "landing_zone" matches

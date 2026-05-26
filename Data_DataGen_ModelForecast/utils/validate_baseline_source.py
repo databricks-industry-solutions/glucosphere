@@ -47,13 +47,13 @@ if BASELINE_SOURCE not in ALLOWED_MODES:
         f"'syntethic' or a stray quote/space.)"
     )
 
-# from_table source resolution — match dual_01's auto-detect (#72):
+# from_table source resolution — match 02_ingest_real_baseline's auto-detect (#72):
 #   1. Explicit SOURCE_CATALOG/SCHEMA/TABLE widgets win if all three set.
 #   2. Otherwise auto-detect against priority list under CATALOG_NAME.
 #   3. If neither resolves, fail fast here (before the real-baseline notebook
 #      attempts the read).
 # The resolved values are surfaced in the banner below + the provenance row,
-# AND re-exported as widget defaults so dual_01 sees the same selection.
+# AND re-exported as widget defaults so 02_ingest_real_baseline sees the same selection.
 SOURCE_FQN = None
 if BASELINE_SOURCE == "from_table":
     if SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE:
@@ -122,7 +122,7 @@ source_detail = (
     else "HUPA-UCM Mendeley dataset" if BASELINE_SOURCE == "from_source"
     else "synthetic generator (textbook phenotypes + AR(1))"
 )
-# Ensure schema exists before writing provenance. dual_01_* notebooks (which
+# Ensure schema exists before writing provenance. 01_synthetic_baseline + 02_ingest_real_baseline notebooks (which
 # create the schema themselves) run AFTER this validate task, so for any fresh
 # sandbox deploy (e.g., the mmt_aws_usw2_synth_e2e / from_table_e2e harness
 # targets, or any new workspace bootstrap) the schema doesn't exist yet at
