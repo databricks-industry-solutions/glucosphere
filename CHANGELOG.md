@@ -77,7 +77,7 @@ Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild 
   - `mmt_aws_usw2_synth_e2e` — `baseline_source=synthetic`, isolated sandbox schema
   - `mmt_aws_usw2_from_table_e2e` — `baseline_source=from_table`, sources from existing `glucosphere_dev.diabetes_data`
 
-  Auto-prefixed `[dev may.merkletan]`, paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
+  Auto-prefixed `[dev may_merkletan]`, paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
 
 ### Settled
 
