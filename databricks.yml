@@ -80,6 +80,58 @@ targets:
       schema: glucosphere_dev
       warehouse_id: dafc5dff8eb8094a   # Serverless Starter Warehouse (Small)
 
+  # ─── Permanent sandbox harness targets (added 2026-05-26 as part of #68) ──
+  #
+  # Both use `mode: development` per DABs docs (deployment-modes page):
+  #   - resources auto-prefixed `[dev ${workspace.current_user.short_name}]`
+  #   - schedules + triggers paused (no surprise runs)
+  #   - completely isolated from the live `mmt_aws_usw2` target
+  #
+  # Reusable for re-validating synth + from_table paths after structural
+  # changes (Phase 2 cleanup, Phase 4 Lakebase fork, Phase 5 portability, etc.)
+  # without touching the live target's job config.
+  #
+  # Usage:
+  #   databricks bundle deploy  -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2
+  #   databricks bundle run     glucosphere_full_setup -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2 --no-wait
+  #   databricks bundle destroy -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2 --auto-approve
+  #   # Then manually: DROP SCHEMA mmt_aws_usw2_catalog.glucosphere_synth_e2e CASCADE
+  #   #   (bundle destroy does NOT auto-drop UC schemas per verified docs)
+  #
+  # CAVEAT: schema names are NOT per-deployer-isolated. If two people deploy
+  # the same harness target simultaneously, they'll race on the same schema.
+  # Per-deployer isolation tracked as task #74 (bundle-vars.env.example +
+  # BUNDLE_VAR_dev_prefix + configurable personal_suffix). For now: coordinate
+  # via Slack / sign-up before running.
+  #
+  # Validates synthetic-mode pipeline end-to-end (Mendeley download skipped).
+  mmt_aws_usw2_synth_e2e:
+    mode: development
+    workspace:
+      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
+    variables:
+      catalog: mmt_aws_usw2_catalog
+      schema: glucosphere_synth_e2e
+      warehouse_id: dafc5dff8eb8094a
+      baseline_source: synthetic
+
+  # Validates the from_table mode end-to-end — never previously tested
+  # (commit `1db686e` implemented it but no run-completion record exists).
+  # Source: the live glucosphere_dev.diabetes_data table (whichever mode
+  # last populated it). The from_table CTAS copies into the sandbox schema.
+  mmt_aws_usw2_from_table_e2e:
+    mode: development
+    workspace:
+      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
+    variables:
+      catalog: mmt_aws_usw2_catalog
+      schema: glucosphere_from_table_e2e
+      warehouse_id: dafc5dff8eb8094a
+      baseline_source: from_table
+      source_catalog: mmt_aws_usw2_catalog
+      source_schema: glucosphere_dev
+      source_table: diabetes_data
+
 resources:
 
   # ---------------------------------------------------------------------------
