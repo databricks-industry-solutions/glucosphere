@@ -425,14 +425,14 @@ def _get_baseline_provenance():
     """Query the `baseline_provenance` table (written by dual_validate_baseline_source.py
     at the head of every pipeline run) so /api/config can return mode-accurate data.
     60s TTL cache — fresh enough for runtime tracking, cheap enough to not hammer DBSQL.
-    Graceful fallback to 'real_from_source' (the bundle var default) if the table
+    Graceful fallback to 'from_source' (the bundle var default) if the table
     doesn't exist yet (first deploy before any pipeline run)."""
     now = _time.time()
     if _baseline_provenance_cache['value'] and now < _baseline_provenance_cache['fetched_at'] + _baseline_provenance_cache['ttl']:
         return _baseline_provenance_cache['value']
     DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
     if not DATABRICKS_TOKEN:
-        return {'baseline_source': 'real_from_source', 'source_detail': '(provenance unknown — auth unavailable)'}
+        return {'baseline_source': 'from_source', 'source_detail': '(provenance unknown — auth unavailable)'}
     try:
         resp = requests.post(
             f"{DATABRICKS_HOST}/api/2.0/mcp/sql",
@@ -449,7 +449,7 @@ def _get_baseline_provenance():
             data = resp.json().get('result', {}).get('structuredContent', {}).get('result', {}).get('data_array', [])
             if data and data[0].get('values') and len(data[0]['values']) >= 2:
                 value = {
-                    'baseline_source': data[0]['values'][0].get('string_value', 'real_from_source'),
+                    'baseline_source': data[0]['values'][0].get('string_value', 'from_source'),
                     'source_detail':   data[0]['values'][1].get('string_value', ''),
                 }
                 _baseline_provenance_cache['value'] = value
@@ -457,7 +457,7 @@ def _get_baseline_provenance():
                 return value
     except Exception as _e:
         print(f"[PROVENANCE] query failed, falling back to default: {_e}")
-    fallback = {'baseline_source': 'real_from_source', 'source_detail': '(provenance table not yet written by pipeline)'}
+    fallback = {'baseline_source': 'from_source', 'source_detail': '(provenance table not yet written by pipeline)'}
     _baseline_provenance_cache['value'] = fallback
     _baseline_provenance_cache['fetched_at'] = now
     return fallback

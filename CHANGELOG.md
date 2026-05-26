@@ -62,6 +62,36 @@ dated history captures work in progress / planned work.
 
 ---
 
+## [2026-05-26]
+
+Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild reconciliation, mode-name rename (`real_from_{source,table}` → `from_{source,table}`), permanent sandbox harness targets via `mode: development`. Historical entries below retain the old names for accuracy of past-state record.
+
+### Changed
+
+- **Renamed baseline_source modes**: `real_from_source` → `from_source` AND `real_from_table` → `from_table`. Old names implied data origin (real); new names describe mechanism (download from external source URL vs CTAS from existing UC table). Source-agnostic: `from_table` can read from a synthetic-populated table or a real-populated one. Rename touched `databricks.yml`, `dual_01_ingest_real_baseline.py`, `dual_validate_baseline_source.py`, `dual_02_compare_baseline_modes.py` (incl. widget rename `REAL_FROM_*_SCHEMA` → `FROM_*_SCHEMA`), `App/databricks/app.py`, `App/src/pages/MetricsExplained.jsx`, `README.md`, `DEPLOY.md`.
+
+### Added (in flight)
+
+- React static rebuild reconciliation commit (`d260338`) — vite output for `b88d193` source state. Was deployed live 2026-05-19 evening but never committed; this commit brings repo HEAD into sync with the deployed bundle.
+- Two permanent `mode: development` harness targets in `databricks.yml`:
+  - `mmt_aws_usw2_synth_e2e` — `baseline_source=synthetic`, isolated sandbox schema
+  - `mmt_aws_usw2_from_table_e2e` — `baseline_source=from_table`, sources from existing `glucosphere_dev.diabetes_data`
+
+  Auto-prefixed `[dev may.merkletan]`, paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
+
+### Settled
+
+- **DABs resource naming pattern documented**: `[dev USERNAME]` auto-prefix encodes deployment-type + user (`workspace.current_user.short_name`); target-name suffix (`_synth_e2e`, `_from_table_e2e`) encodes baseline mode. No custom prefix needed for #68 — full reference saved as memory `reference_dabs_resource_naming_pattern.md`. Configurable prefix design (with `BUNDLE_VAR_dev_prefix` env-var override + `bundle-vars.env.example` template) deferred to task #74.
+- **`real_from_table` E2E test never ran**: confirmed via git log + memory + ref_notes search — commit `1db686e` implemented the mode but no run-completion or memory entry records an actual end-to-end validation. Closed as part of #68 via the `mmt_aws_usw2_from_table_e2e` harness.
+
+### Deferred (new tasks filed)
+
+- **#72** — Smart-fallback in `dual_01_ingest_real_baseline.py`: if `${catalog}.${schema}.diabetes_data` already exists, auto-use `from_table` mode (skip Mendeley re-download). Operator-overridable via explicit `baseline_source=from_source`. ~30-50 LOC + tests. Slotted in Phase 7.
+- **#74** — Per-deployer config pattern: introduce `bundle-vars.env.example` (gitignored personal `.env` per existing `App/.env.example` convention), document `BUNDLE_VAR_<name>` env-var override pattern, add configurable `dev_prefix` variable + smoke-test whether `presets.name_prefix` replaces vs stacks with auto `[dev USERNAME]`. Slotted in Phase 5 alongside #43 deploy template.
+- **#50 (refined framing)** — Add a user-facing deploy walkthrough guide (`DEMO.md` or `GETTING_STARTED.md`) covering "you have a workspace + this repo; here's how to deploy step-by-step." Complements `DEPLOY.md` (technical reference) and #43 (one-command script). Phase 2.A cleanup item.
+
+---
+
 ## [2026-05-19]
 
 Diabetes Coach rename, simulation framing on Metrics Explained, plot polish

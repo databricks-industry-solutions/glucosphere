@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Compare baseline modes — synthetic vs real_from_source vs real_from_table
+# MAGIC # Compare baseline modes — synthetic vs from_source vs from_table
 # MAGIC
 # MAGIC Standalone analytics notebook that runs AFTER you've populated `diabetes_data`
 # MAGIC in multiple schemas (one per `baseline_source` mode). Reads each, computes
@@ -31,21 +31,21 @@
 
 dbutils.widgets.text("CATALOG_NAME",             "mmt_aws_usw2_catalog",    "Catalog containing the schemas to compare")
 dbutils.widgets.text("SYNTHETIC_SCHEMA",         "glucosphere_dev",         "Schema where synthetic-mode diabetes_data lives (empty to skip)")
-dbutils.widgets.text("REAL_FROM_SOURCE_SCHEMA",  "glucosphere_dev_test",    "Schema where real_from_source-mode diabetes_data lives (empty to skip)")
-dbutils.widgets.text("REAL_FROM_TABLE_SCHEMA",   "glucosphere_dev_test_table", "Schema where real_from_table-mode diabetes_data lives (empty to skip)")
+dbutils.widgets.text("FROM_SOURCE_SCHEMA",  "glucosphere_dev_test",    "Schema where from_source-mode diabetes_data lives (empty to skip)")
+dbutils.widgets.text("FROM_TABLE_SCHEMA",   "glucosphere_dev_test_table", "Schema where from_table-mode diabetes_data lives (empty to skip)")
 dbutils.widgets.text("WRITE_SUMMARY_TO_SCHEMA",  "",                        "Optional: write summary table to this schema (empty = print only)")
 
 CATALOG_NAME           = dbutils.widgets.get("CATALOG_NAME")
 SYNTHETIC_SCHEMA       = dbutils.widgets.get("SYNTHETIC_SCHEMA")
-REAL_FROM_SOURCE_SCHEMA = dbutils.widgets.get("REAL_FROM_SOURCE_SCHEMA")
-REAL_FROM_TABLE_SCHEMA = dbutils.widgets.get("REAL_FROM_TABLE_SCHEMA")
+FROM_SOURCE_SCHEMA = dbutils.widgets.get("FROM_SOURCE_SCHEMA")
+FROM_TABLE_SCHEMA = dbutils.widgets.get("FROM_TABLE_SCHEMA")
 WRITE_SUMMARY_TO_SCHEMA = dbutils.widgets.get("WRITE_SUMMARY_TO_SCHEMA")
 
 # Build mode → schema mapping, skipping any with empty schema
 MODES = {}
 if SYNTHETIC_SCHEMA:        MODES["synthetic"]        = SYNTHETIC_SCHEMA
-if REAL_FROM_SOURCE_SCHEMA: MODES["real_from_source"] = REAL_FROM_SOURCE_SCHEMA
-if REAL_FROM_TABLE_SCHEMA:  MODES["real_from_table"]  = REAL_FROM_TABLE_SCHEMA
+if FROM_SOURCE_SCHEMA: MODES["from_source"] = FROM_SOURCE_SCHEMA
+if FROM_TABLE_SCHEMA:  MODES["from_table"]  = FROM_TABLE_SCHEMA
 
 if len(MODES) < 2:
     raise ValueError(
@@ -241,8 +241,8 @@ if PLOTS_OUTPUT_VOLUME_PATH:
 
     mode_colors = {
         "synthetic":        "#1f77b4",
-        "real_from_source": "#d62728",
-        "real_from_table":  "#2ca02c",
+        "from_source": "#d62728",
+        "from_table":  "#2ca02c",
     }
 
     # ── Plot 1: overlaid density histograms ───────────────────────────────

@@ -10,11 +10,11 @@
 # MAGIC
 # MAGIC Two ingest modes (selected by widget `BASELINE_SOURCE`):
 # MAGIC
-# MAGIC   - `real_from_source` — download HUPA-UCM zip from Mendeley → unpack into
+# MAGIC   - `from_source` — download HUPA-UCM zip from Mendeley → unpack into
 # MAGIC     a UC volume → parse per-patient CSVs → write `diabetes_data`.
 # MAGIC     Ported from `01_download_data.py` + `02_parseNcombine_processed_data.py`
 # MAGIC     on `origin/hls-buildathon-main`.
-# MAGIC   - `real_from_table` — copy from an existing UC table (set via
+# MAGIC   - `from_table` — copy from an existing UC table (set via
 # MAGIC     `SOURCE_CATALOG` / `SOURCE_SCHEMA` / `SOURCE_TABLE`).
 # MAGIC     **NOT YET IMPLEMENTED — plan's Commit C.3.**
 # MAGIC
@@ -27,7 +27,7 @@
 # Widgets — all parameterized per codex C1 (no hardcoded sources)
 dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog (target)")
 dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema (target)")
-dbutils.widgets.text("BASELINE_SOURCE", "real_from_source", "Mode: real_from_source | real_from_table")
+dbutils.widgets.text("BASELINE_SOURCE", "from_source", "Mode: from_source | from_table")
 dbutils.widgets.text(
     "DOWNLOAD_URL",
     # Mendeley public-API URL (stable). On request it 302-redirects to a fresh
@@ -35,16 +35,16 @@ dbutils.widgets.text(
     # automatically. The previously-hardcoded direct S3 URL (3hbcscwz44-1.zip)
     # was a stale presigned URL that returned AccessDenied — verified 2026-05-15.
     "https://data.mendeley.com/public-api/zip/3hbcscwz44/download/1",
-    "HUPA-UCM Mendeley zip URL (real_from_source mode)",
+    "HUPA-UCM Mendeley zip URL (from_source mode)",
 )
 dbutils.widgets.text(
     "DOWNLOAD_VOLUME",
     "raw_baseline",
-    "UC Volume name for staging raw downloaded files (real_from_source mode)",
+    "UC Volume name for staging raw downloaded files (from_source mode)",
 )
-dbutils.widgets.text("SOURCE_CATALOG", "", "Source catalog (real_from_table mode only)")
-dbutils.widgets.text("SOURCE_SCHEMA", "", "Source schema (real_from_table mode only)")
-dbutils.widgets.text("SOURCE_TABLE", "", "Source table (real_from_table mode only)")
+dbutils.widgets.text("SOURCE_CATALOG", "", "Source catalog (from_table mode only)")
+dbutils.widgets.text("SOURCE_SCHEMA", "", "Source schema (from_table mode only)")
+dbutils.widgets.text("SOURCE_TABLE", "", "Source table (from_table mode only)")
 
 CATALOG_NAME    = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME     = dbutils.widgets.get("SCHEMA_NAME")
@@ -55,7 +55,7 @@ SOURCE_CATALOG  = dbutils.widgets.get("SOURCE_CATALOG")
 SOURCE_SCHEMA   = dbutils.widgets.get("SOURCE_SCHEMA")
 SOURCE_TABLE    = dbutils.widgets.get("SOURCE_TABLE")
 
-ALLOWED_MODES = {"real_from_source", "real_from_table"}
+ALLOWED_MODES = {"from_source", "from_table"}
 if BASELINE_SOURCE not in ALLOWED_MODES:
     raise ValueError(
         f"BASELINE_SOURCE={BASELINE_SOURCE!r} is not valid for this notebook. "
@@ -89,15 +89,15 @@ for stmt in [
 # COMMAND ----------
 
 # Mode dispatch:
-#   - real_from_table: handle inline here (CTAS from source → diabetes_data), then
+#   - from_table: handle inline here (CTAS from source → diabetes_data), then
 #                      fall through; the source/download cells below are guarded
-#                      so they only run when BASELINE_SOURCE == "real_from_source".
-#   - real_from_source: pass through; download + parse cells handle the rest.
-if BASELINE_SOURCE == "real_from_table":
+#                      so they only run when BASELINE_SOURCE == "from_source".
+#   - from_source: pass through; download + parse cells handle the rest.
+if BASELINE_SOURCE == "from_table":
     # codex C1: parameterized source — fail fast if widgets aren't set.
     if not (SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE):
         raise ValueError(
-            "real_from_table mode requires SOURCE_CATALOG, SOURCE_SCHEMA, "
+            "from_table mode requires SOURCE_CATALOG, SOURCE_SCHEMA, "
             "SOURCE_TABLE widgets to be set. "
             f"Got SOURCE_CATALOG={SOURCE_CATALOG!r}, SOURCE_SCHEMA={SOURCE_SCHEMA!r}, "
             f"SOURCE_TABLE={SOURCE_TABLE!r}. Set them via job parameters or the "
@@ -119,7 +119,7 @@ if BASELINE_SOURCE == "real_from_table":
     print(f"[ingest:table] rows = {n_rows:,}  patients = {n_patients}")
 
     # Partition by patient_id when present (the contract requires it; matches
-    # what `real_from_source` writes). If the source table is missing it,
+    # what `from_source` writes). If the source table is missing it,
     # writing unpartitioned still works and the dual_validate check at the end
     # will surface the missing-required-column violation clearly.
     writer = (
@@ -135,10 +135,10 @@ if BASELINE_SOURCE == "real_from_table":
 
 # COMMAND ----------
 
-# real_from_source — download the HUPA-UCM zip from Mendeley and unpack to UC volume.
-# Skipped when BASELINE_SOURCE == "real_from_table" (the table-mode dispatch above
+# from_source — download the HUPA-UCM zip from Mendeley and unpack to UC volume.
+# Skipped when BASELINE_SOURCE == "from_table" (the table-mode dispatch above
 # already wrote diabetes_data from an existing UC table).
-if BASELINE_SOURCE == "real_from_source":
+if BASELINE_SOURCE == "from_source":
     import os
     import shutil
     import zipfile
@@ -178,14 +178,14 @@ if BASELINE_SOURCE == "real_from_source":
 # COMMAND ----------
 
 # Parse per-patient CSVs (HUPA-UCM uses ';' delimiter) and combine into diabetes_data.
-# Skipped when BASELINE_SOURCE == "real_from_table" (table-mode dispatch above
+# Skipped when BASELINE_SOURCE == "from_table" (table-mode dispatch above
 # already wrote diabetes_data from an existing UC table).
 #
 # Use an explicit schema (not inferSchema) so the types are deterministic at read
 # time and match the contract checked by `dual_validate_diabetes_data`. Without
 # this, inferSchema picks DoubleType for `steps` (the contract wants LongType)
 # and the check fails — caught 2026-05-16 during the first C.2 sandbox test.
-if BASELINE_SOURCE == "real_from_source":
+if BASELINE_SOURCE == "from_source":
     from pyspark.sql import functions as F
     from pyspark.sql.types import StructType, StructField, TimestampType, DoubleType, LongType
 
@@ -249,7 +249,7 @@ if BASELINE_SOURCE == "real_from_source":
 # MAGIC
 # MAGIC Foundation for model/data monitoring: concept-drift detection, per-window
 # MAGIC data-quality monitoring, prediction-degradation diagnostics, retraining triggers,
-# MAGIC cohort tracking. Runs for BOTH `real_from_source` and `real_from_table` modes
+# MAGIC cohort tracking. Runs for BOTH `from_source` and `from_table` modes
 # MAGIC since both have written `diabetes_data` by this point.
 
 # COMMAND ----------

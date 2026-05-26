@@ -21,7 +21,7 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 ## Architecture Overview
 
 The pipeline branches early on the `baseline_source` bundle variable
-(`synthetic` vs `real_from_source` vs `real_from_table`); a `condition_task`
+(`synthetic` vs `from_source` vs `from_table`); a `condition_task`
 in `databricks.yml` dispatches to the right ingest notebook. Both branches
 converge on `diabetes_data` and the downstream modeling spine is shared.
 
@@ -30,7 +30,7 @@ baseline_source dispatch (condition_task on var)
   ├─ synthetic → dual_01_generate_synthetic_baseline.py
   │             (textbook phenotypes + AR(1); writes diabetes_data +
   │              baseline_timeseries + baseline_windows_metadata)
-  └─ real_*  → dual_01_ingest_real_baseline.py
+  └─ from_* (from_source | from_table)  → dual_01_ingest_real_baseline.py
                 (HUPA-UCM download OR existing UC table; same three tables)
                               ↓
 sanity_summary  (asserts diabetes_data non-empty + plausible)
@@ -91,8 +91,8 @@ Edit `databricks.yml` or override at deploy time. Top-level defaults (verified a
 | `catalog` | UC catalog name | `glucosphere_catalog` (generic placeholder; `hls_amer` target overrides with `hls_amer_catalog`, `mmt_aws_usw2` with `mmt_aws_usw2_catalog`, etc.) |
 | `schema` | Schema name | `glucosphere_dev` |
 | `volume` | UC Volume name for landing zone | `landing_zone` |
-| `baseline_source` | Dispatch key: `synthetic` / `real_from_source` / `real_from_table` | `real_from_source` (changed 2026-05-16; was `synthetic`) |
-| `source_catalog` / `source_schema` / `source_table` | Only used when `baseline_source=real_from_table` | `""` |
+| `baseline_source` | Dispatch key: `synthetic` / `from_source` / `from_table` | `from_source` (changed 2026-05-16; was `synthetic`) |
+| `source_catalog` / `source_schema` / `source_table` | Only used when `baseline_source=from_table` | `""` |
 | `app_name` | Databricks App name | `glucosphere-dashboard` |
 | `warehouse_id` | SQL warehouse for app + Genie | `d9af05523dafe3a6` (HLS AMER SQL Warehouse) |
 | `endpoint_name` | MAS serving endpoint name | (set after Step 3) |
@@ -322,12 +322,12 @@ When overriding the baseline mode, `--var` MUST go on `bundle deploy`, **not** o
 
 ```bash
 # ✅ Right — --var on deploy (interpolates at deploy time, drives condition_task)
-databricks bundle deploy -t <target> --var "baseline_source=real_from_source" --profile <profile>
+databricks bundle deploy -t <target> --var "baseline_source=from_source" --profile <profile>
 databricks bundle run    -t <target> glucosphere_full_setup --profile <profile>
 
 # ❌ Wrong — --var on run is ignored by condition_task interpolation
 databricks bundle deploy -t <target> --profile <profile>
-databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_source=real_from_source" --profile <profile>
+databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_source=from_source" --profile <profile>
 ```
 
 (Burned 2026-05-16 evening when the run was misrouted to synthetic instead of real.)

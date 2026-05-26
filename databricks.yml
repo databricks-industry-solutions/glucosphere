@@ -14,24 +14,24 @@ variables:
   baseline_source:
     description: |
       Which baseline ingest path the job runs at the head of the pipeline.
-      Valid: "synthetic" | "real_from_source" | "real_from_table".
+      Valid: "synthetic" | "from_source" | "from_table".
       Validated upfront by validate_baseline_source task (typos fail fast).
         - synthetic        → dual_01_generate_synthetic_baseline.py (textbook phenotypes + AR(1))
-        - real_from_source → dual_01_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
-        - real_from_table  → dual_01_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
-      Default is real_from_source (changed 2026-05-16) — buildathon demos want
+        - from_source → dual_01_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
+        - from_table  → dual_01_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
+      Default is from_source (changed 2026-05-16) — buildathon demos want
       clinical realism (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL),
       and the Mendeley URL has been reliable. Synthetic remains one --var away for
       CI / restricted-egress scenarios.
-    default: real_from_source
+    default: from_source
   source_catalog:
-    description: Source catalog for baseline_source=real_from_table mode (empty otherwise)
+    description: Source catalog for baseline_source=from_table mode (empty otherwise)
     default: ""
   source_schema:
-    description: Source schema for baseline_source=real_from_table mode (empty otherwise)
+    description: Source schema for baseline_source=from_table mode (empty otherwise)
     default: ""
   source_table:
-    description: Source table for baseline_source=real_from_table mode (empty otherwise)
+    description: Source table for baseline_source=from_table mode (empty otherwise)
     default: ""
   app_name:
     description: Name of the Databricks App
@@ -385,7 +385,7 @@ resources:
     # Standalone analytics — distribution comparison across baseline modes
     # -------------------------------------------------------------------------
     # On-demand: operator triggers when ≥2 baseline modes have been populated
-    # (e.g. live synthetic + a real_from_source sandbox snapshot, or two real
+    # (e.g. live synthetic + a from_source sandbox snapshot, or two real
     # snapshots from different sources). NOT part of glucosphere_full_setup.
     glucosphere_distribution_comparison:
       name: glucosphere-distribution-comparison-${bundle.target}
@@ -395,8 +395,8 @@ resources:
         matplotlib plots (overlaid histograms, boxplot, bucket bars). Plots
         embed inline in cell output AND save to a UC Volume.
 
-        Operator MUST set at least 2 of {SYNTHETIC_SCHEMA, REAL_FROM_SOURCE_SCHEMA,
-        REAL_FROM_TABLE_SCHEMA} to non-empty schema names containing diabetes_data.
+        Operator MUST set at least 2 of {SYNTHETIC_SCHEMA, FROM_SOURCE_SCHEMA,
+        FROM_TABLE_SCHEMA} to non-empty schema names containing diabetes_data.
         The notebook validates the ≥2 precondition and fails fast otherwise.
       environments:
         - environment_key: default
@@ -415,8 +415,8 @@ resources:
               # without intent (avoids silently comparing the live schema
               # against itself with a misleading "synthetic" label).
               SYNTHETIC_SCHEMA:         ""
-              REAL_FROM_SOURCE_SCHEMA:  ""
-              REAL_FROM_TABLE_SCHEMA:   ""
+              FROM_SOURCE_SCHEMA:  ""
+              FROM_TABLE_SCHEMA:   ""
               # Optional: archive the comparison summary as a delta table.
               WRITE_SUMMARY_TO_SCHEMA:  ""
               # Plots: written under the live schema's `comparison_plots`

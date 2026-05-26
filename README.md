@@ -27,11 +27,11 @@ Glucosphere supports three **baseline source modes** for the CGM data that feeds
 
 | Mode | Source of glucose / insulin / wearable signals | Patient count | Default? | When to use |
 |---|---|---|---|---|
-| `real_from_source` | Downloaded from Mendeley (HUPA-UCM dataset, Universidad Complutense de Madrid) | 25 real type-1 diabetes patients (oversampled to 1,000) | ✅ default | Buildathon demos + anything that benefits from real clinical extremes (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL, realistic CGM signal noise). |
+| `from_source` | Downloaded from Mendeley (HUPA-UCM dataset, Universidad Complutense de Madrid) | 25 real type-1 diabetes patients (oversampled to 1,000) | ✅ default | Buildathon demos + anything that benefits from real clinical extremes (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL, realistic CGM signal noise). |
 | `synthetic` | In-cluster generator: textbook diabetes phenotype + AR(1) glucose dynamics | 1,000 pseudo-patients | opt-in via `--var` | CI / smoke tests / restricted-egress workspaces (no network call to Mendeley) / scenarios where deterministic in-cluster generation is preferred. |
-| `real_from_table` | CTAS from an existing UC table you point at | configurable via widgets | opt-in via `--var` | Once you've ingested HUPA-UCM elsewhere and want to mirror without re-downloading. |
+| `from_table` | CTAS from an existing UC table you point at | configurable via widgets | opt-in via `--var` | Once you've ingested HUPA-UCM elsewhere and want to mirror without re-downloading. |
 
-**Why `real_from_source` is the default** (changed 2026-05-16): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
+**Why `from_source` is the default** (changed 2026-05-16): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
 
 ### Model performance — clean vs incident (2026-05-16, real-trained)
 
@@ -51,7 +51,7 @@ Real-trained vs synthetic-trained models produce nearly identical numbers (the s
 
 "Real-baseline mode" does **NOT** mean every column is real. Provenance is per-column:
 
-| Column class | `synthetic` | `real_from_*` |
+| Column class | `synthetic` | `from_*` |
 |---|---|---|
 | `glucose`, `calories`, `heart_rate`, `steps`, `basal_rate`, `bolus_volume_delivered`, `carb_input` | synthetic | **real** (HUPA-UCM) |
 | 5-min reading cadence | synthetic | real (FreeStyle Libre 2) |
@@ -67,7 +67,7 @@ In real-mode, what you get is **real CGM signal dynamics carried by synthetic pa
 
 ### How synthetic and real compare (verified 2026-05-16)
 
-| metric | synthetic | real_from_source |
+| metric | synthetic | from_source |
 |---|---:|---:|
 | glucose mean (mg/dL) | 134.9 | 141.4 |
 | glucose std (mg/dL) | 34.0 | 57.1 |
@@ -105,7 +105,7 @@ High-level layout:
 │   │   ├── dual_check_post_endpoint_grants.py    # KA/MAS/Genie existence check
 │   │   └── additional_patient_info/              # Registry + device + telemetry generators
 │   ├── dual_01_generate_synthetic_baseline.py    # baseline_source = synthetic
-│   ├── dual_01_ingest_real_baseline.py           # baseline_source = real_from_source | real_from_table
+│   ├── dual_01_ingest_real_baseline.py           # baseline_source = from_source | from_table
 │   ├── dual_02_compare_baseline_modes.py         # Standalone analytics (synthetic vs real)
 │   ├── dual_04_CGM_PseudoGeneration_CleanData_Modeling.py
 │   ├── dual_05_CGM_Incident_Inference_DeviceCalibrationBug_SingleIncident.py
