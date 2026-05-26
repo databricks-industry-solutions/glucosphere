@@ -401,7 +401,7 @@ print(f"All physiological constraints satisfied!")
 # DBTITLE 1,Classify baseline patients into glucose strata
 # ------------------------
 # Classify baseline patients by glucose profile for stratified sampling
-# Goal: Match baseline distribution (6.4% hypo, 71.7% normal, 21.8% hyper)
+# Goal: Match baseline distribution (ratios derived from source per stratum, #77 2026-05-26)
 # ------------------------
 
 print("Classifying baseline patients by glucose profile...")
@@ -477,8 +477,12 @@ print("segments:", seg.count())
 
 # DBTITLE 1,Stratified Sampling Plan
 # ------------------------
-# STRATIFIED sampling plan to match baseline distribution.
-# Targets: 6.4% hypo, ~71.8% normal, 21.8% hyper (from HUPA-UCM baseline).
+# STRATIFIED sampling plan — targets derived from SOURCE stratum distribution.
+# Originally hardcoded to HUPA-UCM ratios (6.4/71.8/21.8%); changed 2026-05-26
+# to derive from source so pseudo cohort shape matches baseline shape per mode
+# (real HUPA-UCM → ~HUPA-UCM ratios; synthetic → synthetic-distribution ratios;
+# from_table → whatever source UC table has). Avoids systematic right-shift of
+# pseudo vs baseline when source distribution doesn't match HUPA-UCM (#77).
 # (Originally 4 strata with 0.1% "mixed" residual; dropped 2026-05-26 and
 #  absorbed into normal — see target computation below.)
 # ------------------------
@@ -501,30 +505,50 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
                                    seg_capped.source_patient_id == patient_strata.patient_id,
                                    "inner").drop(patient_strata.patient_id)
 
-# Calculate target counts per stratum to match baseline distribution.
+# Calculate target counts per stratum — DERIVED FROM SOURCE DISTRIBUTION
+# (changed 2026-05-26 from hardcoded HUPA-UCM ratios to source-adaptive #77).
 #
-# Baseline ratios sourced from HUPA-UCM real distribution (6.4% hypo,
-# 21.8% hyper, ~71.8% normal). The original 4th "mixed" category was a
-# classification residual (patients with no single dominant glucose
-# range) and represented 0.1% of HUPA-UCM source patients — numerically
-# negligible for forecast model training and not surfaced in the demo
-# dashboard. Dropped from sampling targets 2026-05-26 after empirical
-# evidence that synthetic baseline can't reliably produce mixed-classified
-# patients (AR(1) autocorrelation + np.clip(40, 400) inflates time-in-normal
-# above the 60% normal_stable threshold). The 0.1% mixed allocation is
-# absorbed into normal_stable; total still sums to NUM_PSEUDO. Patients
-# classified as `mixed` in gen_patient_strata still exist (classification
-# is 4-way exhaustive); they just don't get sampled into the pseudo plan.
-# Symmetric behavior for synthetic + real_from_source modes.
-target_hypo   = int(NUM_PSEUDO * 0.064)            # ~64 patients (6.4%)
-target_hyper  = int(NUM_PSEUDO * 0.218)            # ~218 patients (21.8%)
-target_normal = NUM_PSEUDO - target_hypo - target_hyper  # ~718 (absorbs the 0.1% mixed)
-target_mixed  = 0                                  # dropped (was residual, no consumer)
+# Why source-adaptive: hardcoded ratios (6.4/71.8/21.8%) only matched HUPA-UCM
+# real-data source shape. For synthetic (or any other source whose distribution
+# differs from HUPA-UCM), hardcoded ratios cause systematic right-shift of
+# pseudo vs baseline (verified empirically 2026-05-26: synthetic baseline had
+# 4.7/89.2/6.1% but sampler targeted 6.4/71.8/21.8% → pseudo +15% hyper).
+#
+# Pseudo cohort now matches BASELINE shape per mode:
+#   - real_from_source (HUPA-UCM): targets ≈ 6.6/71.7/21.7% (~unchanged)
+#   - synthetic (C17 phenotypes):   targets ≈ source-derived (e.g., 22/72/7%)
+#   - from_table (any UC table):    targets ≈ that source's actual distribution
+#
+# The 4th "mixed" stratum target stays 0 (residual classification, no consumer
+# — see git history for the 2026-05-26 mixed-drop rationale).
+src_strata = {row['stratum']: row['n_patients']
+              for row in stratum_counts.to_dict('records')}
+# Exclude `mixed` from ratio computation; absorb into normal_stable as residual.
+src_active_total = (src_strata.get('hypo_prone', 0) +
+                    src_strata.get('normal_stable', 0) +
+                    src_strata.get('hyper_prone', 0))
+if src_active_total == 0:
+    raise RuntimeError(
+        "No source patients in any active stratum (hypo/normal/hyper). "
+        "Source baseline is empty or all-mixed. Check dual_01 output + "
+        "patient_strata classification at the top of this notebook."
+    )
+src_hypo_ratio  = src_strata.get('hypo_prone', 0)  / src_active_total
+src_hyper_ratio = src_strata.get('hyper_prone', 0) / src_active_total
+target_hypo   = int(NUM_PSEUDO * src_hypo_ratio)
+target_hyper  = int(NUM_PSEUDO * src_hyper_ratio)
+target_normal = NUM_PSEUDO - target_hypo - target_hyper  # remainder, absorbs mixed slot
+target_mixed  = 0
 
-print(f"\nTarget distribution (matching baseline; mixed-residual absorbed into normal):")
-print(f"   Hypo-prone:     {target_hypo:3d} patients (6.4%)")
-print(f"   Normal-stable:  {target_normal:3d} patients (~71.8%, +0.1% absorbed from mixed)")
-print(f"   Hyper-prone:    {target_hyper:3d} patients (21.8%)")
+print(f"\nSource distribution (from {src_active_total} active-stratum patients):")
+print(f"   hypo_prone:    {src_strata.get('hypo_prone', 0):3d} patients ({src_hypo_ratio*100:5.1f}%)")
+print(f"   normal_stable: {src_strata.get('normal_stable', 0):3d} patients ({(1-src_hypo_ratio-src_hyper_ratio)*100:5.1f}% — absorbs mixed)")
+print(f"   hyper_prone:   {src_strata.get('hyper_prone', 0):3d} patients ({src_hyper_ratio*100:5.1f}%)")
+print(f"   mixed:         {src_strata.get('mixed', 0):3d} patients (classification only; sampling target=0)")
+print(f"\nTarget distribution (DERIVED from source; matches baseline shape):")
+print(f"   Hypo-prone:     {target_hypo:3d} patients ({src_hypo_ratio*100:5.1f}%)")
+print(f"   Normal-stable:  {target_normal:3d} patients ({target_normal/NUM_PSEUDO*100:5.1f}%)")
+print(f"   Hyper-prone:    {target_hyper:3d} patients ({src_hyper_ratio*100:5.1f}%)")
 print(f"   Mixed:          {target_mixed:3d} patients (sampling target dropped 2026-05-26)")
 
 # Sample from each stratum
@@ -807,7 +831,8 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 # MAGIC * Anchor: p25 (25th percentile)
 # MAGIC * Features: Simple lags + rolling windows (no IOB/COB)
 # MAGIC * Class weights: None
-# MAGIC * Stratification target: 6.4% hypo | 71.7% normal | 21.8% hyper
+# MAGIC * Stratification target: derived from source distribution (#77 2026-05-26)
+# MAGIC   — HUPA-UCM source → ~6.4/71.7/21.8%; synthetic source → its own ratios
 # MAGIC
 # MAGIC **Goal:** Preserve baseline distribution while creating diverse pseudo patients
 
@@ -818,7 +843,7 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 
 print("Generating pseudo_clean_7d with stratified sampling...")
 print(f"  - {NUM_PSEUDO} pseudo patients")
-print(f"  - Stratified to match baseline: 6.4% hypo, 71.7% normal, 21.8% hyper")
+print(f"  - Stratified to match baseline (source-derived ratios): {src_hypo_ratio*100:.1f}% hypo, {(1-src_hypo_ratio-src_hyper_ratio)*100:.1f}% normal, {src_hyper_ratio*100:.1f}% hyper")
 print(f"  - Transformations: Time shift ±{cfg.shift_jitter_min/60:.1f}h + noise (σ=2 mg/dL)")
 print(f"  - NO gain scaling, NO coupling, NO offset")
 print("\nThis will take a few minutes...\n")
@@ -858,15 +883,21 @@ hypo_pct = glucose_dist['hypo_points'] / glucose_dist['total_points'] * 100
 normal_pct = glucose_dist['normal_points'] / glucose_dist['total_points'] * 100
 hyper_pct = glucose_dist['hyper_points'] / glucose_dist['total_points'] * 100
 
-print(f"\n                    Baseline    Pseudo      Target      Match")
+# Source-derived expected ratios (replaces hardcoded HUPA-UCM 6.4/71.7/21.8 — #77 2026-05-26).
+# Tolerance bands: 2% absolute for hypo/hyper, 5% for normal — chosen to allow
+# AR(1) + meal-spike + sampling variance while still catching gross drift.
+exp_hypo_pct   = src_hypo_ratio * 100
+exp_hyper_pct  = src_hyper_ratio * 100
+exp_normal_pct = (1 - src_hypo_ratio - src_hyper_ratio) * 100
+print(f"\n                    Pseudo      Source-Target   Match")
 print("-" * 80)
-print(f"Hypo (<70):         6.4%        {hypo_pct:5.1f}%      6.4%        {'PASS' if abs(hypo_pct - 6.4) < 2 else 'FAIL'}")
-print(f"Normal (70-180):    71.7%       {normal_pct:5.1f}%     71.7%       {'PASS' if abs(normal_pct - 71.7) < 5 else 'FAIL'}")
-print(f"Hyper (>180):       21.8%       {hyper_pct:5.1f}%     21.8%       {'PASS' if abs(hyper_pct - 21.8) < 3 else 'FAIL'}")
+print(f"Hypo (<70):         {hypo_pct:5.1f}%      {exp_hypo_pct:5.1f}%          {'PASS' if abs(hypo_pct - exp_hypo_pct) < 3 else 'FAIL'}")
+print(f"Normal (70-180):    {normal_pct:5.1f}%     {exp_normal_pct:5.1f}%          {'PASS' if abs(normal_pct - exp_normal_pct) < 6 else 'FAIL'}")
+print(f"Hyper (>180):       {hyper_pct:5.1f}%      {exp_hyper_pct:5.1f}%          {'PASS' if abs(hyper_pct - exp_hyper_pct) < 4 else 'FAIL'}")
 
 print(f"\nGlucose Statistics:")
-print(f"   Mean: {glucose_dist['mean_glucose']:.1f} mg/dL (baseline: 141.6)")
-print(f"   Std: {glucose_dist['std_glucose']:.1f} mg/dL (baseline: 57.1)")
+print(f"   Mean: {glucose_dist['mean_glucose']:.1f} mg/dL")
+print(f"   Std: {glucose_dist['std_glucose']:.1f} mg/dL")
 print(f"   Range: [{glucose_dist['min_glucose']:.0f}, {glucose_dist['max_glucose']:.0f}] mg/dL")
 
 # Check for data quality issues
@@ -1279,7 +1310,7 @@ print(f"{'Hypoglycemia (<70)':<20} {baseline_hypo_pct:>6.2f}% {pseudo_hypo_pct:>
 print(f"{'Normal (70-180)':<20} {baseline_normal_pct:>6.2f}% {pseudo_normal_pct:>8.2f}% {pseudo_normal_pct - baseline_normal_pct:>+10.2f}%")
 print(f"{'Hyperglycemia (>180)':<20} {baseline_hyper_pct:>6.2f}% {pseudo_hyper_pct:>8.2f}% {pseudo_hyper_pct - baseline_hyper_pct:>+10.2f}%")
 
-print("\nTarget: Match baseline distribution (6.6% / 71.7% / 21.7%)")
+print(f"\nTarget: Match baseline distribution (source-derived ratios: {baseline_hypo_pct:.1f}% / {baseline_normal_pct:.1f}% / {baseline_hyper_pct:.1f}%)")
 if abs(pseudo_hypo_pct - baseline_hypo_pct) < 2:
     print("Hypoglycemia: MATCHED (within 2%)")
 else:
