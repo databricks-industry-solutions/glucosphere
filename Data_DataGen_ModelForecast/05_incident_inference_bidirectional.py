@@ -44,7 +44,7 @@
 # MAGIC ---
 # MAGIC
 # MAGIC ## Incident Scenario (two-window mirror design)
-# MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bias across two SEPARATE incident windows on DIFFERENT cohorts** (Window 1: +bias on Alpha/Gamma devices; Window 2: -bias on Beta/Delta devices). Replaces the earlier within-window 50/50 split which canceled visually.
+# MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bias across two SEPARATE incident windows on DIFFERENT cohorts** (Window 1: +bias on Alpha/Gamma devices; Window 2: -bias on Beta/Delta devices).
 # MAGIC * **Window 1:** Day 2, 2:00 PM - 5:00 PM (3-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
 # MAGIC * **Window 2:** Day 5, 10:00 AM - 1:00 PM (3-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
 # MAGIC * **Affected total:** ~60% of fleet across both windows (300 + 300 of 1000, mutually exclusive)
@@ -419,10 +419,17 @@ print(f"   Expected data: {demo_week_start} to {pd.Timestamp(demo_week_start) + 
 # can be hit by both over-reading AND under-reading calibration drift at
 # different times (e.g. FreeStyle Libre FDA-recall history covers both
 # directions on the same hardware). The mutually-exclusive cohort split here
-# is a demo-storytelling choice — it keeps the two failure modes visually
-# distinct in plots and lets each mode be analyzed independently. Modeling
-# the same device experiencing both bugs over its lifecycle is a follow-up
-# realism enhancement, out of scope for the current demo narrative.
+# is a fleet-coverage storytelling choice: clean buckets (~300 over-reading +
+# ~300 under-reading of 1000, no overlap) make the "% of fleet affected per
+# direction" narrative crisp.
+#
+# Note: if the same device had BOTH biases on different days, the platform's
+# anomaly detection would still catch each event — MAE is direction-agnostic
+# and time-localized, so the two windows show as distinct elevated-MAE spikes
+# at their respective times (no cancellation). Only fleet-coverage % math
+# gets fuzzy (a patient in both buckets is double-counted). Same-device-
+# both-bugs is therefore an analytically tractable extension; current scope
+# keeps the cohorts disjoint purely for narrative clarity.
 base_date = pd.Timestamp(demo_week_start)
 
 # --- Window 1 ---
