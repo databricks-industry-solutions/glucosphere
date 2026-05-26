@@ -79,6 +79,13 @@ Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild 
 
   Auto-prefixed `[dev may_merkletan]` on jobs + pipelines (see "Settled" below for auto-prefix caveats), paused schedules per DABs development-mode semantics (verified against `docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes`). Reusable for future regression validation against synth + from_table paths without touching the live `mmt_aws_usw2` target.
 
+- `docs/2026-05-26_synth_e2e_findings.md` (`09d2239`) — team-shareable engineering write-up of the two latent bugs surfaced by the synth_e2e harness validation (see "Fixed" below). Self-contained with context, root cause analysis, fixes, retry commands, and an open question on stratified-sampler adaptivity for team review.
+
+### Fixed
+
+- **Bug 1 — `SCHEMA_NOT_FOUND` in `validate_baseline_source`** (`398d637`). The validate task is the FIRST task in `glucosphere_full_setup` and tried to `CREATE TABLE IF NOT EXISTS baseline_provenance` — but the schema didn't exist yet on fresh-schema deploys (dual_01's `CREATE SCHEMA` runs AFTER dispatch, which is AFTER validate). Latent because live `mmt_aws_usw2.glucosphere_dev` has existed since 2026-05-15. Fix: idempotent `CREATE SCHEMA IF NOT EXISTS` before the table write in `dual_validate_baseline_source.py:107`. Verified via run `891637990308752` validate task: SUCCESS.
+- **Bug 2 — Stratified-sampler plan-size assertion fails on synthetic distribution** (`21baa5e`). `dual_04_*.py:109` asserts `actual_plan_size == NUM_PSEUDO` (1000). The original 6 synthetic phenotypes (all means 95-175 mg/dL) produced 0 patients in `hypo_prone` (>15% readings <70) and `mixed` (residual) strata — sampler missing 64 + 1 = 65 patients. Latent because live `from_source` (real HUPA-UCM, 6.59% hypo + diverse profiles) populates all 4 strata naturally. Fix: added 2 phenotypes to `dual_01_generate_synthetic_baseline.py:52-69` — hypo-prone (mean 75, std 20) + brittle T1D (mean 135, std 55). With N_PATIENTS=60 cycling through 8 phenotypes, expect 7-8 patients per phenotype → all 4 strata populated. Validation in flight at the time of write.
+
 ### Settled
 
 - **DABs resource naming pattern documented**: `[dev USERNAME]` auto-prefix encodes deployment-type + user (`workspace.current_user.short_name`); target-name suffix (`_synth_e2e`, `_from_table_e2e`) encodes baseline mode. No custom prefix needed for #68 — full reference saved as memory `reference_dabs_resource_naming_pattern.md`. Configurable prefix design (with `BUNDLE_VAR_dev_prefix` env-var override + `bundle-vars.env.example` template) deferred to task #74.
