@@ -19,7 +19,7 @@ This repo contains two main parts that work together:
 
 ## Architecture
 
-![Architecture](Data_DataGen_ModelForecast/assets/architecture_0.1.png)
+![Architecture](Data_DataGen_ModelForecast/assets/architecture_0.2.png)
 
 ## Data fidelity & baseline modes
 
@@ -33,7 +33,7 @@ Glucosphere supports three **baseline source modes** for the CGM data that feeds
 
 **Why `from_source` is the default** (changed 2026-05-16, empirically reaffirmed 2026-05-26): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
 
-End-to-end harness testing on 2026-05-26 found this empirically: synthetic distributions are narrow and require iterated phenotype curation to populate the hypo + hyper strata that real HUPA-UCM gives for free. Bidirectional incident simulation (over-reading AND under-reading device calibration bugs) needs both natural tails populated — real-baseline mode provides this without artificial construction. Full analysis + iteration log in `docs/2026-05-26_synth_e2e_findings.md` ("Synthetic vs real data — structural realism for incident simulation").
+End-to-end harness testing on 2026-05-26 found this empirically: synthetic distributions are narrow and require iterated phenotype curation to populate the hypo + hyper strata that real HUPA-UCM gives for free. Bidirectional incident simulation (over-reading AND under-reading device calibration bugs) needs both natural tails populated — real-baseline mode provides this without artificial construction. Full analysis + iteration log in `CHANGELOG.md` (`[2026-05-26]` section, "Synthetic vs real data — structural realism for incident simulation").
 
 ### Model performance — clean vs incident (2026-05-16, real-trained)
 
@@ -209,7 +209,7 @@ Or click "Run now with different parameters" in Workflows UI and point at least 
 - **[DEPLOY.md](DEPLOY.md)** — step-by-step first-time deploy guide with troubleshooting + post-deploy smoke-test checklist
 - **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
 - **[App/README.md](App/README.md)** — frontend dev setup
-- `Data_DataGen_ModelForecast/assets/architecture_0.1.png` — system architecture diagram
+- `Data_DataGen_ModelForecast/assets/architecture_0.2.png` — system architecture diagram (current MVP — Lakebase/Postgres component shown in `architecture_0.1.png` is on the followup roadmap, not yet implemented).
 
 ## For maintainers — optional Claude Code plugins
 

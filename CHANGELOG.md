@@ -62,6 +62,66 @@ dated history captures work in progress / planned work.
 
 ---
 
+## [2026-05-27]
+
+SSOT config + Path 2 bundle-managed warehouse + dead-code/config purge — single comprehensive commit (`eada716`, 32 files, +403/-2028 lines), pushed to origin. Consolidates the operator-facing config surface around `.env.bundle`, refactors App SQL routing to leverage a bundle-managed `sql_warehouses` resource, and purges verified-dead code/config across the repo.
+
+### Added
+
+- **`.env.bundle.example`** (NEW, repo root) — committed template for operator-owned `.env.bundle` (gitignored). Three required tokens: `BUNDLE_VAR_catalog`, `BUNDLE_VAR_schema`, `DATABRICKS_CONFIG_PROFILE`. Documents the deploy sequence (`source → render → deploy`) + a sanitized reference example with placeholder values.
+- **`databricks.yml: resources.sql_warehouses.glucosphere_warehouse`** — bundle-managed serverless 2X-Small PRO warehouse, auto-stop 10 min. Name pattern `glucosphere-warehouse-${bundle.target}`. Smallest viable per `~/.claude/memory/feedback_smallest_nonnegotiable_compute.md`.
+- **`Data_DataGen_ModelForecast/README.md` References section** — new at end of file. Cites Nature Digital Medicine `s41746-021-00480-x` as informing the CGM-forecast + MAE evaluation methodology used across `04_*` (training), `05_*` / `06_*` (inference), and `07_*` (serving). Replaces the bare URL comments previously floating in 05/06 near-empty cells.
+- **Historical-baseline clarifying note in `05_*.py`** — explains that the `5.8 / 10.4 mg/dL` MAE values referenced throughout (intro, prints, chart `axhline` reference lines) are the published synthetic-trained baseline from `origin/hls-buildathon-main`, not the current run's dynamically-computed value. Points reader at the MAE analysis cells below for actual numbers per run.
+
+### Changed
+
+- **SSOT config flow** — operator-facing values (catalog / schema / profile) now come from gitignored `.env.bundle` via `BUNDLE_VAR_*` env vars + `DATABRICKS_CONFIG_PROFILE`. Live target stanzas (`hls_amer`, `mmt_aws_usw2`) in `databricks.yml` reduced to `workspace.host:` only — operator-specific values no longer baked into the repo. Removed `default: true` from all targets; `-t <target>` is now always required.
+- **App SQL routing — MCP → Statement Execution API** (`App/databricks/app.py /api/sql/query`). Reads `warehouse_id` from `WAREHOUSE_ID` env var (populated by `scripts/render_app_yaml.py` from the bundle-managed `sql_warehouses` resource). Response wrapped to preserve React-side `result.result.structuredContent` contract — `App/src/api/databricksSQL.js` unchanged. Resolves the runtime issue where MCP routing ignored `app.yaml`'s `resources.sql_warehouse` binding (verified via 4-pass e2e test, see `ref_notes/2026-05-26_warehouse-bundle-management-verification.md`).
+- **`scripts/render_app_yaml.py` warehouse discovery** — replaced `vars_.get("warehouse_id")` with a `databricks warehouses list` query + `endswith` match on `glucosphere-warehouse-<target>`. Patches BOTH the new `WAREHOUSE_ID` env var AND the resource `sql_warehouse.id` binding in `App/databricks/app.yaml`.
+- **`09_grant_app_permissions.py` warehouse discovery fallback** — new `BUNDLE_TARGET` widget (set by `databricks.yml` task base_param `${bundle.target}`). When `WAREHOUSE_ID` widget is empty, 09 queries `/api/2.0/sql/warehouses` and matches by deterministic suffix to find the bundle-managed warehouse, then grants `CAN_USE` to the App SP.
+- **App rename** `glucosphere-dashboard` → `glucosphere-app` — `${var.app_name}` default, app resource key (`apps.glucosphere_app:` at 4 spots — top-level + 3 harness overrides), `09_*.py` widget default + SP-name example comment, `DEPLOY.md` references (3 spots), `App/databricks/app.yaml` description-text comment, top-level `README.md` inventory tree. Comment header reflects branding split: "App: Glucosphere App (front-end branding: 'GlucoStream Intelligence')".
+- **Notebook rename** `04_pseudo_data_modeling.py` → `04_pseudo_data_forecast_modeling.py` — better describes the XGBoost-forecast-model-training role. 13 textual references updated across `databricks.yml`, `README.md`, `DEPLOY.md`, `Data_DataGen_ModelForecast/README.md`, `01_*.py`, `02_*.py`, `utils/validate_diabetes_data.py`.
+- **`DEPLOY.md` Steps 2 + 6 reworked** — Step 2 now describes the `.env.bundle` workflow + the 6-variable contract (was 9 vars with hardcoded `warehouse_id` default). Step 6 documents the two-pass first-deploy pattern (deploy → render_app_yaml → deploy) for the bundle-managed warehouse flow.
+- **`02_ingest_real_baseline.py` + `utils/validate_baseline_source.py` source-priority lists** — dropped the workspace-specific `glucosphere_dev` entry from the auto-detect candidate list. Now workspace-agnostic: harness schemas only (real-data harness → synth harness).
+
+### Removed (dead code)
+
+- **`deploy.py`** (395 LOC) — Ward-pixels-pinned Python deploy script flagged in #69. Verified-unused: 0 references in `DEPLOY.md`, no operator runs `python deploy.py` (`DEPLOY.md` documents `databricks bundle deploy` flow exclusively; CHANGELOG.md:203 explicitly says "operators run `bundle run` directly, NOT `python deploy.py`"). Git history preserves.
+- **`Data_DataGen_ModelForecast/utils/cleanup_cgm_tables_models.ipynb`** — listed in `Data_DataGen_ModelForecast/README.md` inventory only; not pipeline-wired; had stale `hls_glucosphere.cgm.*` SQL refs throughout.
+- **`Data_DataGen_ModelForecast/utils/additional_patient_info/explorations/visualization.py`** — 0 references anywhere; first line declares "This notebook is not executed as part of the pipeline".
+- **`TODO.md`** — dev tracking, not user-facing.
+- **`App/env.example`** — byte-identical duplicate of `App/.env.example`.
+
+### Moved to gitignored `ref_notes/` (kept locally for future reference)
+
+- **`docs/2026-05-26_synth_e2e_findings.md`** — Phase 1 #68 internal findings doc. `docs/` directory auto-removed (empty after move).
+- **`Data_DataGen_ModelForecast/init_lakebase_alerts_schema.py`** — Lakebase #42 setup notebook, not in the current bundle DAG; will be reactivated from `ref_notes/` when #42 resumes.
+
+### Removed (dead config)
+
+- **`Data_DataGen_ModelForecast/configs/baseline_config.yaml`** — 11 dead YAML keys with 0 actual computational uses across the notebook codebase: `glucose_offset`, `alpha_ins`, `alpha_carb`, `alpha_steps`, `alpha_hr`, `alpha_cal`, `carb_mult_lo`, `carb_mult_hi`, `bolus_mult_lo`, `bolus_mult_hi`, `gain_lo`, `gain_hi`. Defined and occasionally printed/logged, but never applied. Pattern suggests carry-over from a deprecated `SyntheticPatient` transformation pipeline. Print statements that referenced them (`04_*:229`, `04_*:1975`, `07_*:181-183`) also removed.
+
+### Notebook content cleanups
+
+- **04 (`pseudo_data_forecast_modeling`)** — dropped two end-of-notebook prose cells (~50 lines): `Pipeline Complete` (redundant with dynamic Pipeline Output Summary above), `Scaling Analysis - Should We Generate More Patients?` (frozen MAE numbers + speculative linear-extrapolation table). Cell 2 (`Production MAE Monitoring Guide`) updated: stripped hardcoded MAE numbers (5.8 / 9.8 / hypo 3.9 / normal 5.4 / hyper 7.3); kept the production-monitoring methodology; added pointer to the dynamic Pipeline Output Summary cell.
+- **05 / 06** — dropped `Demo Guide` + `NOTEs` cells (~100 lines each): Demo Guide had hardcoded SQL examples + frozen 30-min-MAE / affected-patient metrics table; NOTEs had internal-team brainstorming about hypo-trending-masked-by-bug scenario. Also dropped: empty cell above Demo Guide, dangling Nature URL cell + `# [optional]` cell after MAE analysis.
+- **05 / 06** — model description prose (clean model labels): stripped `(5.8 mg/dL MAE)` / `(10.4 mg/dL MAE)` parentheticals — replaced with `Clean-period XGBoost (15-min / 30-min horizon)`. Plot code (4 `axhline(y=5.8)` reference lines + 12 hypo/hyper threshold lines) UNCHANGED — visual plot output preserved.
+
+### Settled
+
+- **Path 2 (bundle-managed warehouse) verified end-to-end** — 4-pass test on 2026-05-26 confirmed bundle creates `sql_warehouses` resource → `render_app_yaml.py` discovers by name → app.yaml `WAREHOUSE_ID` populated → `09_grant_app_permissions.py` grants `CAN_USE` → app's `/api/sql/query` routes SQL to bundle-managed warehouse. Full write-up in gitignored `ref_notes/2026-05-26_warehouse-bundle-management-verification.md` + reproducible script `ref_notes/2026-05-26_path_2b_test_script.sh`.
+- **DABs limitation confirmed (v0.297.2 + v1.0.0)** — `App` resource does NOT expose `service_principal_id` as a bundle-interpolatable property. Fully-declarative path (`sql_warehouses.permissions` referencing App SP) not viable; Option C discover-by-name pattern is the best-practice workaround.
+- **`databricks-app` vs `glucosphere-dashboard` naming** — chose `glucosphere-app` to match the `glucosphere-<thing>-${target}` convention used by every other resource (pipeline, job, warehouse, database_instance, harness overrides).
+
+### Followups (sequenced for next session)
+
+- **Phase B — validation deploy** (~45 min, operator action). Deploy to standalone `mmt_aws_usw2` catalog (NOT `mmt_aws_usw2_catalog`): `source .env.bundle && databricks bundle deploy -t mmt_aws_usw2 && python scripts/render_app_yaml.py --target mmt_aws_usw2 && databricks bundle deploy -t mmt_aws_usw2 && databricks bundle run glucosphere_full_setup -t mmt_aws_usw2`. Verify App `/api/config` returns new catalog/schema and SQL queries route to bundle-managed warehouse.
+- **Schema rename** `glucosphere_dev` → `glucosphere` (or `glucosphere_prod`) — operator action after Phase B succeeds. UC supports in-place rename: `databricks schemas update mmt_aws_usw2_catalog.glucosphere_dev --new-name <new> -p fevm-mmt-aws-usw2`.
+- **Overview/about-page UI** — separate React commit. First-visit modal (localStorage-flagged) + always-accessible `/about` route explaining Glucosphere-vs-GlucoStream-Intelligence + role-based quick-access cards (clinician / device-support / demo-viewer / developer).
+- **`DOCS_VOLUME` consolidation** — `08_genie_ka_mas.py` uses a separate UC Volume `data` (for WHO PDF) distinct from `landing_zone`. Could consolidate to `landing_zone/who_docs/` (~5 LOC change). Not done in this session.
+
+---
+
 ## [2026-05-26]
 
 Phase 1 (#68 synth + from_table E2E validation) preflight: React static rebuild reconciliation, mode-name rename (`real_from_{source,table}` → `from_{source,table}`), permanent sandbox harness targets via `mode: development`. Historical entries below retain the old names for accuracy of past-state record.
