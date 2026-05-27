@@ -262,12 +262,16 @@ databricks bundle deploy
 
 ## Step 10: Deploy and Start the App
 
+**Required.** Apps have an independent lifecycle from Jobs in DABs — running the pipeline job in Step 8 does NOT also deploy the App's source code. This step uploads `App/` into the App container and starts it.
+
 ```bash
-databricks apps deploy ${var.app_name} --source-code-path App/databricks
-databricks apps start ${var.app_name}
+source .env.bundle
+databricks bundle run glucosphere_app -t <target> --profile <profile>
 ```
 
-Or manage through the UI: **Apps → glucosphere-app**
+This single command does both `apps deploy` + `apps start` atomically and matches the bundle-managed pattern used by every other step here. Expected output ends with `App started successfully` and the App URL.
+
+Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows "App is unavailable" until you either run the command above OR click Deploy in the UI.)
 
 ---
 
@@ -277,7 +281,7 @@ Before declaring the deployment "done," walk through these checks in the browser
 
 Open the app URL from `databricks apps get glucosphere-app --output json | jq -r .url`, then:
 
-- [ ] **Home page loads** — no blank screen, no JS console errors. (If blank: React frontend wasn't built; run `npm run build` in `App/` and re-do `apps deploy`.)
+- [ ] **Home page loads** — no blank screen, no JS console errors. (If blank: React frontend wasn't built; run `npm run build` in `App/` then re-run `databricks bundle run glucosphere_app -t <target>`.)
 - [ ] **Navigate to "Device Support Dashboard"** in the left sidebar. Device table populates with rows. (If empty: gold table `${catalog}.${schema}.gold_patient_device_readings` not populated → DLT pipeline didn't run successfully.)
 - [ ] **Click a device row → "Run Clinical Analysis"** — wait ~30-60s. Text analysis appears with device-specific glucose stats. (If 404 ENDPOINT_NOT_FOUND: `app.yaml` references a deleted MAS endpoint — re-render with current `mas-<hash>-endpoint`. If 403 PERMISSION_DENIED: re-run `grant_app_permissions` task.)
 - [ ] **Open Genie (or Chat / Ask) panel** and ask a natural-language question like *"How many distinct devices reported in the last hour?"* — response should include a SQL query and a result. (If errors: GENIE_SPACE_ID points at a non-existent space → re-render app.yaml with current Genie space ID.)
@@ -470,7 +474,7 @@ databricks jobs get-run <RUN_ID> --profile <profile> \
 
 - After Step 6 (`bundle deploy`): `bundle validate` exits 0; resources appear in workspace
 - After Step 7 (`glucosphere_full_setup` run): polling returns `TERMINATED` with `result_state=SUCCESS`, not just "submitted"
-- After Step 10 (`apps start`): `databricks apps get <name>` returns `compute_status.state == ACTIVE` and `app_status.state == RUNNING`
+- After Step 10 (`bundle run glucosphere_app`): `databricks apps get <name>` returns `compute_status.state == ACTIVE` and `app_status.state == RUNNING` with a non-empty `active_deployment.deployment_id`
 - Step 11 smoke-test checks (above) are mandatory before declaring the deploy verified end-to-end
 
 ### Common agent lapses to avoid
