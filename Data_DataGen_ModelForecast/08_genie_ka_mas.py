@@ -27,7 +27,7 @@ MAS_NAME      = dbutils.widgets.get("MAS_NAME")
 BUNDLE_TARGET = dbutils.widgets.get("BUNDLE_TARGET")
 
 GOLD_TABLE  = f"{CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings"
-DOCS_VOLUME = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/data/who_docs"
+DOCS_VOLUME = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/who_docs"
 
 print(f"Catalog:       {CATALOG_NAME}.{SCHEMA_NAME}")
 print(f"Gold table:    {GOLD_TABLE}")
@@ -74,9 +74,19 @@ def _api(method, path, body=None, params=None):
 # DBTITLE 1, Copy WHO PDF from bundle assets to volume
 import shutil
 
-# Ensure the 'data' volume exists before writing to it
-spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.data")
-os.makedirs(DOCS_VOLUME, exist_ok=True)
+# Ensure the 'landing_zone' volume exists before writing to it. landing_zone is
+# the shared UC Volume used by: utils/additional_patient_info/Create *.ipynb
+# (raw_patient_registry/, raw_device_telemetry_stream/),
+# 05_incident_inference_bidirectional.py (incident_inference_assets/), and now
+# 08 (who_docs/). One volume, three subdirectories — single grants surface, less
+# UC-Volume-management overhead than maintaining a separate `data` volume just
+# for the WHO PDF. IF NOT EXISTS is idempotent — safe if earlier tasks created it.
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.landing_zone")
+# dbutils.fs.mkdirs (not os.makedirs) — UC Volume FUSE returns errno 95 EOPNOTSUPP
+# on Python stdlib os.makedirs (same bug fixed in 05_incident_inference_bidirectional.py
+# 2026-05-27 commit fab2c3e). dbutils.fs.mkdirs is the DBR-native API that handles
+# UC Volume paths correctly + is idempotent (no exist_ok arg needed).
+dbutils.fs.mkdirs(DOCS_VOLUME)
 
 WHO_PDF_PATH = f"{DOCS_VOLUME}/WHO_NCD_NCS_99.2.pdf"
 
