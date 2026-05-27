@@ -206,9 +206,12 @@ Or click "Run now with different parameters" in Workflows UI and point at least 
 
 ### See also
 
+- **[REPO_LAYOUT.md](REPO_LAYOUT.md)** — repository navigation guide for new contributors: which files do what, the full workflow DAG, what's PR-shipped vs internal-refs (gitignored)
 - **[DEPLOY.md](DEPLOY.md)** — step-by-step first-time deploy guide with troubleshooting + post-deploy smoke-test checklist
+- **[Data_DataGen_ModelForecast/README.md](Data_DataGen_ModelForecast/README.md)** — pipeline + modeling guide, methodology references
 - **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
 - **[App/README.md](App/README.md)** — frontend dev setup
+- **[CHANGELOG.md](CHANGELOG.md)** — dated history of every commit group
 - `Data_DataGen_ModelForecast/assets/architecture_0.2.png` — system architecture diagram (current MVP — Lakebase/Postgres component shown in `architecture_0.1.png` is on the followup roadmap, not yet implemented).
 
 ## For maintainers — optional Claude Code plugins

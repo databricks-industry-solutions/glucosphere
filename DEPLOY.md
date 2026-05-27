@@ -2,6 +2,8 @@
 
 This guide walks through deploying the full Glucosphere stack — data pipelines, ML models, and the dashboard app — to any Databricks workspace using the Databricks Asset Bundle (DAB). It is the **canonical deployment doc** for this repo.
 
+> **New to the repo?** Read [`REPO_LAYOUT.md`](REPO_LAYOUT.md) first for a navigation guide: which files do what, the full workflow DAG, what's PR-shipped vs internal-refs.
+
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
 > and capture the discovered IDs at Step 8 — they're needed for Step 9.
