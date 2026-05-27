@@ -12,7 +12,7 @@ env:
   - name: GENIE_SPACE_ID
     value: "01f150850a66184ba68fb1b26f092287"
   - name: CATALOG_NAME
-    value: "mmt_aws_usw2_catalog"
+    value: "mmt_aws_usw2"
   - name: SCHEMA_NAME
     value: "glucosphere_dev"
   # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
@@ -20,7 +20,7 @@ env:
   # by deterministic name). Empty value here pre-render is intentional —
   # operator runs render before the second deploy, which populates this.
   - name: WAREHOUSE_ID
-    value: ""
+    value: "26c483e659ee6420"
 resources:
   - name: mas-endpoint
     description: "Multi-Agent Supervisor serving endpoint"
@@ -35,7 +35,7 @@ resources:
   - name: sql-warehouse
     description: "SQL warehouse for CGM data queries"
     sql_warehouse:
-      id: dafc5dff8eb8094a
+      id: 26c483e659ee6420
       permission: CAN_USE
   - name: genie-space
     description: "Genie space for CGM intelligence queries (ENV GENIE_SPACE_ID resolves from here)"

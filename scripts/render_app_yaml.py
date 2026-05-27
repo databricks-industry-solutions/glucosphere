@@ -27,7 +27,7 @@ Usage:
         --ka-endpoint    glucosphere-ka-endpoint \\
         --genie-space-id 01a2b3c4d5e6...
 
-    # Override profile (default: auto-resolved by databricks CLI from host)
+    # Override profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)
     python scripts/render_app_yaml.py --target mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 """
 
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -73,27 +74,41 @@ def discover_bundle_warehouse_id(target: str, profile: str | None) -> str:
     in databricks.yml. Uses `endswith` to handle `mode: development` targets which
     auto-prefix the name with `[dev USER]`.
 
-    Returns the warehouse_id (16-char hex) or empty string if not found.
+    Profile resolution: explicit `--profile` flag wins; otherwise falls back to
+    the `DATABRICKS_CONFIG_PROFILE` env var (the SSOT-pattern source via
+    `.env.bundle`). CLI v0.297.2's `warehouses list` does NOT inherit the env
+    var when run from a bundle directory — it requires explicit `-p <profile>`
+    or fails with "please specify target" (verified 2026-05-27).
+
+    Fails hard (sys.exit(1)) if the warehouses list call errors OR if no
+    warehouse with the expected name suffix is found. Precondition: a successful
+    `databricks bundle deploy -t <target>` must have run first to create the
+    sql_warehouses resource.
     """
     cmd = ["databricks", "warehouses", "list", "-o", "json"]
-    if profile:
-        cmd += ["-p", profile]
+    effective_profile = profile or os.environ.get("DATABRICKS_CONFIG_PROFILE")
+    if effective_profile:
+        cmd += ["-p", effective_profile]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=REPO_ROOT)
     if result.returncode != 0:
-        print(f"[WARN] warehouses list failed: {result.stderr}", file=sys.stderr)
-        return ""
+        print(f"[FATAL] `databricks warehouses list` failed:\n{result.stderr}", file=sys.stderr)
+        print(f"[FATAL] Cannot discover bundle-managed warehouse for target={target}.", file=sys.stderr)
+        print(f"[FATAL] Hint: pass --profile <name> or set DATABRICKS_CONFIG_PROFILE in .env.bundle (with `export` prefix).", file=sys.stderr)
+        sys.exit(1)
     warehouses = json.loads(result.stdout)
     expected_suffix = f"glucosphere-warehouse-{target}"
     for w in warehouses:
         if w.get("name", "").endswith(expected_suffix):
             return w.get("id", "")
-    return ""
+    print(f"[FATAL] No warehouse found with name ending in `{expected_suffix}`.", file=sys.stderr)
+    print(f"[FATAL] Precondition: `databricks bundle deploy -t {target}` must succeed before render.", file=sys.stderr)
+    sys.exit(1)
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", required=True, help="DABs target name (e.g. hls_amer)")
-    p.add_argument("--profile", default=None, help="databricks CLI profile (default: auto-resolved by host)")
+    p.add_argument("--profile", default=None, help="databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)")
     p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (overrides env + resource block)")
     p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (overrides resource block)")
     p.add_argument("--genie-space-id", default=None, help="Genie space ID (overrides env)")
@@ -110,7 +125,7 @@ def main() -> int:
     print(f"Rendering {APP_YAML.relative_to(REPO_ROOT)} for target={args.target}:")
     print(f"  catalog        = {catalog}")
     print(f"  schema         = {schema}")
-    print(f"  warehouse_id   = {warehouse_id or '(NOT FOUND — run `bundle deploy` first)'}")
+    print(f"  warehouse_id   = {warehouse_id}")
     print(f"  mas-endpoint   = {args.mas_endpoint or '(unchanged)'}")
     print(f"  ka-endpoint    = {args.ka_endpoint or '(unchanged)'}")
     print(f"  genie-space-id = {args.genie_space_id or '(unchanged)'}")
