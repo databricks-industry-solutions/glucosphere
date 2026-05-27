@@ -72,6 +72,7 @@ SSOT config + Path 2 bundle-managed warehouse + dead-code/config purge — singl
 - **`databricks.yml: resources.sql_warehouses.glucosphere_warehouse`** — bundle-managed serverless 2X-Small PRO warehouse, auto-stop 10 min. Name pattern `glucosphere-warehouse-${bundle.target}`. Smallest viable per `~/.claude/memory/feedback_smallest_nonnegotiable_compute.md`.
 - **`Data_DataGen_ModelForecast/README.md` References section** — new at end of file. Cites Nature Digital Medicine `s41746-021-00480-x` as informing the CGM-forecast + MAE evaluation methodology used across `04_*` (training), `05_*` / `06_*` (inference), and `07_*` (serving). Replaces the bare URL comments previously floating in 05/06 near-empty cells.
 - **Historical-baseline clarifying note in `05_*.py`** — explains that the `5.8 / 10.4 mg/dL` MAE values referenced throughout (intro, prints, chart `axhline` reference lines) are the published synthetic-trained baseline from `origin/hls-buildathon-main`, not the current run's dynamically-computed value. Points reader at the MAE analysis cells below for actual numbers per run.
+- **`REPO_LAYOUT.md`** (NEW, repo root) — new-user repository navigation guide: "I want to…" tables (deploy / pipeline / App / architecture), by-category PR-shipped inventory, gitignored-vs-PR summary, Mermaid DAG of the `glucosphere_full_setup` job (16 tasks, verified against `databricks.yml`). Points readers at CHANGELOG as the canonical discoveries record (this file). README `See also` + DEPLOY preamble updated to cross-reference.
 
 ### Changed
 

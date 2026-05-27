@@ -1,8 +1,8 @@
 # Repository navigation guide
 
-> **Audience**: new contributors / operators trying to figure out which files do what, what gets pushed in a PR vs lives locally, and how the pipeline is wired.
+> **Audience**: new contributors / operators trying to figure out which files do what, and how the pipeline is wired.
 
-For deployment instructions, see [`DEPLOY.md`](DEPLOY.md). For project overview, see [`README.md`](README.md). For dated change history, see [`CHANGELOG.md`](CHANGELOG.md).
+For deployment steps see [`DEPLOY.md`](DEPLOY.md). For project overview see [`README.md`](README.md). For dated change + decision history see [`CHANGELOG.md`](CHANGELOG.md) — it is the canonical record of every notable discovery.
 
 ## At a glance
 
@@ -30,10 +30,11 @@ The entire deployable surface is described by a single file: [`databricks.yml`](
 | [`scripts/render_app_yaml.py`](scripts/render_app_yaml.py) | rewrites `App/databricks/app.yaml` per target (discovers bundle-managed warehouse by name) |
 
 Quick deploy sequence (after `source .env.bundle`):
-```
-databricks bundle deploy -t <target>                  # pass 1 — creates warehouse
-python scripts/render_app_yaml.py --target <target>   # writes WAREHOUSE_ID into app.yaml
-databricks bundle deploy -t <target>                  # pass 2 — picks up rendered app.yaml
+
+```bash
+databricks bundle deploy -t <target>                       # pass 1 — creates warehouse
+python scripts/render_app_yaml.py --target <target>        # writes WAREHOUSE_ID into app.yaml
+databricks bundle deploy -t <target>                       # pass 2 — picks up rendered app.yaml
 databricks bundle run glucosphere_full_setup -t <target>   # ~45 min pipeline
 ```
 
@@ -82,199 +83,107 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 | [`App/run_backend.sh`](App/run_backend.sh) | Bash | local dev launcher |
 | [`App/README.md`](App/README.md) | docs | App dev setup |
 
-### …understand the architecture / history
+### …understand the architecture or history
 
 | Resource | Use it when |
 |---|---|
 | [`README.md`](README.md) | first read — overview, baseline modes, sequencing |
 | [`Data_DataGen_ModelForecast/assets/architecture_0.2.png`](Data_DataGen_ModelForecast/assets/architecture_0.2.png) | current MVP system diagram (no Lakebase shown) |
 | [`Data_DataGen_ModelForecast/assets/architecture_0.1.png`](Data_DataGen_ModelForecast/assets/architecture_0.1.png) | aspirational v0.1 (Lakebase / Postgres / Lakeflow — on roadmap, not in MVP) |
-| [`CHANGELOG.md`](CHANGELOG.md) | dated history of every commit group — load-bearing for "why did we change X?" questions |
+| [`CHANGELOG.md`](CHANGELOG.md) | dated record of every notable change + discovery. **Read this first** when asking "why did we do X?" or "what gotcha was already caught?" |
 | [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelForecast/README.md) | pipeline + modeling guide, methodology references |
 
 ---
 
-## By-category file inventory (with PR / local status)
+## Workflow DAG — `glucosphere_full_setup`
 
-### Deployment glue — **PR-shipped**
+16 tasks defined in [`databricks.yml`](databricks.yml) `resources.jobs.glucosphere_full_setup.tasks`. Branching at `dispatch_baseline_source` (condition_task on `baseline_source`); merge at `sanity_summary`; fan-out from `datagen_modeling`; converge again at `run_dlt_pipeline`.
+
+```mermaid
+flowchart TD
+    A[validate_baseline_source<br/><i>utils/validate_baseline_source.py</i>]
+    B[check_pre_baseline_grants<br/><i>utils/check_pre_baseline_grants.py</i>]
+    C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
+    D1[generate_synthetic_baseline<br/><i>01_synthetic_baseline.py</i>]
+    D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py</i>]
+    E[sanity_summary<br/><i>utils/sanity_summary.py</i>]
+    F[datagen_modeling<br/><i>04_pseudo_data_forecast_modeling.py</i>]
+    G1[incident_inference<br/><i>05_incident_inference_bidirectional.py</i>]
+    G2[deploy_model_endpoints<br/><i>07_deploy_serving_endpoints.py</i>]
+    H[generate_patient_device_data<br/><i>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb</i>]
+    I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
+    I2[create_device_telemetry<br/><i>utils/additional_patient_info/Create Raw Device Data.ipynb</i>]
+    J[run_dlt_pipeline<br/><i>invokes cgm_silver_gold SDP</i>]
+    K[create_genie_ka_mas<br/><i>08_genie_ka_mas.py</i>]
+    L[check_post_endpoint_grants<br/><i>utils/check_post_endpoint_grants.py</i>]
+    M[grant_app_permissions<br/><i>09_grant_app_permissions.py</i>]
+
+    A --> B --> C
+    C -- "synthetic" --> D1
+    C -- "from_source / from_table" --> D2
+    D1 --> E
+    D2 --> E
+    E --> F
+    F --> G1
+    F --> G2
+    G1 --> H
+    H --> I1
+    H --> I2
+    I1 --> J
+    I2 --> J
+    G2 --> J
+    J --> K --> L --> M
+```
+
+Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution_comparison` runs `03_compare_baseline_modes.py` for side-by-side baseline statistical comparison.
+
+---
+
+## By-category file inventory (PR-shipped)
+
+### Deployment glue
 - `databricks.yml` — bundle definition (targets, variables, resources)
 - `.env.bundle.example` — template for operator's local `.env.bundle`
 - `scripts/render_app_yaml.py` — per-target App config rewriter
 - `DEPLOY.md` — deploy guide
 
-### SDP / DLT pipeline source — **PR-shipped**
+### SDP / DLT pipeline source
 - `databricks.yml` → `resources.pipelines.cgm_silver_gold` — pipeline resource declaration
 - `Data_DataGen_ModelForecast/utils/additional_patient_info/transformations.sql` — actual silver/gold transforms
 
-### Workflow job orchestration — **PR-shipped**
-- `databricks.yml` → `resources.jobs.glucosphere_full_setup` — main DAG (15+ tasks)
+### Workflow job orchestration
+- `databricks.yml` → `resources.jobs.glucosphere_full_setup` — main DAG (16 tasks, see Mermaid above)
 - `databricks.yml` → `resources.jobs.glucosphere_distribution_comparison` — standalone baseline-comparison job
 - `Data_DataGen_ModelForecast/01_*` through `09_*` + `utils/*.py` — task implementation notebooks
 
-### App resources — **PR-shipped**
-- All of `App/` (React + Flask backend + config + build output)
+### App resources
+- All of `App/` (React + Flask backend + config + committed Vite build output)
 - `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` + `database_instances.glucosphere_oltp`
 
-### Configuration — **PR-shipped**
-- `Data_DataGen_ModelForecast/configs/baseline_config.yaml` — pipeline hyperparameters (dev / staging / prod tiers)
-
-### Assets — **PR-shipped**
+### Configuration & assets
+- `Data_DataGen_ModelForecast/configs/baseline_config.yaml` — pipeline hyperparameters
 - `Data_DataGen_ModelForecast/assets/architecture_0.{1,2}.png` — architecture diagrams
-- `Data_DataGen_ModelForecast/assets/comparison_3way_*.png` — baseline-mode comparison plot exports
-- `Data_DataGen_ModelForecast/assets/glucose_*.png`, `incident_*.png`, `mae_*.png`, `forecast_*.png` — plot exports surfaced in dashboards or docs
-- `Data_DataGen_ModelForecast/assets/who_docs/` — WHO Noncommunicable Diseases reference PDF (referenced by Genie / agents)
+- `Data_DataGen_ModelForecast/assets/*.png` — plot exports surfaced in dashboards or docs
+- `Data_DataGen_ModelForecast/assets/who_docs/` — WHO Noncommunicable Diseases PDF (referenced by Genie / agents)
 
-### Auto-generated, per-target rendered — **PR-shipped but pinned to last-rendered target**
-- `App/databricks/app.yaml` — rewritten by `scripts/render_app_yaml.py` for whichever target was last rendered. Currently pinned to the most recent render target. Switch targets ⇒ re-render before deploy.
+### Auto-generated, per-target rendered
+- `App/databricks/app.yaml` — rewritten by `scripts/render_app_yaml.py` per target. Pinned to whichever target was last rendered. Switch targets ⇒ re-render before deploy.
 - `App/databricks/static/` — Vite build output. Re-build via `npm run build` in `App/`.
 
-### Operator-owned config — **gitignored, never PR-shipped**
-
-| Path | Why gitignored |
-|---|---|
-| `.env.bundle` | per-operator catalog / schema / profile — workspace-specific, often workspace-internal identifiers. The template `.env.bundle.example` IS committed. |
-| `App/.env` | App-local secrets (legacy — was used for backend-tokens-in-env pattern, now generally unused but still gitignored as a safety net) |
-
-### Credentials & secrets — **gitignored, never PR-shipped**
-
-| Pattern | What it would contain |
-|---|---|
-| `.databrickscfg` | Databricks CLI auth tokens (workspace profiles) |
-| `*.token` | any bearer-token file |
-| `.env`, `.env.local`, `.env.*.local` | any environment-variable file with secrets |
-| `config/databricks_config*.json` | legacy Databricks config files |
-| `.npmrc`, `.pip/pip.conf` | internal Databricks npm / pip proxy configs (would leak internal URLs if pushed to a public repo) |
-
-### Build artifacts — **gitignored, regenerated locally**
-
-| Path | Source |
-|---|---|
-| `App/node_modules/` | `npm install` (~94 MB; never commit) |
-| `App/dist/`, `App/dist-ssr/`, `App/.vite/` | Vite build cache |
-| `App/*.local` | Vite local-config overrides |
-| `**/__pycache__/`, `*.pyc`, `*.pyo` | Python bytecode |
-| `build/`, `dist/`, `*.egg-info/`, `wheels/`, `eggs/` | Python packaging artifacts |
-| `.pytest_cache/`, `.coverage`, `htmlcov/`, `*.cover`, `.hypothesis/` | test / coverage artifacts |
-
-### Editor / IDE configs — **gitignored**
-
-| Path | Tool |
-|---|---|
-| `.vscode/*` (except `.vscode/extensions.json` which is allowed) | VS Code |
-| `.idea/` | JetBrains IDEs |
-| `.claude/` | Claude Code workspace state |
-| `.cursor/` | Cursor IDE workspace state |
-| `.DS_Store`, `*.suo`, `*.sw?` | OS / Vim swap files |
-
-### Internal working notes — **gitignored, internal-only**
-
-These are the operator's local scratchpads — design docs, session snapshots, test scripts, internal explainers. They never PR-ship but are valuable as institutional memory.
-
-| Path | What lives there |
-|---|---|
-| `ref_notes/` | **the primary "internal refs" landing pad.** Categories of content found here (see [`ref_notes/`](ref_notes/) for full listing): |
-| └─ `*_branch-divergence-snapshot.md` | analysis of what changed between branches |
-| └─ `*_session-snapshot.md` / `*_end-of-day-snapshot.md` | dated session-state records (work-in-flight, decisions, open questions) |
-| └─ `*_dual-baseline-*.md` | dual-baseline design docs (recap + provenance, comparison plots) |
-| └─ `*_lakebase-*.md` | Lakebase design + positioning + auth investigation notes |
-| └─ `*_synth_e2e_findings.md` | Phase 1 #68 synth-validation findings doc (team-shareable, but moved here for now) |
-| └─ `*_warehouse-bundle-management-verification.md` | Path 2 verification write-up + reproducible test script |
-| └─ `*_path_2b_test_script.sh` | reproducible end-to-end test script for the warehouse-bundle pattern |
-| └─ `*_deploy-commands-cheatsheet.md` | quick-reference card for `bundle deploy` / `bundle run` invocations |
-| └─ `*_notebook-rename-playbook.md` | re-usable 6-step methodology for renaming notebooks safely |
-| └─ `*_app-display-and-incident-simulation.md` | App UX + incident simulation design notes |
-| └─ `*_live-app-smoke-test.md` | manual smoke-test procedures |
-| └─ `*_mae-shift-incident-real-data.md` | MAE-shift results recap (load-bearing for fleet-monitoring pitch) |
-| └─ `*_slack-drafts.md` | Slack message drafts before sending |
-| └─ `*_asq_*_update.md` | ASQ ticket update drafts |
-| └─ `*_lakebase-positioning-for-readme.md` | unmerged copy variants for README |
-| └─ `init_lakebase_alerts_schema.py` | Lakebase #42 setup notebook (parked, will be reactivated when #42 resumes) |
-| `previous/` | (currently empty) staging area for files about to be deleted — used during the Phase A cleanup pass |
-| `resume/` | Claude Code session-resume artifact (just `.claude/` inside) |
-| `_dev/`, `.devs/`, `.refs/` | (currently empty / unused) ad-hoc local sandbox paths |
-
-**Promotion path**: when a `ref_notes/` doc matures into something team-shareable (a deploy guide, a finding the team needs to act on, an architectural decision record), promote it by `git mv ref_notes/<file>.md docs/<file>.md` (creating `docs/` if needed) and `git add` it on a dedicated docs branch.
-
 ---
 
-## Workflow DAG — `glucosphere_full_setup` job
+## What's gitignored / never PR-shipped
 
-The main pipeline job in declaration order. Dependencies shown as `↓` (linear) or `├─` (branch). All tasks live in `databricks.yml` `resources.jobs.glucosphere_full_setup.tasks`.
+Anything not in git is invisible to PRs — it lives only on the operator's filesystem. The full list of ignored patterns is in [`.gitignore`](.gitignore); the load-bearing ones for new operators:
 
-```
-validate_baseline_source                    utils/validate_baseline_source.py
-  ↓
-check_pre_baseline_grants                   utils/check_pre_baseline_grants.py
-  ↓
-dispatch_baseline_source                    (condition_task — branches on baseline_source)
-  ↓ (synthetic)                  ↓ (from_source / from_table)
-generate_synthetic_baseline      ingest_real_baseline
-  01_synthetic_baseline.py       02_ingest_real_baseline.py
-                ↓                                ↓
-                          sanity_summary
-                          utils/sanity_summary.py
-                                ↓
-                          datagen_modeling
-                          04_pseudo_data_forecast_modeling.py
-                                ↓
-        ┌───────────────────────┼───────────────────────┐
-        ↓                       ↓                       ↓
-incident_inference     deploy_model_endpoints   generate_patient_device_data
-05_incident_inference  07_deploy_serving        utils/additional_patient_info/
-_bidirectional.py      _endpoints.py            Create Raw Patient_Registry Data.ipynb
-        ↓                                              ↓
-   (downstream uses                         ┌──────────┴──────────┐
-    incident tables)                        ↓                     ↓
-                                  create_patient_registry  create_device_telemetry
-                                  utils/.../Create         utils/.../Create
-                                  Patient_Device           Raw Device Data
-                                  Table.ipynb              .ipynb
-                                                                  ↓
-                                                          run_dlt_pipeline
-                                                          (invokes cgm_silver_gold SDP)
-                                                                  ↓
-                                                          provision_agents
-                                                          08_genie_ka_mas.py
-                                                                  ↓
-                                                          check_post_endpoint_grants
-                                                          utils/check_post_endpoint_grants.py
-                                                                  ↓
-                                                          grant_app_permissions
-                                                          09_grant_app_permissions.py
-```
+- **`.env.bundle`** — your per-workspace config (catalog / schema / profile). You create it from `.env.bundle.example`. Never committed.
+- **`ref_notes/`** — your local scratchpad for session notes, design drafts, test scripts, internal explainers. When a doc matures into something team-shareable, promote it (`git mv ref_notes/<file>.md docs/<file>.md` on a docs branch).
+- **Credentials** (`.databrickscfg`, `*.token`, `.env*`, `config/databricks_config*.json`, `.npmrc`, `.pip/pip.conf`) — never commit. The `.gitignore` covers these as a safety net.
+- **Build artifacts** (`App/node_modules/`, `__pycache__/`, `dist/`, `.vite/`, `*.pyc`, `.pytest_cache/`, etc.) — regenerate locally.
+- **Editor / IDE state** (`.vscode/`, `.idea/`, `.claude/`, `.cursor/`, `.DS_Store`) — operator-specific.
+- **`resume/`, `previous/`, `_dev/`, `.devs/`, `.refs/`** — local sandbox / staging paths.
 
-The exact task names + their `depends_on` are in `databricks.yml`. Above is the conceptual flow.
-
----
-
-## What ships in a PR vs what stays local
-
-**PR-ed (in git, visible to reviewers)**:
-- All numbered notebooks + utils + SDP transform SQL
-- `databricks.yml` + `.env.bundle.example` + `scripts/`
-- All docs: `README.md`, `DEPLOY.md`, `CHANGELOG.md`, `REPO_LAYOUT.md` (this file), `App/README.md`, `Data_DataGen_ModelForecast/README.md` + `README_data.md`
-- All of `App/` (React, Flask, config, static build output)
-- `Data_DataGen_ModelForecast/assets/`, `configs/`
-- Per-target rendered `App/databricks/app.yaml` (pinned to whichever target was last rendered)
-
-**Local-only (gitignored, never PR-shipped)**:
-- `.env.bundle` (operator config)
-- `ref_notes/` (working notes)
-- `resume/`
-- `App/node_modules/`
-- Any `*.local` or `.cursor/` artifacts
-
----
-
-## Common new-operator gotchas
-
-1. **`.env.bundle.example` is the template, `.env.bundle` is what you create.** `.env.bundle` MUST be gitignored (it is, line 110 of `.gitignore`). Verify before committing.
-2. **`BUNDLE_VAR_*` lines need `export` prefix.** Without `export`, the variable is shell-local and the `databricks` CLI subprocess doesn't see it — it silently falls back to the `databricks.yml` defaults. (See `.env.bundle.example` NOTE block at top + `DEPLOY.md` Step 2.)
-3. **Two-pass deploy on first run.** The bundle-managed `sql_warehouses.glucosphere_warehouse` only exists after the first `bundle deploy`. `scripts/render_app_yaml.py` discovers it by name, so the order is: deploy → render → deploy → run.
-4. **`render_app_yaml.py` requires `--profile` OR `DATABRICKS_CONFIG_PROFILE` env var.** CLI v0.297.2's `databricks warehouses list` does not inherit the env var when run from a bundle directory.
-5. **`App/databricks/app.yaml` is auto-rewritten.** Do not hand-edit env values or resource IDs — re-run `render_app_yaml.py` instead. Hand-edits will be lost on next render.
-6. **Switching targets requires re-render.** The committed `app.yaml` is pinned to the last-rendered target. If you switch to a different target, run `render_app_yaml.py --target <new-target>` before `bundle deploy`.
-7. **`06_incident_inference_single.py` is reference-only.** The active inference notebook is `05_incident_inference_bidirectional.py`. To revert, swap `databricks.yml` `incident_inference.notebook_path`.
+If you need historical context on a specific design decision or gotcha, [`CHANGELOG.md`](CHANGELOG.md) is the canonical record.
 
 ---
 
@@ -282,7 +191,7 @@ The exact task names + their `depends_on` are in `databricks.yml`. Above is the 
 
 - [`README.md`](README.md) — project overview
 - [`DEPLOY.md`](DEPLOY.md) — deployment guide
-- [`CHANGELOG.md`](CHANGELOG.md) — dated change history
+- [`CHANGELOG.md`](CHANGELOG.md) — dated change + discovery history (the canonical "why" record)
 - [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelForecast/README.md) — pipeline + modeling guide
 - [`Data_DataGen_ModelForecast/README_data.md`](Data_DataGen_ModelForecast/README_data.md) — curated table schemas
 - [`App/README.md`](App/README.md) — App dev setup
