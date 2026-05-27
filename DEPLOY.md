@@ -89,9 +89,10 @@ Copy the template and fill in your three required values:
 
 ```bash
 cp .env.bundle.example .env.bundle
-# edit .env.bundle and fill in:
-#   BUNDLE_VAR_catalog=<your-catalog>
-#   BUNDLE_VAR_schema=<your-schema>
+# edit .env.bundle and fill in (note: `export` is REQUIRED — without it the
+# variables stay shell-local and the databricks CLI subprocess does not see them):
+#   export BUNDLE_VAR_catalog=<your-catalog>
+#   export BUNDLE_VAR_schema=<your-schema>
 #   export DATABRICKS_CONFIG_PROFILE=<your-profile>
 ```
 
