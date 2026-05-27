@@ -60,12 +60,15 @@ DLT Pipeline (transformations.sql)  ◄─────────────�
   → LIVE: gold_patient_device_readings  ──→ App SQL queries
 
 08_genie_ka_mas.py
-  → Genie space (gold_patient_device_readings)  ──→ App /api/genie/query
-  → KA endpoint (Knowledge Assistant)
-  → MAS endpoint (Multi-Agent Supervisor)         ──→ App /api/agent/query
+  → Genie space (gold_patient_device_readings)    ──→ App /api/genie/query
+  → KA endpoint (RAG over assets/who_docs/WHO_NCD_NCS_99.2.pdf, copied to UC Volume data/who_docs/)
+                                                ┐
+  → MAS endpoint (Multi-Agent Supervisor)       │ routes clinical-guidance Qs → KA,
+                                                │ structured-data Qs → Genie
+                                                  ──→ App /api/agent/query
 
 09_grant_app_permissions.py
-  → App SP grants on UC + endpoints + warehouse + Genie
+  → App SP grants on UC + endpoints + warehouse + Genie + KA
 ```
 
 ---
