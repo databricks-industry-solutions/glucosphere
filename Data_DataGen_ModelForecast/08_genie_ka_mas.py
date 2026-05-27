@@ -17,19 +17,22 @@ dbutils.widgets.text("SCHEMA_NAME",      "glucosphere_schema",           "Schema
 dbutils.widgets.text("KA_NAME",          "Glucosphere-Knowledge-Assistant", "KA Name")
 dbutils.widgets.text("GENIE_NAME",       "Glucosphere CGM Intelligence",   "Genie Space Name")
 dbutils.widgets.text("MAS_NAME",         "Glucosphere-Supervisor",          "MAS Name")
+dbutils.widgets.text("BUNDLE_TARGET",    "",                              "Bundle target name (used to discover bundle-managed warehouse by deterministic name)")
 
-CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")
-SCHEMA_NAME  = dbutils.widgets.get("SCHEMA_NAME")
-KA_NAME      = dbutils.widgets.get("KA_NAME")
-GENIE_NAME   = dbutils.widgets.get("GENIE_NAME")
-MAS_NAME     = dbutils.widgets.get("MAS_NAME")
+CATALOG_NAME  = dbutils.widgets.get("CATALOG_NAME")
+SCHEMA_NAME   = dbutils.widgets.get("SCHEMA_NAME")
+KA_NAME       = dbutils.widgets.get("KA_NAME")
+GENIE_NAME    = dbutils.widgets.get("GENIE_NAME")
+MAS_NAME      = dbutils.widgets.get("MAS_NAME")
+BUNDLE_TARGET = dbutils.widgets.get("BUNDLE_TARGET")
 
 GOLD_TABLE  = f"{CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings"
 DOCS_VOLUME = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/data/who_docs"
 
-print(f"Catalog:     {CATALOG_NAME}.{SCHEMA_NAME}")
-print(f"Gold table:  {GOLD_TABLE}")
-print(f"Docs volume: {DOCS_VOLUME}")
+print(f"Catalog:       {CATALOG_NAME}.{SCHEMA_NAME}")
+print(f"Gold table:    {GOLD_TABLE}")
+print(f"Docs volume:   {DOCS_VOLUME}")
+print(f"Bundle target: {BUNDLE_TARGET or '(not set — will fall back to first non-deleted warehouse)'}")
 
 # COMMAND ----------
 
@@ -186,11 +189,26 @@ print(f"✓ KA endpoint ready: {KA_ENDPOINT_NAME}")
 # COMMAND ----------
 
 # DBTITLE 1, Create Genie Room
+# Warehouse selection: prefer the bundle-managed warehouse (deterministic name
+# `glucosphere-warehouse-<BUNDLE_TARGET>`) when BUNDLE_TARGET is set. Falls back
+# to the first non-deleted warehouse. The bundle-managed pick is important when
+# multiple workspaces have shared warehouses — without it, Genie may get bound to
+# an unrelated warehouse and queries may run against wrong data sources.
 warehouses = _api("GET", "/api/2.0/sql/warehouses")
 wh_list    = warehouses.get("warehouses", [])
 if not wh_list:
     raise RuntimeError("No SQL warehouses found.")
-wh = next((w for w in wh_list if w.get("state") not in ("DELETING", "DELETED")), wh_list[0])
+wh = None
+if BUNDLE_TARGET:
+    expected_suffix = f"glucosphere-warehouse-{BUNDLE_TARGET}"
+    wh = next((w for w in wh_list if w.get("name", "").endswith(expected_suffix)
+               and w.get("state") not in ("DELETING", "DELETED")), None)
+    if wh:
+        print(f"Discovered bundle-managed warehouse by name: '{wh['name']}'")
+    else:
+        print(f"[WARN] no warehouse name endswith '{expected_suffix}' — falling back to first non-deleted")
+if not wh:
+    wh = next((w for w in wh_list if w.get("state") not in ("DELETING", "DELETED")), wh_list[0])
 warehouse_id = wh["id"]
 print(f"Using warehouse: {wh['name']} ({warehouse_id})")
 
@@ -205,6 +223,19 @@ existing_room = next(
 if existing_room:
     GENIE_SPACE_ID = existing_room.get("space_id") or existing_room.get("id")
     print(f"Genie space already exists: {GENIE_SPACE_ID}")
+    # Rebind the reused space to the current catalog's tables + bundle-managed
+    # warehouse. Verified via direct PATCH test 2026-05-27: the Data Rooms API
+    # supports PATCH /api/2.0/data-rooms/{id} with `display_name` (required),
+    # `table_identifiers`, and `warehouse_id` — returns the updated space.
+    # Without this rebind, the reused space stays bound to whatever tables +
+    # warehouse it had at original-create time → fails for workspace/catalog
+    # migrations where the underlying tables now live elsewhere.
+    print(f"  → rebinding space to {GOLD_TABLE} + warehouse {warehouse_id}")
+    _api("PATCH", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}", {
+        "display_name":      GENIE_NAME,
+        "table_identifiers": [GOLD_TABLE],
+        "warehouse_id":      warehouse_id,
+    })
 else:
     print(f"Creating Genie space: {GENIE_NAME}")
     room = _api("POST", "/api/2.0/data-rooms/", {

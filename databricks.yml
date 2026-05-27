@@ -423,6 +423,7 @@ resources:
               KA_NAME:           "Glucosphere-Knowledge-Assistant"
               GENIE_NAME:        "Glucosphere CGM Intelligence"
               MAS_NAME:          "Glucosphere-Supervisor"
+              BUNDLE_TARGET:     ${bundle.target}
           environment_key: default
 
         # ── Post-endpoint grants check ────────────────────────────────────
