@@ -81,6 +81,10 @@ def execute_sql():
 
     Response is wrapped in `{result: {structuredContent: {...}}}` to preserve
     the React-side contract (App/src/api/databricksSQL.js expects this shape).
+    The `result.data_array` rows are ALSO transformed from Statement Execution's
+    flat-array shape (`[["v1", "v2"]]`) into MCP's nested-object shape
+    (`[{values: [{string_value: "v1"}, ...]}]`) so React parsers built against
+    MCP still work unchanged. See in-line note in the response-handling block.
     """
     try:
         DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
@@ -123,7 +127,26 @@ def execute_sql():
             sql_state = stmt_resp.get('status', {}).get('state', 'UNKNOWN')
             is_error = sql_state not in ('SUCCEEDED', 'PENDING', 'RUNNING')
             print(f"[SQL] query='{sql_query[:80]}' state={sql_state} warehouse={warehouse_id}")
-            # Wrap to match the React-side contract (was MCP-shaped previously)
+            # Transform Statement Execution API row shape into MCP-compatible row shape
+            # so React parsers in App/src/api/databricksSQL.js (built when /api/sql/query
+            # routed through MCP) keep working unchanged.
+            #
+            # Statement Execution returns: result.data_array = [["1000"], ["2000"]]
+            # MCP returned:                result.data_array = [{values: [{string_value: "1000"}]}, ...]
+            # React expects MCP shape (firstRow.values[i].string_value).
+            #
+            # Regression introduced by eada716 (Phase A: MCP → Statement Execution
+            # refactor) — manifested only when App was redeployed (2026-05-27).
+            result_block = stmt_resp.get('result') or {}
+            if 'data_array' in result_block and result_block['data_array']:
+                # Only transform if it's the Statement Execution flat-row format
+                first = result_block['data_array'][0] if result_block['data_array'] else None
+                if isinstance(first, list):
+                    result_block['data_array'] = [
+                        {'values': [{'string_value': str(cell) if cell is not None else ''}
+                                    for cell in row]}
+                        for row in result_block['data_array']
+                    ]
             return jsonify({
                 'result': {
                     'isError': is_error,
