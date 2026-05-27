@@ -101,22 +101,22 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 
 ```mermaid
 flowchart TD
-    A[validate_baseline_source<br/><i>utils/validate_baseline_source.py</i>]
-    B[check_pre_baseline_grants<br/><i>utils/check_pre_baseline_grants.py</i>]
-    C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
-    D1[generate_synthetic_baseline<br/><i>01_synthetic_baseline.py</i>]
-    D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py</i>]
-    E[sanity_summary<br/><i>utils/sanity_summary.py</i>]
-    F[datagen_modeling<br/><i>04_pseudo_data_forecast_modeling.py</i>]
-    G1[incident_inference<br/><i>05_incident_inference_bidirectional.py</i>]
-    G2[deploy_model_endpoints<br/><i>07_deploy_serving_endpoints.py</i>]
-    H[generate_patient_device_data<br/><i>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb</i>]
-    I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
-    I2[create_device_telemetry<br/><i>utils/additional_patient_info/Create Raw Device Data.ipynb</i>]
-    J[run_dlt_pipeline<br/><i>invokes cgm_silver_gold SDP</i>]
-    K[create_genie_ka_mas<br/><i>08_genie_ka_mas.py</i>]
-    L[check_post_endpoint_grants<br/><i>utils/check_post_endpoint_grants.py</i>]
-    M[grant_app_permissions<br/><i>09_grant_app_permissions.py</i>]
+    A[validate_baseline_source<br/>utils/validate_baseline_source.py]
+    B[check_pre_baseline_grants<br/>utils/check_pre_baseline_grants.py]
+    C{dispatch_baseline_source<br/>condition_task on baseline_source}
+    D1[generate_synthetic_baseline<br/>01_synthetic_baseline.py]
+    D2[ingest_real_baseline<br/>02_ingest_real_baseline.py]
+    E[sanity_summary<br/>utils/sanity_summary.py]
+    F[datagen_modeling<br/>04_pseudo_data_forecast_modeling.py]
+    G1[incident_inference<br/>05_incident_inference_bidirectional.py]
+    G2[deploy_model_endpoints<br/>07_deploy_serving_endpoints.py]
+    H[generate_patient_device_data<br/>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb]
+    I1[create_patient_registry<br/>utils/additional_patient_info/Create Patient_Device Table.ipynb]
+    I2[create_device_telemetry<br/>utils/additional_patient_info/Create Raw Device Data.ipynb]
+    J[run_dlt_pipeline<br/>invokes cgm_silver_gold SDP]
+    K[create_genie_ka_mas<br/>08_genie_ka_mas.py]
+    L[check_post_endpoint_grants<br/>utils/check_post_endpoint_grants.py]
+    M[grant_app_permissions<br/>09_grant_app_permissions.py]
 
     A --> B --> C
     C -- "synthetic" --> D1
