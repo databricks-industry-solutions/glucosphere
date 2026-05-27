@@ -1174,7 +1174,7 @@ plt.tight_layout()
 # (transparent bg so the image inherits parent card color in any theme — dark or light)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
-    os.makedirs(_ASSET_DIR, exist_ok=True)
+    dbutils.fs.mkdirs(_ASSET_DIR)
     _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
@@ -1352,7 +1352,7 @@ plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
-    os.makedirs(_ASSET_DIR, exist_ok=True)
+    dbutils.fs.mkdirs(_ASSET_DIR)
     _asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
@@ -1602,7 +1602,7 @@ plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
-    os.makedirs(_ASSET_DIR, exist_ok=True)
+    dbutils.fs.mkdirs(_ASSET_DIR)
     _asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
@@ -1901,7 +1901,7 @@ plt.tight_layout()
 # per-theme regeneration needed.
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
 try:
-    os.makedirs(_ASSET_DIR, exist_ok=True)
+    dbutils.fs.mkdirs(_ASSET_DIR)
     _asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
     plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
     print(f"[ASSET] Saved {_asset_path}")
