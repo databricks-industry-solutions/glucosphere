@@ -15,7 +15,7 @@ This application provides:
 
 **Frontend**: React + Vite + Tailwind CSS
 **Backend**: Flask (proxy server for Databricks APIs)
-**Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` schema — set per-target via the bundle's `catalog` + `schema` variables; current `mmt_aws_usw2` target writes to `mmt_aws_usw2_catalog.glucosphere_dev`)
+**Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
 **AI Agent**: Databricks Multi-Agent Supervisor
 
 ## Project Structure
@@ -112,7 +112,7 @@ This will:
 
 ## Data Schema
 
-Primary table: `${CATALOG_NAME}.${SCHEMA_NAME}.gold_patient_device_readings` (e.g. `mmt_aws_usw2_catalog.glucosphere_dev.gold_patient_device_readings` for the mmt_aws_usw2 target).
+Primary table: `${CATALOG_NAME}.${SCHEMA_NAME}.gold_patient_device_readings` (e.g. `<your-catalog>.<your-schema>.gold_patient_device_readings`).
 
 The React app fetches catalog/schema from the Flask `GET /api/config` endpoint at startup (helper in `App/src/api/config.js`), then constructs queries via template literals `${catalog}.${schema}.<table>`. CATALOG_NAME + SCHEMA_NAME are sourced from `App/databricks/app.yaml` env vars per target — no inline hardcoding anywhere in `App/src/`.
 

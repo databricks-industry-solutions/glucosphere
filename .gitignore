@@ -86,6 +86,7 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
+.claude/
 .DS_Store
 *.suo
 *.ntvs*
@@ -104,6 +105,9 @@ config/databricks_config_*.json
 
 # App env (do not commit secrets)
 App/.env
+
+# Per-operator bundle config (workspace-specific BUNDLE_VAR_* overrides + DATABRICKS_CONFIG_PROFILE)
+.env.bundle
 
 # Local working notes / investigation snapshots
 # (un-ignore on a dedicated notes/docs branch if/when consolidating)

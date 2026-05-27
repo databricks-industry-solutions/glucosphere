@@ -8,8 +8,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema")
 
 CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME  = dbutils.widgets.get("SCHEMA_NAME")
@@ -279,7 +279,7 @@ print("=" * 60)
 # MAGIC ## Check the diabetes_data table looks right
 # MAGIC
 # MAGIC Reads the freshly-written `diabetes_data` and confirms it has the columns,
-# MAGIC reading interval, and completeness that `04_pseudo_data_modeling.py`
+# MAGIC reading interval, and completeness that `04_pseudo_data_forecast_modeling.py`
 # MAGIC expects. The same check runs at the end of the real-data path
 # MAGIC (`01_ingest_real_baseline.py`) so synthetic and real outputs are
 # MAGIC interchangeable. Raises `AssertionError` if anything is off.

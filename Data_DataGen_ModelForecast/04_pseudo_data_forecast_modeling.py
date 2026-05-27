@@ -29,7 +29,7 @@ dbutils.library.restartPython()
 # MAGIC * **Essential Widgets**: ENV, CATALOG_NAME, SCHEMA_NAME, INCLUDE_INCIDENT, CONFIG_FILE, NUM_PSEUDO_OVERRIDE
 # MAGIC * **All other parameters**: Loaded from `configs/baseline_config.yaml`
 # MAGIC
-# MAGIC **Current Settings:** GLUCOSE_OFFSET=8.0 mg/dL, p25 anchor, simple features, no class weights
+# MAGIC **Current Settings:** p25 anchor, simple features, no class weights
 # MAGIC
 # MAGIC **Output:** 1000 pseudo patients (dev), 2 UC models, fleet forecast table
 
@@ -46,8 +46,8 @@ dbutils.widgets.removeAll()
 
 # Essential widgets only
 dbutils.widgets.dropdown("ENV", "dev", ["dev", "staging", "prod"], "Environment")
-dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "cgm", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Include Incident")
 dbutils.widgets.dropdown("RUN_OPTUNA_TUNING", "true", ["false", "true"], "Run Optuna Tuning")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
@@ -226,14 +226,13 @@ print(f"  NUM_PSEUDO: {NUM_PSEUDO}")
 print(f"  INCLUDE_INCIDENT: {INCLUDE_INCIDENT}")
 print(f"\nInternal parameters (use cfg.param):")
 print(f"  cfg.seed: {cfg.seed}")
-print(f"  cfg.glucose_offset: {cfg.glucose_offset} mg/dL")
 print(f"  cfg.lags: {cfg.lags}")
 print(f"  cfg.train_sample_frac: {cfg.train_sample_frac}")
 print(f"\nXGBoost hyperparameters (may be updated by Optuna):")
 print(f"  MAX_DEPTH: {MAX_DEPTH}, ETA: {ETA}")
 print(f"  N_ROUNDS: {N_ROUNDS}, EARLY_STOP: {EARLY_STOP}")
 print(f"\nℹ️  Using configs/baseline_config.yaml with widget overrides")
-print(f"ℹ️  Access internal params as: cfg.param_name (e.g., cfg.seed, cfg.gain_lo)")
+print(f"ℹ️  Access internal params as: cfg.param_name (e.g., cfg.seed, cfg.lags)")
 
 # COMMAND ----------
 
@@ -813,7 +812,6 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 # MAGIC * **NO** gain scaling, coupling, or offset adjustments
 # MAGIC
 # MAGIC **Key Configuration:**
-# MAGIC * GLUCOSE_OFFSET: 8.0 mg/dL (from YAML config)
 # MAGIC * Anchor: p25 (25th percentile)
 # MAGIC * Features: Simple lags + rolling windows (no IOB/COB)
 # MAGIC * Class weights: None
@@ -1308,7 +1306,7 @@ print("="*80)
 
 # COMMAND ----------
 
-# DBTITLE 1,Model Training Section
+# DBTITLE 1,Forecast Model Training Section
 # MAGIC %md
 # MAGIC ### Use generated pseudo patient data to test ability to train forecasting model 
 
@@ -1427,7 +1425,7 @@ X_demo  = demo_pd[feature_cols].to_numpy(dtype=np.float32)
 # MAGIC * reg_lambda: [0.1, 5.0] (log scale)
 # MAGIC
 # MAGIC ### Results Storage
-# MAGIC * **Location**: `/Volumes/hls_glucosphere/cgm/optuna_studies/`
+# MAGIC * **Location**: `/Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/optuna_studies/`
 # MAGIC * **Files**: Best params (JSON), all trials (CSV), study database (SQLite)
 # MAGIC
 # MAGIC **Note**: Optuna optimizes for 15-min forecast; same hyperparameters used for 30-min forecast.
@@ -1972,7 +1970,6 @@ def log_and_register_xgb(horizon_steps: int, model_fqn: str):
         mlflow.log_param("seed", cfg.seed)
         mlflow.log_param("horizon_minutes", horizon_steps*5)
         mlflow.log_param("features", "simple_lags_rolling")
-        mlflow.log_param("glucose_offset", cfg.glucose_offset)
         mlflow.log_param("train_sample_frac", cfg.train_sample_frac)
         
         for k,v in params.items():
@@ -2266,9 +2263,9 @@ print("="*80)
 # MAGIC
 # MAGIC **How MAE is Calculated:**
 # MAGIC * MAE = Average of |Predicted - Actual|
-# MAGIC * 15-min MAE: 5.8 mg/dL (predictions off by ~6 mg/dL on average)
-# MAGIC * 30-min MAE: 9.8 mg/dL (longer horizon = larger error)
-# MAGIC * Calculated by glucose range: hypo (3.9), normal (5.4), hyper (7.3) for 15-min
+# MAGIC * 30-min horizon MAE > 15-min horizon MAE by design (longer horizons accumulate uncertainty)
+# MAGIC * Compute separately by glucose range (hypo / normal / hyper) for risk-stratified visibility
+# MAGIC * Actual numbers vary per run — see the "Pipeline Output Summary" cell above for the values produced by this specific run
 # MAGIC
 # MAGIC **Production Monitoring Options:**
 # MAGIC
@@ -2292,62 +2289,6 @@ print("="*80)
 # MAGIC * Alert when predictions fall outside clinical safety bounds (e.g., predicted hypo <70)
 # MAGIC
 # MAGIC **Recommended:** Combine Option 2 (batch MAE for model monitoring) with Option 3 (real-time safety checks). Log all predictions to enable retrospective analysis when actual values arrive.
-
-# COMMAND ----------
-
-# DBTITLE 1,Pipeline Complete
-# MAGIC %md
-# MAGIC ## Pipeline Complete
-# MAGIC
-# MAGIC **Output Tables:**
-# MAGIC * `pseudo_clean_7d`: 1000 pseudo patients (stratified sampling)
-# MAGIC * `pseudo_clean_7d_labeled`: With prediction targets (5/10/15/30 min)
-# MAGIC * `xgb_flat_min_lags12`: Feature table (lags, rolling windows, deltas)
-# MAGIC * `fleet_forecast_now`: Latest predictions for all patients
-# MAGIC
-# MAGIC **Models (Unity Catalog):**
-# MAGIC * `hls_glucosphere.cgm.cgm_xgb_15m@Champion`
-# MAGIC * `hls_glucosphere.cgm.cgm_xgb_30m@Champion`
-# MAGIC
-# MAGIC **Configuration:**
-# MAGIC * GLUCOSE_OFFSET=8.0 mg/dL
-# MAGIC * Simple features (no IOB/COB)
-# MAGIC * No class weights
-# MAGIC * Stratified sampling for distribution match
-
-# COMMAND ----------
-
-# DBTITLE 1,Scaling Analysis - Should We Generate More Patients?
-# MAGIC %md
-# MAGIC ## Scaling Analysis: 1000 vs More Patients
-# MAGIC
-# MAGIC **Current Performance (1000 patients):**
-# MAGIC * Overall MAE: **5.8 mg/dL** (15m) - STATE-OF-ART
-# MAGIC * By range: Hypo 5.2 | Normal 5.1 | Hyper 8.3 mg/dL
-# MAGIC * Distribution: Perfect match to baseline
-# MAGIC
-# MAGIC **Scaling Trade-offs:**
-# MAGIC
-# MAGIC | Patients | Time | Estimated MAE | Improvement | Worth It? |
-# MAGIC |----------|------|---------------|-------------|----------|
-# MAGIC | 1,000 (current) | - | 5.8 mg/dL | - | ✅ Excellent |
-# MAGIC | 2,000 | ~30 min | ~5.1 mg/dL | 12% | Marginal |
-# MAGIC | 5,000 | ~75 min | ~4.1 mg/dL | 29% | Marginal |
-# MAGIC | 10,000 | ~150 min | ~3.4 mg/dL | 41% | Marginal |
-# MAGIC
-# MAGIC **When to Add More:**
-# MAGIC * ✅ Deploying to production (need robustness)
-# MAGIC * ✅ Publishing research paper (need statistical power)
-# MAGIC * ✅ Handling diverse patient populations
-# MAGIC * ✅ MAE degrades in real-world testing
-# MAGIC
-# MAGIC **When NOT to Add More:**
-# MAGIC * ✅ Demo purposes (current case)
-# MAGIC * ✅ Already have excellent performance (5.8 mg/dL)
-# MAGIC * ✅ Time-constrained
-# MAGIC * ✅ Proof-of-concept phase
-# MAGIC
-# MAGIC **Recommendation:** Keep 1000 patients. Performance is already exceptional and near the ceiling. Focus on incident simulation and MLflow system metrics testing instead.
 
 # COMMAND ----------
 

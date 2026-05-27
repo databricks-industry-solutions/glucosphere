@@ -27,16 +27,16 @@
 # MAGIC ## Key Tables
 # MAGIC
 # MAGIC **Input:**
-# MAGIC * `hls_glucosphere.cgm.pseudo_clean_7d` - Clean baseline data (from baseline notebook)
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_clean_7d` - Clean baseline data (from baseline notebook)
 # MAGIC
 # MAGIC **Output:**
-# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d` - Data with +40 mg/dL bias injected
-# MAGIC * `hls_glucosphere.cgm.pseudo_incident_7d_labeled` - Incident data with prediction labels
-# MAGIC * `hls_glucosphere.cgm.fleet_forecast_incident` - Fleet-wide predictions (demo table)
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d` - Data with +40 mg/dL bias injected
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled` - Incident data with prediction labels
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.fleet_forecast_incident` - Fleet-wide predictions (demo table)
 # MAGIC
 # MAGIC **Models:**
-# MAGIC * `hls_glucosphere.cgm.cgm_xgb_15m@Champion` - Clean model (5.8 mg/dL MAE)
-# MAGIC * `hls_glucosphere.cgm.cgm_xgb_30m@Champion` - Clean model (10.4 mg/dL MAE)
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_15m@Champion` - Clean-period XGBoost (15-min horizon)
+# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_30m@Champion` - Clean-period XGBoost (30-min horizon)
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -73,7 +73,7 @@
 # MAGIC * Cell 16: 3-panel glucose timeline (shows +40 mg/dL bias in affected patients)
 # MAGIC * Cell 17: Glucose distribution analysis
 # MAGIC
-# MAGIC **Demo table:** `hls_glucosphere.cgm.fleet_forecast_incident` (Cell 22)
+# MAGIC **Demo table:** `${CATALOG_NAME}.${SCHEMA_NAME}.fleet_forecast_incident` (Cell 22)
 
 # COMMAND ----------
 
@@ -95,8 +95,8 @@ dbutils.widgets.removeAll()
 
 # Essential widgets only
 dbutils.widgets.dropdown("ENV", "dev", ["dev", "staging", "prod"], "Environment")
-dbutils.widgets.text("CATALOG_NAME", "hls_glucosphere", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "cgm", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "true", ["false", "true"], "Include Incident")
 dbutils.widgets.dropdown("RUN_OPTUNA_TUNING", "false", ["false", "true"], "Run Optuna Tuning")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
@@ -1452,14 +1452,6 @@ print("="*80)
 
 # COMMAND ----------
 
-# https://www.nature.com/articles/s41746-021-00480-x
-
-# COMMAND ----------
-
-# [optional]
-
-# COMMAND ----------
-
 # DBTITLE 1,Compare clean vs incident model performance
 # ------------------------
 # INCIDENT IMPACT ANALYSIS
@@ -1678,104 +1670,3 @@ print(f"   * Excludes clipped floor values (data artifacts)")
 
 display(spark.table(fleet_forecast_tbl).orderBy(F.desc("delta_30m")).limit(20))
 
-# COMMAND ----------
-
-
-
-# COMMAND ----------
-
-# DBTITLE 1,Demo Guide
-# MAGIC %md
-# MAGIC ---
-# MAGIC
-# MAGIC # Next Steps & Demo Guide
-# MAGIC
-# MAGIC ## Primary Demo Table
-# MAGIC
-# MAGIC ### `hls_glucosphere.cgm.fleet_forecast_incident`
-# MAGIC
-# MAGIC **Use this table for demos and dashboards**
-# MAGIC
-# MAGIC ```sql
-# MAGIC SELECT 
-# MAGIC   patient_id,
-# MAGIC   time,
-# MAGIC   glucose_observed,
-# MAGIC   pred_15m,
-# MAGIC   pred_30m,
-# MAGIC   delta_15m,
-# MAGIC   delta_30m,
-# MAGIC   carb_input,
-# MAGIC   bolus_volume_delivered,
-# MAGIC   basal_rate,
-# MAGIC   steps
-# MAGIC FROM hls_glucosphere.cgm.fleet_forecast_incident
-# MAGIC ORDER BY delta_30m DESC
-# MAGIC LIMIT 20
-# MAGIC ```
-# MAGIC
-# MAGIC **Table Contents:**
-# MAGIC * 1,000 patients (one random timepoint per patient)
-# MAGIC * Predictions from incident-trained models
-# MAGIC * Prediction deltas showing forecast accuracy
-# MAGIC * Sampled from middle days (3-5) to avoid edge effects
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ## Supporting Tables
-# MAGIC
-# MAGIC ### For Incident Analysis (replace `${CATALOG_NAME}.${SCHEMA_NAME}` with your target):
-# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d` - Full incident data with bias
-# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled` - With prediction labels
-# MAGIC
-# MAGIC ### For Baseline Comparison:
-# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_clean_7d` - Original clean data
-# MAGIC * `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` - Baseline data (synthetic OR real per baseline_source mode)
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ## Recommended Next Steps
-# MAGIC
-# MAGIC ### [1] Create Dashboard
-# MAGIC * Use `fleet_forecast_incident` table
-# MAGIC * Show prediction accuracy by patient
-# MAGIC * Highlight patients with largest deltas
-# MAGIC * Add filters for glucose ranges
-# MAGIC
-# MAGIC ### [2] Build Monitoring Alerts
-# MAGIC * Monitor MAE in real-time
-# MAGIC * Alert when MAE > 15 mg/dL (3x baseline)
-# MAGIC * Track incident recovery time
-# MAGIC
-# MAGIC ### [3] Extend Analysis
-# MAGIC * Compare multiple incident types (bias, noise, dropout)
-# MAGIC * Test different bias magnitudes
-# MAGIC * Analyze patient-level impact
-# MAGIC
-# MAGIC ### [4] Train Robust Models
-# MAGIC * Add incident data to training set
-# MAGIC * Implement data quality checks
-# MAGIC * Build ensemble models
-# MAGIC
-# MAGIC ---
-# MAGIC
-# MAGIC ## Key Metrics Summary
-# MAGIC
-# MAGIC | Metric | Clean Period | Incident Period | Impact |
-# MAGIC |--------|--------------|-----------------|--------|
-# MAGIC | MAE 15m | 5.1 mg/dL | 38.6 mg/dL | +657% |
-# MAGIC | MAE 30m | 10.4 mg/dL | ~70 mg/dL | +573% |
-# MAGIC | Affected Patients | 0% | 30% | 300/1000 |
-# MAGIC | Duration | - | 3 hours | Day 2, 2-5pm |
-# MAGIC
-# MAGIC **Conclusion:** Even excellent models fail catastrophically during device incidents. Real-time monitoring is critical.
-
-# COMMAND ----------
-
-# DBTITLE 1,NOTEs
-# Apparently """While both are dangerous, hypoglycemia (low blood sugar) is generally considered more immediately dangerous because it deprives the brain of crucial energy, potentially causing confusion, seizures, coma, or death very quickly, requiring immediate carbohydrate intake. Hyperglycemia (high blood sugar) typically develops more slowly, but severe, prolonged cases can lead to serious long-term complications like heart, kidney, or nerve damage, and acute emergencies like DKA (Diabetic Ketoacidosis). """
-
-
-# [Hmm actually the scenario would be that actually some folks would have been trending hypoglycemic -- HOWEVER because of the firmware/device bug their glucose levels were deem "OK" --> shift positive ---> so they were actually in precarious range...]  
-
-# Maybe we are ok with what we currently have.... 

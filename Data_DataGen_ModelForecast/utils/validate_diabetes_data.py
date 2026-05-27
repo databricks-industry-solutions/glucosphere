@@ -3,7 +3,7 @@
 # MAGIC # Check that the `diabetes_data` table looks right
 # MAGIC
 # MAGIC Reads `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` and confirms it
-# MAGIC matches what `04_pseudo_data_modeling.py` expects.
+# MAGIC matches what `04_pseudo_data_forecast_modeling.py` expects.
 # MAGIC
 # MAGIC `%run`-able from any baseline-generation notebook. The caller MUST set
 # MAGIC `CATALOG_NAME` and `SCHEMA_NAME` as Python variables before `%run`.

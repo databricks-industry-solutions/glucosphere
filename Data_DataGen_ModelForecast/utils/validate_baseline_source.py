@@ -23,7 +23,7 @@
 
 dbutils.widgets.text("BASELINE_SOURCE",  "synthetic",         "Baseline source mode")
 dbutils.widgets.text("CATALOG_NAME",     "glucosphere_catalog",  "Target catalog")
-dbutils.widgets.text("SCHEMA_NAME",      "glucosphere_dev",   "Target schema")
+dbutils.widgets.text("SCHEMA_NAME",      "glucosphere_schema", "Target schema")
 dbutils.widgets.text("SOURCE_CATALOG",   "",                  "Source catalog (from_table only)")
 dbutils.widgets.text("SOURCE_SCHEMA",    "",                  "Source schema (from_table only)")
 dbutils.widgets.text("SOURCE_TABLE",     "",                  "Source table (from_table only)")
@@ -62,7 +62,6 @@ if BASELINE_SOURCE == "from_table":
         SOURCE_PROVENANCE = f"{SOURCE_FQN} (explicit widgets)"
     else:
         priority_candidates = [
-            (f"{CATALOG_NAME}.glucosphere_dev.diabetes_data",             "live production"),
             (f"{CATALOG_NAME}.glucosphere_from_source_e2e.diabetes_data", "real-data harness"),
             (f"{CATALOG_NAME}.glucosphere_synth_e2e.diabetes_data",       "synth harness"),
         ]
@@ -123,12 +122,11 @@ source_detail = (
     else "HUPA-UCM Mendeley dataset" if BASELINE_SOURCE == "from_source"
     else "synthetic generator (textbook phenotypes + AR(1))"
 )
-# Ensure schema exists before writing provenance. 01_synthetic_baseline + 02_ingest_real_baseline notebooks (which
-# create the schema themselves) run AFTER this validate task, so for any fresh
-# sandbox deploy (e.g., the mmt_aws_usw2_synth_e2e / from_table_e2e harness
-# targets, or any new workspace bootstrap) the schema doesn't exist yet at
-# this point. Idempotent CREATE SCHEMA IF NOT EXISTS — no-op for existing
-# schemas (e.g., the live mmt_aws_usw2.glucosphere_dev target).
+# Ensure schema exists before writing provenance. The 01_synthetic_baseline +
+# 02_ingest_real_baseline notebooks (which create the schema themselves) run
+# AFTER this validate task, so for any fresh-schema deploy (harness targets,
+# new workspace bootstrap) the schema doesn't exist yet at this point.
+# Idempotent CREATE SCHEMA IF NOT EXISTS — no-op for existing schemas.
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}")
 
 spark.sql(f"""

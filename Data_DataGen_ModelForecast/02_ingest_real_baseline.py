@@ -3,7 +3,7 @@
 # MAGIC # Real-baseline ingest (HUPA-UCM)
 # MAGIC
 # MAGIC Produces `${CATALOG_NAME}.${SCHEMA_NAME}.diabetes_data` — the single-table
-# MAGIC data contract that `04_pseudo_data_modeling.py` reads.
+# MAGIC data contract that `04_pseudo_data_forecast_modeling.py` reads.
 # MAGIC Same schema as the synthetic path (see `01_synthetic_baseline.py`)
 # MAGIC so downstream `04_*` / `05_*` / `06_*` work uniformly regardless of which
 # MAGIC baseline path ran.
@@ -20,8 +20,8 @@
 # MAGIC     1. Explicit `SOURCE_CATALOG` / `SOURCE_SCHEMA` / `SOURCE_TABLE` widgets
 # MAGIC        if all three set (deterministic; the e2e harness targets use this).
 # MAGIC     2. Otherwise auto-detect against priority list under `CATALOG_NAME`:
-# MAGIC        `glucosphere_dev.diabetes_data` → `glucosphere_from_source_e2e.diabetes_data`
-# MAGIC        → `glucosphere_synth_e2e.diabetes_data`. First hit wins.
+# MAGIC        `glucosphere_from_source_e2e.diabetes_data` → `glucosphere_synth_e2e.diabetes_data`.
+# MAGIC        First hit wins. (Workspace-agnostic — no hardcoded live schema name.)
 # MAGIC
 # MAGIC The dispatch task in `glucosphere_full_setup` runs this notebook only when
 # MAGIC `baseline_source != "synthetic"`. The synthetic path runs the other
@@ -31,7 +31,7 @@
 
 # Widgets — all parameterized via bundle variables (no hardcoded sources)
 dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog (target)")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema (target)")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema (target)")
 dbutils.widgets.text("BASELINE_SOURCE", "from_source", "Mode: from_source | from_table")
 dbutils.widgets.text(
     "DOWNLOAD_URL",
@@ -103,12 +103,11 @@ if BASELINE_SOURCE == "from_table":
     #   1. If SOURCE_CATALOG/SCHEMA/TABLE widgets are ALL explicitly set,
     #      use them verbatim (deterministic; this is what the e2e harness
     #      targets use, and what an operator gets when they override via
-    #      `bundle deploy --var source_schema=...`).
+    #      `BUNDLE_VAR_source_schema=…` in .env.bundle).
     #   2. Otherwise iterate a fixed priority list under CATALOG_NAME and
-    #      pick the first `<schema>.<table>` that exists. Priority is live
-    #      production first, then real-data harness, then synth harness —
-    #      so a from_table run "just works" against whatever the workspace
-    #      has lying around.
+    #      pick the first `<schema>.<table>` that exists. Priority is
+    #      real-data harness first, then synth harness — workspace-agnostic
+    #      (no hardcoded live-production schema name).
     #   3. If none of the priority candidates exist, raise with the
     #      full candidate list so the operator knows what to populate.
     if SOURCE_CATALOG and SOURCE_SCHEMA and SOURCE_TABLE:
@@ -116,7 +115,6 @@ if BASELINE_SOURCE == "from_table":
         print(f"[ingest:table] source = {source_fqn} (explicit widgets)")
     else:
         priority_candidates = [
-            (f"{CATALOG_NAME}.glucosphere_dev.diabetes_data",                "live production"),
             (f"{CATALOG_NAME}.glucosphere_from_source_e2e.diabetes_data",    "real-data harness"),
             (f"{CATALOG_NAME}.glucosphere_synth_e2e.diabetes_data",          "synth harness"),
         ]

@@ -2,83 +2,56 @@ bundle:
   name: glucosphere
 
 variables:
+  # ───────────────────────────────────────────────────────────────────────
+  # Operator-facing variables. ALL values come from `.env.bundle` (gitignored)
+  # via BUNDLE_VAR_<name> env vars. See `.env.bundle.example` for the contract.
+  # Defaults below are GENERIC placeholders — operator overrides per workspace.
+  # ───────────────────────────────────────────────────────────────────────
   catalog:
-    description: Unity Catalog catalog name (override per target). The default is a generic placeholder name that any new deployment can create; each named target in `targets:` below sets its own workspace-specific catalog.
+    description: Unity Catalog catalog (set via BUNDLE_VAR_catalog in .env.bundle)
     default: glucosphere_catalog
   schema:
-    description: Schema / database name
-    default: glucosphere_dev
-  volume:
-    description: UC Volume name for the landing-zone data feeding the DLT pipeline
-    default: landing_zone
+    description: UC schema / database (set via BUNDLE_VAR_schema in .env.bundle)
+    default: glucosphere_schema
   baseline_source:
     description: |
-      Which baseline ingest path the job runs at the head of the pipeline.
-      Valid: "synthetic" | "from_source" | "from_table".
-      Validated upfront by validate_baseline_source task (typos fail fast).
-        - synthetic        → 01_synthetic_baseline.py (textbook phenotypes + AR(1))
+      Baseline ingest path. Valid: "synthetic" | "from_source" | "from_table".
+        - synthetic   → 01_synthetic_baseline.py (textbook phenotypes + AR(1))
         - from_source → 02_ingest_real_baseline.py downloads HUPA-UCM from Mendeley
-        - from_table  → 02_ingest_real_baseline.py copies from ${source_catalog}.${source_schema}.${source_table}
-      Default is from_source (changed 2026-05-16) — buildathon demos want
-      clinical realism (hypoglycemia events, hyperglycemia outliers up to ~450 mg/dL),
-      and the Mendeley URL has been reliable. Synthetic remains one --var away for
-      CI / restricted-egress scenarios.
+        - from_table  → 02_ingest_real_baseline.py copies from existing UC table
     default: from_source
   source_catalog:
-    description: Source catalog for baseline_source=from_table mode (empty otherwise)
+    description: Source catalog for baseline_source=from_table mode (empty → use target catalog)
     default: ""
   source_schema:
-    description: Source schema for baseline_source=from_table mode (empty otherwise)
+    description: Source schema for baseline_source=from_table mode (empty → auto-detect)
     default: ""
   source_table:
-    description: Source table for baseline_source=from_table mode (empty otherwise)
+    description: Source table for baseline_source=from_table mode (empty → auto-detect)
     default: ""
   app_name:
-    description: Name of the Databricks App
-    default: glucosphere-dashboard
-  warehouse_id:
-    description: SQL warehouse ID used for data queries and permission grants
-    default: d9af05523dafe3a6   # HLS AMER SQL Warehouse on fe-vm-hls-amer
+    description: Databricks App display name
+    default: glucosphere-app
 
 targets:
+  # ───────────────────────────────────────────────────────────────────────
+  # Live deploy targets. Workspace selection only — all data variables
+  # (catalog, schema, etc.) come from the operator's `.env.bundle`.
+  # Deploy: `source .env.bundle && databricks bundle deploy -t <target>`.
+  # No `default: true` on any target — `-t <target>` is always required.
+  # ───────────────────────────────────────────────────────────────────────
   hls_amer:
-    default: true
     workspace:
       host: https://fe-vm-hls-amer.cloud.databricks.com
-    variables:
-      catalog: hls_amer_catalog
 
-  # ─── Template for adding your own target ──────────────────────────────────
-  # Copy the block below, uncomment, and replace the four placeholder values
-  # with your workspace's host + catalog + schema + warehouse_id. The two
-  # active targets above (`hls_amer`, `mmt_aws_usw2`) serve as working examples.
-  #
-  # Historical Ward-branch targets (`ward_consolidated`, `azure`, `azure2`)
-  # were removed 2026-05-19 — their workspace-specific hardcoded values are
-  # not portable (specific to Justin's deploys on
-  # `origin/feature/ward-app-cleanup-upstream`, where they remain
-  # authoritative). Note that `deploy.py` may still reference `ward_consolidated`
-  # as a hardcoded target name; flagged for cleanup under task #69.
-  #
-  # my_target_name:
-  #   workspace:
-  #     host: https://<your-workspace>.cloud.databricks.com
-  #   variables:
-  #     catalog: <your-catalog>
-  #     schema: <your-schema>
-  #     warehouse_id: <your-warehouse-id>
-
-  # Backup / portability-test target on May's personal MMT workspace.
-  # Has plenty of app-cap headroom (1/100 used) so unblocked from the
-  # fe-vm-hls-amer cap issue. No frozen reference catalogs here — only
-  # synthetic or HUPA-UCM-download baseline modes will work.
   mmt_aws_usw2:
     workspace:
       host: https://fevm-mmt-aws-usw2.cloud.databricks.com
-    variables:
-      catalog: mmt_aws_usw2_catalog
-      schema: glucosphere_dev
-      warehouse_id: dafc5dff8eb8094a   # Serverless Starter Warehouse (Small)
+
+  # ─── Adding a new live target ─────────────────────────────────────────
+  # Append a stanza like the two above — `workspace.host` only.
+  # The operator's `.env.bundle` provides catalog/schema; adding a
+  # `variables:` block here would defeat the SSOT design.
 
   # ─── Permanent sandbox harness targets (added 2026-05-26 as part of #68) ──
   #
@@ -112,7 +85,7 @@ targets:
   # PIPELINES only — NOT to apps or database_instances (those resource
   # types have DNS/format constraints that exclude brackets). For those,
   # we override the name per-target so they don't collide with the live
-  # `mmt_aws_usw2` target's `glucosphere-dashboard` + `glucosphere-oltp-*`.
+  # `mmt_aws_usw2` target's `glucosphere-app` + `glucosphere-oltp-*`.
   # Also note: dots in short_name become underscores in the actual prefix
   # (e.g., `may.merkletan` → `[dev may_merkletan]`).
   mmt_aws_usw2_synth_e2e:
@@ -122,15 +95,14 @@ targets:
     variables:
       catalog: mmt_aws_usw2_catalog
       schema: glucosphere_synth_e2e
-      warehouse_id: dafc5dff8eb8094a
       baseline_source: synthetic
     resources:
       # App name must be 2-30 chars (verified empirically 2026-05-26).
       # Drop `-dashboard` suffix to keep under limit; suffixed name still
-      # clearly distinguishes from live `glucosphere-dashboard` in the
+      # clearly distinguishes from live `glucosphere-app` in the
       # workspace Apps list.
       apps:
-        glucosphere_dashboard:
+        glucosphere_app:
           name: glucosphere-synth-e2e
       database_instances:
         glucosphere_oltp:
@@ -155,7 +127,6 @@ targets:
     variables:
       catalog: mmt_aws_usw2_catalog
       schema: glucosphere_from_table_e2e
-      warehouse_id: dafc5dff8eb8094a
       baseline_source: from_table
       source_catalog: mmt_aws_usw2_catalog
       source_schema: glucosphere_synth_e2e
@@ -163,7 +134,7 @@ targets:
     resources:
       # Parallel naming with synth_e2e harness; drop `-from-` to fit 30-char limit.
       apps:
-        glucosphere_dashboard:
+        glucosphere_app:
           name: glucosphere-table-e2e
       database_instances:
         glucosphere_oltp:
@@ -180,11 +151,10 @@ targets:
     variables:
       catalog: mmt_aws_usw2_catalog
       schema: glucosphere_from_source_e2e
-      warehouse_id: dafc5dff8eb8094a
       baseline_source: from_source
     resources:
       apps:
-        glucosphere_dashboard:
+        glucosphere_app:
           name: glucosphere-source-e2e
       database_instances:
         glucosphere_oltp:
@@ -247,7 +217,9 @@ resources:
   #                 ↘                  ↓
   #                  ↘    check_post_endpoint_grants (verify KA/MAS/Genie exist before grant_app_permissions)
   #                   ↘                ↓
-  #                    ↘     grant_app_permissions  (app SP access on UC + endpoints)
+  #                    ↘     grant_app_permissions  (app SP access on UC + endpoints + warehouse;
+  #                                                    warehouse discovered by deterministic name
+  #                                                    from bundle's sql_warehouses resource)
   # ---------------------------------------------------------------------------
   jobs:
     glucosphere_full_setup:
@@ -346,7 +318,7 @@ resources:
           depends_on:
             - task_key: sanity_summary
           notebook_task:
-            notebook_path: Data_DataGen_ModelForecast/04_pseudo_data_modeling.py
+            notebook_path: Data_DataGen_ModelForecast/04_pseudo_data_forecast_modeling.py
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
@@ -473,7 +445,10 @@ resources:
         - task_key: grant_app_permissions
           description: >
             Grant the deployed app's service principal access to the catalog,
-            all serving endpoints, and the Genie space
+            all serving endpoints, the SQL warehouse, and the Genie space.
+            WAREHOUSE_ID is left empty so the notebook discovers the
+            bundle-managed warehouse by deterministic name (see
+            sql_warehouses.glucosphere_warehouse resource below).
           max_retries: 0
           depends_on:
             - task_key: check_post_endpoint_grants
@@ -483,7 +458,11 @@ resources:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
               APP_NAME:          ${var.app_name}
-              WAREHOUSE_ID:      ${var.warehouse_id}
+              # WAREHOUSE_ID empty → 09 discovers bundle-managed warehouse by
+              # name pattern `glucosphere-warehouse-${bundle.target}`.
+              # BUNDLE_TARGET passed in so 09 knows which target's warehouse to find.
+              WAREHOUSE_ID:      ""
+              BUNDLE_TARGET:     ${bundle.target}
               # Endpoint names and Genie space ID are auto-discovered from
               # the workspace if left empty, or can be set explicitly here.
               MAS_ENDPOINT_NAME: ""
@@ -561,10 +540,35 @@ resources:
       # client is needed for debug / migrations.
 
   # ---------------------------------------------------------------------------
-  # App: Glucosphere Dashboard
+  # SQL Warehouse: bundle-managed (powers App's /api/sql/query + comparison job)
+  # ---------------------------------------------------------------------------
+  # Bundle creates this warehouse on first deploy. Name pattern is
+  # `glucosphere-warehouse-${bundle.target}` (with `[dev USER]` prefix when a
+  # target uses `mode: development`). Smallest viable serverless size per
+  # feedback_smallest_nonnegotiable_compute.
+  #
+  # Discovery flow (verified end-to-end 2026-05-26):
+  #   - `09_grant_app_permissions.py` discovers this warehouse by name suffix
+  #     and grants CAN_USE to the App SP.
+  #   - `scripts/render_app_yaml.py` discovers by same name + writes
+  #     `WAREHOUSE_ID` into App/databricks/app.yaml's env block.
+  #   - App's `/api/sql/query` uses `WAREHOUSE_ID` env var with the direct
+  #     Statement Execution API to route SQL to this warehouse.
+  sql_warehouses:
+    glucosphere_warehouse:
+      name: glucosphere-warehouse-${bundle.target}
+      cluster_size: "2X-Small"
+      enable_serverless_compute: true
+      warehouse_type: PRO
+      auto_stop_mins: 10
+      min_num_clusters: 1
+      max_num_clusters: 1
+
+  # ---------------------------------------------------------------------------
+  # App: Glucosphere App (front-end branding: "GlucoStream Intelligence")
   # ---------------------------------------------------------------------------
   apps:
-    glucosphere_dashboard:
+    glucosphere_app:
       name: ${var.app_name}
       description: >
         Glucosphere CGM Intelligence Dashboard — continuous glucose monitoring

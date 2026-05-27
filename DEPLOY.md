@@ -35,7 +35,7 @@ baseline_source dispatch (condition_task on var)
                               ↓
 sanity_summary  (asserts diabetes_data non-empty + plausible)
                               ↓
-04_pseudo_data_modeling.py
+04_pseudo_data_forecast_modeling.py
   → Tables: pseudo_clean_7d, pseudo_incident_*
   → UC Models: cgm_xgb_15m, cgm_xgb_30m
                               ↓
@@ -82,40 +82,37 @@ export DATABRICKS_TOKEN=<your-token>
 
 ---
 
-## Step 2: Configure Variables
+## Step 2: Configure Variables via `.env.bundle`
 
-Edit `databricks.yml` or override at deploy time. Top-level defaults (verified against `databricks.yml:4-41`):
+Per-operator workspace-specific values live in `.env.bundle` (gitignored).
+Copy the template and fill in your three required values:
 
-| Variable | Description | Current default |
-|---|---|---|
-| `catalog` | UC catalog name | `glucosphere_catalog` (generic placeholder; `hls_amer` target overrides with `hls_amer_catalog`, `mmt_aws_usw2` with `mmt_aws_usw2_catalog`, etc.) |
-| `schema` | Schema name | `glucosphere_dev` |
-| `volume` | UC Volume name for landing zone | `landing_zone` |
-| `baseline_source` | Dispatch key: `synthetic` / `from_source` / `from_table` | `from_source` (changed 2026-05-16; was `synthetic`) |
-| `source_catalog` / `source_schema` / `source_table` | Only used when `baseline_source=from_table` | `""` |
-| `app_name` | Databricks App name | `glucosphere-dashboard` |
-| `warehouse_id` | SQL warehouse for app + Genie | `d9af05523dafe3a6` (HLS AMER SQL Warehouse) |
-| `endpoint_name` | MAS serving endpoint name | (set after Step 3) |
-| `genie_space_id` | Genie room ID | (set after Step 4) |
+```bash
+cp .env.bundle.example .env.bundle
+# edit .env.bundle and fill in:
+#   BUNDLE_VAR_catalog=<your-catalog>
+#   BUNDLE_VAR_schema=<your-schema>
+#   export DATABRICKS_CONFIG_PROFILE=<your-profile>
+```
 
-> **Top-level defaults are generic placeholders** (e.g. `glucosphere_catalog`,
-> `glucosphere_dev`) that any new deployment can create. Each active target
-> in `databricks.yml:targets` (`hls_amer`, `mmt_aws_usw2`) overrides these
-> with its workspace-specific values in a `variables:` block.
->
-> **When deploying to your own workspace:** either add a new target in
-> `databricks.yml:targets` (see the template-style commented block at the
-> bottom of the file), OR override at deploy time with
-> `--var catalog=<your-catalog> --var schema=<your-schema>` etc.
->
-> **Don't forget `scripts/render_app_yaml.py --target <your-target>` before
-> `bundle deploy`** — it rewrites `App/databricks/app.yaml` (which is shipped
-> verbatim by DABs; `${var.*}` does NOT interpolate inside it) with the right
-> catalog / schema / warehouse_id / MAS / KA / Genie values for your target.
-> As of 2026-05-19, the committed `App/databricks/app.yaml` has
-> `mmt_aws_usw2`-target values from the most recent render, so deploys to
-> `mmt_aws_usw2` work without re-rendering. Deploys to any other target
-> (including `hls_amer`) require a render-then-deploy cycle.
+Top-level bundle variables (defined in `databricks.yml`):
+
+| Variable | Where set | Default | Notes |
+|---|---|---|---|
+| `catalog` | `.env.bundle` (`BUNDLE_VAR_catalog`) | `glucosphere_catalog` (placeholder) | Operator's UC catalog |
+| `schema` | `.env.bundle` (`BUNDLE_VAR_schema`) | `glucosphere_schema` (placeholder) | UC schema |
+| `baseline_source` | `.env.bundle` (optional) | `from_source` | `synthetic` / `from_source` / `from_table` |
+| `source_catalog` / `source_schema` / `source_table` | `.env.bundle` (optional) | `""` | Used by `from_table` mode; empty triggers auto-detect |
+| `app_name` | `.env.bundle` (optional) | `glucosphere-app` | Databricks App display name |
+
+`warehouse_id` is **not** a bundle variable. The bundle declares a
+`sql_warehouses.glucosphere_warehouse` resource that creates the warehouse
+on first deploy. `scripts/render_app_yaml.py` discovers it by deterministic
+name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
+
+> **Adding a new live target**: append a stanza to `databricks.yml:targets`
+> with `workspace.host` only — no per-target `variables:` block. Operator's
+> `.env.bundle` supplies all data values.
 
 ---
 
@@ -151,20 +148,25 @@ npm run build
 
 ---
 
-## Step 6: Deploy the Bundle
+## Step 6: Deploy the Bundle (two-pass on first deploy)
+
+On a fresh workspace the first deploy creates the bundle-managed
+`sql_warehouses.glucosphere_warehouse` resource. `render_app_yaml.py` then
+discovers it by name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
+The second deploy syncs the updated app.yaml to the workspace.
 
 ```bash
-# From repo root — generic example with placeholders. For active targets,
-# omit the --var flags (use `-t hls_amer` or `-t mmt_aws_usw2` which set
-# the right values per target block in databricks.yml).
-databricks bundle deploy \
-  --var catalog=<your-catalog> \
-  --var schema=<your-schema> \
-  --var endpoint_name=<your-mas-endpoint> \
-  --var genie_space_id=<your-genie-room-id> \
-  --var app_name=glucosphere-dashboard \
-  --profile <your-profile>
+# Make sure .env.bundle is filled in (see Step 2), then:
+source .env.bundle
+databricks bundle deploy -t <target>            # Pass 1: creates warehouse + apps + jobs
+python scripts/render_app_yaml.py --target <target>    # Discover warehouse + rewrite app.yaml
+databricks bundle deploy -t <target>            # Pass 2: sync updated app.yaml
 ```
+
+Subsequent deploys are single-pass (warehouse already exists; render still
+useful when catalog/schema/etc. change in `.env.bundle`).
+
+`-t <target>` is always required — no `default: true` target exists.
 
 ---
 
@@ -209,7 +211,7 @@ deploy_model_endpoints       generate_patient_device_data
               ↘                  ↓
                ↘ check_post_endpoint_grants    (verify KA/MAS/Genie exist before grant)
                 ↘                ↓
-                 ↘    grant_app_permissions    (app SP access on UC + endpoints)
+                 ↘    grant_app_permissions    (app SP access on UC + endpoints + warehouse)
 ```
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
@@ -262,7 +264,7 @@ databricks apps deploy ${var.app_name} --source-code-path App/databricks
 databricks apps start ${var.app_name}
 ```
 
-Or manage through the UI: **Apps → glucosphere-dashboard**
+Or manage through the UI: **Apps → glucosphere-app**
 
 ---
 
@@ -270,7 +272,7 @@ Or manage through the UI: **Apps → glucosphere-dashboard**
 
 Before declaring the deployment "done," walk through these checks in the browser. Each catches a specific class of post-deploy issue (UI build, backend wiring, agent endpoints, Genie binding, data access). All should complete in <5 minutes.
 
-Open the app URL from `databricks apps get glucosphere-dashboard --output json | jq -r .url`, then:
+Open the app URL from `databricks apps get glucosphere-app --output json | jq -r .url`, then:
 
 - [ ] **Home page loads** — no blank screen, no JS console errors. (If blank: React frontend wasn't built; run `npm run build` in `App/` and re-do `apps deploy`.)
 - [ ] **Navigate to "Device Support Dashboard"** in the left sidebar. Device table populates with rows. (If empty: gold table `${catalog}.${schema}.gold_patient_device_readings` not populated → DLT pipeline didn't run successfully.)
@@ -307,7 +309,7 @@ python scripts/render_app_yaml.py --target mmt_aws_usw2 \
 databricks bundle deploy -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 
 # 5. Restart the live app so the new bundle + app.yaml take effect
-databricks bundle run glucosphere_dashboard -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
+databricks bundle run glucosphere_app -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 ```
 
 ### Target `hls_amer` (workspace `fe-vm-hls-amer`, AWS) — historical / blocked
@@ -495,7 +497,7 @@ glucosphere/
 │   ├── 01_synthetic_baseline.py
 │   ├── 02_ingest_real_baseline.py
 │   ├── 03_compare_baseline_modes.py
-│   ├── 04_pseudo_data_modeling.py
+│   ├── 04_pseudo_data_forecast_modeling.py
 │   ├── 05_incident_inference_bidirectional.py   ← active inference (pipeline dispatch)
 │   ├── 06_incident_inference_single.py  ← sibling reference
 │   ├── 07_deploy_serving_endpoints.py

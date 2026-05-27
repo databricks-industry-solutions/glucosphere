@@ -15,6 +15,12 @@ env:
     value: "mmt_aws_usw2_catalog"
   - name: SCHEMA_NAME
     value: "glucosphere_dev"
+  # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
+  # bundle-managed sql_warehouses.glucosphere_warehouse resource (discovered
+  # by deterministic name). Empty value here pre-render is intentional —
+  # operator runs render before the second deploy, which populates this.
+  - name: WAREHOUSE_ID
+    value: ""
 resources:
   - name: mas-endpoint
     description: "Multi-Agent Supervisor serving endpoint"

@@ -37,7 +37,7 @@
 # value looks like (e.g. harness schemas from #68 validation: glucosphere_synth_e2e
 # / glucosphere_from_source_e2e / glucosphere_from_table_e2e). Replace the
 # placeholder with a real schema name, OR clear the widget, to skip that mode.
-dbutils.widgets.text("CATALOG_NAME",            "mmt_aws_usw2_catalog",          "Catalog containing the schemas to compare")
+dbutils.widgets.text("CATALOG_NAME",            "glucosphere_catalog",           "Catalog containing the schemas to compare")
 dbutils.widgets.text("SYNTHETIC_SCHEMA",        "<glucosphere_synth_e2e>",       "Schema for synthetic-mode diabetes_data — replace placeholder or clear to skip")
 dbutils.widgets.text("FROM_SOURCE_SCHEMA",      "<glucosphere_from_source_e2e>", "Schema for from_source-mode diabetes_data — replace placeholder (or use live glucosphere_dev) or clear to skip")
 dbutils.widgets.text("FROM_TABLE_SCHEMA",       "<glucosphere_from_table_e2e>",  "Schema for from_table-mode diabetes_data — replace placeholder or clear to skip")

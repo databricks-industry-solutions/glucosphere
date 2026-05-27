@@ -109,11 +109,11 @@ High-level layout:
 │   ├── 01_synthetic_baseline.py    # baseline_source = synthetic
 │   ├── 02_ingest_real_baseline.py           # baseline_source = from_source | from_table
 │   ├── 03_compare_baseline_modes.py         # Standalone analytics (synthetic vs real)
-│   ├── 04_pseudo_data_modeling.py
+│   ├── 04_pseudo_data_forecast_modeling.py
 │   ├── 06_incident_inference_single.py
 │   ├── 07_deploy_serving_endpoints.py
 │   ├── 08_genie_ka_mas.py            # KA + MAS + Genie tile setup
-│   ├── 09_grant_app_permissions.py               # App SP grants on UC + endpoints
+│   ├── 09_grant_app_permissions.py               # App SP grants on UC + endpoints + warehouse
 │   ├── README.md
 │   └── README_data.md
 └── README.md

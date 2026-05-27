@@ -72,7 +72,16 @@ def get_auth():
 
 @app.route('/api/sql/query', methods=['POST'])
 def execute_sql():
-    """Execute SQL queries via Databricks DBSQL MCP server."""
+    """Execute SQL queries via Databricks Statement Execution API.
+
+    Uses an explicit `warehouse_id` (read from WAREHOUSE_ID env var, populated
+    by `scripts/render_app_yaml.py` from the bundle-managed sql_warehouses
+    resource). This routes SQL to the bundle's own warehouse, not whichever
+    warehouse the App SP happens to have access to.
+
+    Response is wrapped in `{result: {structuredContent: {...}}}` to preserve
+    the React-side contract (App/src/api/databricksSQL.js expects this shape).
+    """
     try:
         DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
         data = request.get_json()
@@ -80,9 +89,14 @@ def execute_sql():
 
         if not sql_query:
             return jsonify({'error': 'No SQL query provided'}), 400
-
         if not DATABRICKS_TOKEN:
             return jsonify({'error': 'DATABRICKS_TOKEN not set'}), 500
+
+        warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+        if not warehouse_id:
+            return jsonify({
+                'error': 'WAREHOUSE_ID env var not set — run scripts/render_app_yaml.py + redeploy'
+            }), 500
 
         # NOTE: We deliberately do NOT do any catalog/schema substitution here.
         # The React side fetches catalog/schema from /api/config and builds queries
@@ -90,43 +104,37 @@ def execute_sql():
         # before the POST. Keeping the SQL pass-through preserves a single source
         # of truth for catalog/schema (the app.yaml env vars surfaced by /api/config).
 
-        mcp_sql_url = f"{DATABRICKS_HOST}/api/2.0/mcp/sql"
-        
-        payload = {
-            'jsonrpc': '2.0',
-            'id': 1,
-            'method': 'tools/call',
-            'params': {
-                'name': 'execute_sql_read_only',
-                'arguments': {'query': sql_query}
-            }
-        }
-        
         response = requests.post(
-            mcp_sql_url,
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
             headers={
                 'Authorization': f'Bearer {DATABRICKS_TOKEN}',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
-            json=payload,
-            timeout=120
+            json={
+                'warehouse_id': warehouse_id,
+                'statement': sql_query,
+                'wait_timeout': '30s',
+            },
+            timeout=120,
         )
-        
+
         if response.ok:
-            resp_data = response.json()
-            is_error = resp_data.get('result', {}).get('isError', False)
-            structured = resp_data.get('result', {}).get('structuredContent', {})
-            sql_state = structured.get('status', {}).get('state', 'UNKNOWN')
-            print(f"[SQL] query='{sql_query[:80]}' isError={is_error} state={sql_state}")
-            if is_error:
-                content = resp_data.get('result', {}).get('content', [])
-                print(f"[SQL] MCP error content: {content}")
-            return jsonify(resp_data), 200
+            stmt_resp = response.json()
+            sql_state = stmt_resp.get('status', {}).get('state', 'UNKNOWN')
+            is_error = sql_state not in ('SUCCEEDED', 'PENDING', 'RUNNING')
+            print(f"[SQL] query='{sql_query[:80]}' state={sql_state} warehouse={warehouse_id}")
+            # Wrap to match the React-side contract (was MCP-shaped previously)
+            return jsonify({
+                'result': {
+                    'isError': is_error,
+                    'structuredContent': stmt_resp,
+                }
+            }), 200
         else:
             print(f"[SQL] HTTP error {response.status_code}: {response.text[:300]}")
             return jsonify({
-                'error': f'DBSQL MCP error: {response.status_code}',
-                'details': response.text
+                'error': f'Statement Execution API error: {response.status_code}',
+                'details': response.text,
             }), response.status_code
 
     except Exception as e:

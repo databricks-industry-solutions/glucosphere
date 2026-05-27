@@ -15,12 +15,13 @@
 
 # DBTITLE 1, Parameters
 dbutils.widgets.text("CATALOG_NAME",       "",                            "Catalog (required — set by the bundle job; e.g. mmt_aws_usw2_catalog)")
-dbutils.widgets.text("SCHEMA_NAME",        "glucosphere",                "Schema")
-dbutils.widgets.text("APP_NAME",           "glucosphere-dashboard",      "App Name")
+dbutils.widgets.text("SCHEMA_NAME",        "glucosphere_schema",         "Schema")
+dbutils.widgets.text("APP_NAME",           "glucosphere-app",            "App Name")
 dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name")
 dbutils.widgets.text("KA_ENDPOINT_NAME",   "",                           "KA Endpoint Name")
 dbutils.widgets.text("GENIE_SPACE_ID",     "",                           "Genie Space ID")
-dbutils.widgets.text("WAREHOUSE_ID",       "",                           "SQL Warehouse ID")
+dbutils.widgets.text("WAREHOUSE_ID",       "",                           "SQL Warehouse ID (empty → discovered by BUNDLE_TARGET)")
+dbutils.widgets.text("BUNDLE_TARGET",      "",                           "Bundle target name (used to discover warehouse if WAREHOUSE_ID empty)")
 
 CATALOG_NAME      = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME       = dbutils.widgets.get("SCHEMA_NAME")
@@ -29,6 +30,7 @@ MAS_ENDPOINT_NAME = dbutils.widgets.get("MAS_ENDPOINT_NAME")
 KA_ENDPOINT_NAME  = dbutils.widgets.get("KA_ENDPOINT_NAME")
 GENIE_SPACE_ID    = dbutils.widgets.get("GENIE_SPACE_ID")
 WAREHOUSE_ID      = dbutils.widgets.get("WAREHOUSE_ID")
+BUNDLE_TARGET     = dbutils.widgets.get("BUNDLE_TARGET")
 
 print(f"Catalog:      {CATALOG_NAME}.{SCHEMA_NAME}")
 print(f"App:          {APP_NAME}")
@@ -76,7 +78,7 @@ sp_client_id = app_data.get("service_principal_client_id") or app_data.get("id")
 sp_name      = app_data.get("service_principal_name", str(sp_client_id))
 
 # Unity Catalog GRANT requires the SP's applicationId (UUID), not the display name.
-# The display name (e.g. "app-3jrqvp glucosphere-dashboard") is not a valid UC principal.
+# The display name (e.g. "app-3jrqvp glucosphere-app") is not a valid UC principal.
 status_scim, scim_data = _api("GET", f"/api/2.0/preview/scim/v2/ServicePrincipals/{app_data.get('service_principal_id')}")
 sp_app_id = scim_data.get("applicationId") or sp_client_id
 
@@ -136,11 +138,11 @@ sql_grants = [
     f"GRANT USE SCHEMA ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     f"GRANT SELECT ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     # READ VOLUME on landing_zone — required for the Flask /uc-assets/ route in
-    # App/databricks/app.py to fetch notebook-generated PNGs (e.g., 05_incident_inference_bidirectional's
-    # fig1/2/3/4) live from UC Volume at runtime. Without this grant, the App
-    # gets 403 PERMISSION_DENIED when MetricsExplained.jsx tries to load the
-    # 4-panel distribution comparison PNG. Volume name "landing_zone" matches
-    # the bundle var ${var.volume} default in databricks.yml.
+    # App/databricks/app.py to fetch notebook-generated PNGs live from UC Volume
+    # at runtime. Without this grant, the App gets 403 PERMISSION_DENIED when
+    # MetricsExplained.jsx tries to load the distribution-comparison PNG.
+    # Volume name "landing_zone" is hardcoded across the pipeline (see grep
+    # results in 02/05/app.py + transformations.sql).
     f"GRANT READ VOLUME ON VOLUME {CATALOG_NAME}.{SCHEMA_NAME}.landing_zone TO `{sp_app_id}`",
 ]
 
@@ -183,6 +185,24 @@ grant_endpoint_permission(KA_ENDPOINT_NAME, sp_app_id)
 # COMMAND ----------
 
 # DBTITLE 1, Grant CAN_USE on SQL warehouse
+# Discover the bundle-managed warehouse by deterministic name when WAREHOUSE_ID
+# is empty. Pattern: `glucosphere-warehouse-<BUNDLE_TARGET>` (with `[dev USER]`
+# auto-prefix when target uses `mode: development`). Uses `endswith` to handle
+# both cases. Falls through cleanly if neither WAREHOUSE_ID nor BUNDLE_TARGET set.
+if not WAREHOUSE_ID and BUNDLE_TARGET:
+    expected_suffix = f"glucosphere-warehouse-{BUNDLE_TARGET}"
+    status_wl, wl_resp = _api("GET", "/api/2.0/sql/warehouses")
+    if status_wl == 200:
+        for w in wl_resp.get("warehouses", []):
+            if w.get("name", "").endswith(expected_suffix):
+                WAREHOUSE_ID = w["id"]
+                print(f"  → discovered warehouse {WAREHOUSE_ID} by name '{w['name']}'")
+                break
+        if not WAREHOUSE_ID:
+            print(f"  ⚠ No warehouse matching suffix '{expected_suffix}' — was bundle deployed?")
+    else:
+        print(f"  ✗ warehouses list failed: {status_wl} {wl_resp}")
+
 if WAREHOUSE_ID:
     status_wh, wh_resp = _api("PATCH",
         f"/api/2.0/permissions/warehouses/{WAREHOUSE_ID}",

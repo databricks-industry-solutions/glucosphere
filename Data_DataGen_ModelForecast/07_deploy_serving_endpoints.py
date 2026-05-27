@@ -58,8 +58,8 @@ dbutils.widgets.removeAll()
 
 # Essential widgets only
 dbutils.widgets.dropdown("ENV", "dev", ["dev", "staging", "prod"], "Environment")
-dbutils.widgets.text("CATALOG_NAME", "mmt_aws_usw2_catalog", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere_dev", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Include Incident")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
@@ -178,9 +178,6 @@ class Config:
         print(f"  NUM_PSEUDO: {self.NUM_PSEUDO}, ROWS_7D: {self.SEG_DAYS * int((24*60)//self.CADENCE_MIN)}")
         print(f"\nTransformation:")
         print(f"  INCLUDE_INCIDENT: {self.INCLUDE_INCIDENT}")
-        print(f"  GAIN: ({self.GAIN_LO}, {self.GAIN_HI})")
-        print(f"  ALPHAS: (INS={self.ALPHA_INS}, CARB={self.ALPHA_CARB}, STEPS={self.ALPHA_STEPS})")
-        print(f"  GLUCOSE_OFFSET: {self.GLUCOSE_OFFSET} mg/dL")
         print(f"\nFeatures:")
         print(f"  LAGS: {self.LAGS}, ROLL_WINDOWS: {self.get_list_int('ROLL_WINDOWS')}")
         print(f"  TRAIN_SAMPLE_FRAC: {self.TRAIN_SAMPLE_FRAC}")
@@ -288,8 +285,8 @@ CATALOG = cfg.CATALOG_NAME
 SCHEMA = cfg.SCHEMA_NAME
 
 # Model names (fully qualified)
-MODEL_15M = uc_model_fqn_15m  # hls_glucosphere.cgm.cgm_xgb_15m
-MODEL_30M = uc_model_fqn_30m  # hls_glucosphere.cgm.cgm_xgb_30m
+MODEL_15M = uc_model_fqn_15m  # ${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_15m
+MODEL_30M = uc_model_fqn_30m  # ${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_30m
 
 # Endpoint names
 ENDPOINT_15M = "cgm-glucose-forecast-15min"
