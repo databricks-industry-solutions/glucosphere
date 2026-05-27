@@ -101,22 +101,24 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 
 ```mermaid
 flowchart TD
-    A[validate_baseline_source<br/>utils/validate_baseline_source.py]
-    B[check_pre_baseline_grants<br/>utils/check_pre_baseline_grants.py]
-    C{dispatch_baseline_source<br/>condition_task on baseline_source}
-    D1[generate_synthetic_baseline<br/>01_synthetic_baseline.py]
-    D2[ingest_real_baseline<br/>02_ingest_real_baseline.py]
-    E[sanity_summary<br/>utils/sanity_summary.py]
-    F[datagen_modeling<br/>04_pseudo_data_forecast_modeling.py]
-    G1[incident_inference<br/>05_incident_inference_bidirectional.py]
-    G2[deploy_model_endpoints<br/>07_deploy_serving_endpoints.py]
-    H[generate_patient_device_data<br/>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb]
-    I1[create_patient_registry<br/>utils/additional_patient_info/Create Patient_Device Table.ipynb]
-    I2[create_device_telemetry<br/>utils/additional_patient_info/Create Raw Device Data.ipynb]
-    J[run_dlt_pipeline<br/>invokes cgm_silver_gold SDP]
-    K[create_genie_ka_mas<br/>08_genie_ka_mas.py]
-    L[check_post_endpoint_grants<br/>utils/check_post_endpoint_grants.py]
-    M[grant_app_permissions<br/>09_grant_app_permissions.py]
+    classDef plain fill:#fff,stroke:#333,stroke-width:1px,color:#000
+
+    A[validate_baseline_source<br/><i>utils/validate_baseline_source.py</i>]
+    B[check_pre_baseline_grants<br/><i>utils/check_pre_baseline_grants.py</i>]
+    C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
+    D1[generate_synthetic_baseline<br/><i>01_synthetic_baseline.py</i>]
+    D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py</i>]
+    E[sanity_summary<br/><i>utils/sanity_summary.py</i>]
+    F[datagen_modeling<br/><i>04_pseudo_data_forecast_modeling.py</i>]
+    G1[incident_inference<br/><i>05_incident_inference_bidirectional.py</i>]
+    G2[deploy_model_endpoints<br/><i>07_deploy_serving_endpoints.py</i>]
+    H[generate_patient_device_data<br/><i>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb</i>]
+    I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
+    I2[create_device_telemetry<br/><i>utils/additional_patient_info/Create Raw Device Data.ipynb</i>]
+    J[run_dlt_pipeline<br/><i>invokes cgm_silver_gold SDP</i>]
+    K[create_genie_ka_mas<br/><i>08_genie_ka_mas.py</i>]
+    L[check_post_endpoint_grants<br/><i>utils/check_post_endpoint_grants.py</i>]
+    M[grant_app_permissions<br/><i>09_grant_app_permissions.py</i>]
 
     A --> B --> C
     C -- "synthetic" --> D1
@@ -133,6 +135,8 @@ flowchart TD
     I2 --> J
     G2 --> J
     J --> K --> L --> M
+
+    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
 ```
 
 Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution_comparison` runs `03_compare_baseline_modes.py` for side-by-side baseline statistical comparison.
@@ -142,31 +146,37 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ## By-category file inventory (PR-shipped)
 
 ### Deployment glue
+
 - `databricks.yml` — bundle definition (targets, variables, resources)
 - `.env.bundle.example` — template for operator's local `.env.bundle`
 - `scripts/render_app_yaml.py` — per-target App config rewriter
 - `DEPLOY.md` — deploy guide
 
 ### SDP / DLT pipeline source
+
 - `databricks.yml` → `resources.pipelines.cgm_silver_gold` — pipeline resource declaration
 - `Data_DataGen_ModelForecast/utils/additional_patient_info/transformations.sql` — actual silver/gold transforms
 
 ### Workflow job orchestration
+
 - `databricks.yml` → `resources.jobs.glucosphere_full_setup` — main DAG (16 tasks, see Mermaid above)
 - `databricks.yml` → `resources.jobs.glucosphere_distribution_comparison` — standalone baseline-comparison job
 - `Data_DataGen_ModelForecast/01_*` through `09_*` + `utils/*.py` — task implementation notebooks
 
 ### App resources
+
 - All of `App/` (React + Flask backend + config + committed Vite build output)
 - `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` + `database_instances.glucosphere_oltp`
 
 ### Configuration & assets
+
 - `Data_DataGen_ModelForecast/configs/baseline_config.yaml` — pipeline hyperparameters
 - `Data_DataGen_ModelForecast/assets/architecture_0.{1,2}.png` — architecture diagrams
 - `Data_DataGen_ModelForecast/assets/*.png` — plot exports surfaced in dashboards or docs
-- `Data_DataGen_ModelForecast/assets/who_docs/` — WHO Noncommunicable Diseases PDF (referenced by Genie / agents)
+- `Data_DataGen_ModelForecast/assets/who_docs/WHO_NCD_NCS_99.2.pdf` — knowledge base for the **Knowledge Assistant (KA) endpoint**. `08_genie_ka_mas.py:79-137` copies this PDF into UC Volume `data/who_docs/` and creates a KA via `/api/2.0/knowledge-assistants` that does RAG over it. The MAS (Multi-Agent Supervisor) endpoint routes the App's clinical-guidance natural-language queries to this KA; SQL / structured-data queries go to Genie instead.
 
 ### Auto-generated, per-target rendered
+
 - `App/databricks/app.yaml` — rewritten by `scripts/render_app_yaml.py` per target. Pinned to whichever target was last rendered. Switch targets ⇒ re-render before deploy.
 - `App/databricks/static/` — Vite build output. Re-build via `npm run build` in `App/`.
 
