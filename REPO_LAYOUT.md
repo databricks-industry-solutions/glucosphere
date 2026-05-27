@@ -88,8 +88,7 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 | Resource | Use it when |
 |---|---|
 | [`README.md`](README.md) | first read — overview, baseline modes, sequencing |
-| [`Data_DataGen_ModelForecast/assets/architecture_0.2.png`](Data_DataGen_ModelForecast/assets/architecture_0.2.png) | current MVP system diagram (no Lakebase shown) |
-| [`Data_DataGen_ModelForecast/assets/architecture_0.1.png`](Data_DataGen_ModelForecast/assets/architecture_0.1.png) | aspirational v0.1 (Lakebase / Postgres / Lakeflow — on roadmap, not in MVP) |
+| [`Data_DataGen_ModelForecast/assets/architecture.png`](Data_DataGen_ModelForecast/assets/architecture.png) | system architecture diagram — Lakehouse + Lakeflow + Lakebase + UC + Vector Search + LLM/Agent + Genie + App + AI/BI dashboards |
 | [`CHANGELOG.md`](CHANGELOG.md) | dated record of every notable change + discovery. **Read this first** when asking "why did we do X?" or "what gotcha was already caught?" |
 | [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelForecast/README.md) | pipeline + modeling guide, methodology references |
 
@@ -171,7 +170,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ### Configuration & assets
 
 - `Data_DataGen_ModelForecast/configs/baseline_config.yaml` — pipeline hyperparameters
-- `Data_DataGen_ModelForecast/assets/architecture_0.{1,2}.png` — architecture diagrams
+- `Data_DataGen_ModelForecast/assets/architecture.png` — system architecture diagram
 - `Data_DataGen_ModelForecast/assets/*.png` — plot exports surfaced in dashboards or docs
 - `Data_DataGen_ModelForecast/assets/who_docs/WHO_NCD_NCS_99.2.pdf` — knowledge base for the **Knowledge Assistant (KA) endpoint**. `08_genie_ka_mas.py:79-137` copies this PDF into UC Volume `data/who_docs/` and creates a KA via `/api/2.0/knowledge-assistants` that does RAG over it. The MAS (Multi-Agent Supervisor) endpoint routes the App's clinical-guidance natural-language queries to this KA; SQL / structured-data queries go to Genie instead.
 

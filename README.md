@@ -19,7 +19,7 @@ This repo contains two main parts that work together:
 
 ## Architecture
 
-![Architecture](Data_DataGen_ModelForecast/assets/architecture_0.2.png)
+![Architecture](Data_DataGen_ModelForecast/assets/architecture.png)
 
 ## Data fidelity & baseline modes
 
@@ -212,7 +212,7 @@ Or click "Run now with different parameters" in Workflows UI and point at least 
 - **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
 - **[App/README.md](App/README.md)** — frontend dev setup
 - **[CHANGELOG.md](CHANGELOG.md)** — dated history of every commit group
-- `Data_DataGen_ModelForecast/assets/architecture_0.2.png` — system architecture diagram (current MVP — Lakebase/Postgres component shown in `architecture_0.1.png` is on the followup roadmap, not yet implemented).
+- `Data_DataGen_ModelForecast/assets/architecture.png` — system architecture diagram. Lakehouse (bronze/silver/gold via SDP) + Lakeflow + Lakebase OLTP instance (provisioned via the bundle's `database_instances.glucosphere_oltp` resource) + Unity Catalog + Vector Search + LLM / Agent (KA + MAS) + Genie Space + ML Model / Serving / Inference Monitoring + AI/BI Dashboards + Databricks App, with Delta Sharing / Salesforce / SAP / Patient App Stream / MedTech Device as external data sources.
 
 ## For maintainers — optional Claude Code plugins
 
