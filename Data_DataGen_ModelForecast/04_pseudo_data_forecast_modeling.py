@@ -125,29 +125,34 @@ class Config:
         """Get config value with widget override support (UPPERCASE)"""
         # Convert to uppercase for lookup
         name_upper = name.upper()
-        
+
         # Use object.__getattribute__ to avoid recursion
         cache = object.__getattribute__(self, '_cache')
         widget_overrides = object.__getattribute__(self, '_widget_overrides')
         config = object.__getattribute__(self, '_config')
-        
+
         # Check cache first
         if name_upper in cache:
             return cache[name_upper]
-        
-        # Check widget overrides
+
+        # Determine raw value: widget override → YAML config
         if name_upper in widget_overrides:
             value = widget_overrides[name_upper]
-            cache[name_upper] = value
-            return value
-        
-        # Check YAML config
-        if name_upper in config:
+        elif name_upper in config:
             value = config[name_upper]
-            cache[name_upper] = value
-            return value
-        
-        raise AttributeError(f"Config parameter '{name}' not found in YAML or widgets")
+        else:
+            raise AttributeError(f"Config parameter '{name}' not found in YAML or widgets")
+
+        # Auto-resolve DEMO_WEEK_START sentinel to (today_utc - 6 days) so the
+        # 7-day demo window ends on today. Pin with a specific date string in
+        # YAML (e.g. '2026-01-05') for reproducibility / CI snapshot tests.
+        if name_upper == 'DEMO_WEEK_START' and value in (None, 'auto', ''):
+            from datetime import datetime, timedelta
+            value = (datetime.utcnow() - timedelta(days=6)).strftime('%Y-%m-%d')
+            print(f"[CONFIG] demo_week_start auto-resolved to {value} (today_utc - 6 days)")
+
+        cache[name_upper] = value
+        return value
     
     def get(self, name, default=None):
         """Get config value with default fallback"""

@@ -31,7 +31,11 @@ dev:
   second_incident_start_hour: 10             # 10:00 AM (different time-of-day from window 1's 14:00)
   second_incident_duration_min: 180          # 3 hours (matches window 1)
   second_incident_direction: negative        # 'negative' = -bias_magnitude, 'positive' = +bias_magnitude
-  demo_week_start: '2026-01-05'
+  demo_week_start: 'auto'                    # 'auto' (or empty) = compute as (today_utc - 6 days) at notebook runtime
+                                             #   so the 7-day demo window ends on today.
+                                             # Override with a specific date string (e.g. '2026-01-05')
+                                             #   to pin for reproducibility (CI snapshot tests, demo recordings).
+                                             # Resolution lives in each notebook's Config class __getattr__.
   lags: 12
   roll_windows:
   - 3
