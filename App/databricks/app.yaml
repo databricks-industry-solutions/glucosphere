@@ -1,11 +1,10 @@
 command: ["python", "app.py"]
 env:
   # All env vars use plain `value:` — `valueFrom: <resource-name>` was tried
-  # but the app object's `resources` field came back empty after deploy
-  # (verified via /api/2.0/apps/glucosphere-dashboard on 2026-05-18), so
-  # valueFrom references can't resolve → ENDPOINT_NAME and GENIE_SPACE_ID
-  # came up empty at runtime, causing 500 errors from Clinical Analysis
-  # and Genie Natural-Language Query panels. Hardcoded IDs work reliably.
+  # but the app object's `resources` field came back empty after deploy, so
+  # valueFrom references couldn't resolve → ENDPOINT_NAME and GENIE_SPACE_ID
+  # were empty at runtime, causing 500 errors from Clinical Analysis and
+  # Genie Natural-Language Query panels. Hardcoded IDs work reliably.
   # render_app_yaml.py rewrites these per-target.
   - name: ENDPOINT_NAME
     value: "mas-94acba91-endpoint"

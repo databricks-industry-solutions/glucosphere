@@ -135,8 +135,9 @@ def execute_sql():
             # MCP returned:                result.data_array = [{values: [{string_value: "1000"}]}, ...]
             # React expects MCP shape (firstRow.values[i].string_value).
             #
-            # Regression introduced by eada716 (Phase A: MCP → Statement Execution
-            # refactor) — manifested only when App was redeployed (2026-05-27).
+            # Required because the MCP → Statement Execution refactor changed
+            # the server response shape, but the React client still expects
+            # the MCP shape.
             result_block = stmt_resp.get('result') or {}
             if 'data_array' in result_block and result_block['data_array']:
                 # Only transform if it's the Statement Execution flat-row format

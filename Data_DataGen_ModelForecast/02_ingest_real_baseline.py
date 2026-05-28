@@ -37,8 +37,8 @@ dbutils.widgets.text(
     "DOWNLOAD_URL",
     # Mendeley public-API URL (stable). On request it 302-redirects to a fresh
     # signed S3 URL with a 5-min expiry. requests.get follows the redirect
-    # automatically. The previously-hardcoded direct S3 URL (3hbcscwz44-1.zip)
-    # was a stale presigned URL that returned AccessDenied — verified 2026-05-15.
+    # automatically. Do NOT swap to a hardcoded direct S3 URL — those presigned
+    # links expire and return AccessDenied.
     "https://data.mendeley.com/public-api/zip/3hbcscwz44/download/1",
     "HUPA-UCM Mendeley zip URL (from_source mode)",
 )
@@ -212,12 +212,12 @@ if BASELINE_SOURCE == "from_source":
 # Use an explicit schema (not inferSchema) so the types are deterministic at read
 # time and match the contract checked by `validate_diabetes_data`. Without
 # this, inferSchema picks DoubleType for `steps` (the contract wants LongType)
-# and the check fails — caught 2026-05-16 during the first C.2 sandbox test.
+# and the check fails.
 if BASELINE_SOURCE == "from_source":
     from pyspark.sql import functions as F
     from pyspark.sql.types import StructType, StructField, TimestampType, DoubleType, LongType
 
-    # HUPA-UCM Preprocessed CSV header (verified 2026-05-16):
+    # HUPA-UCM Preprocessed CSV header:
     #   time;glucose;calories;heart_rate;steps;basal_rate;bolus_volume_delivered;carb_input
     HUPA_CSV_SCHEMA = StructType([
         StructField("time",                   TimestampType(), True),

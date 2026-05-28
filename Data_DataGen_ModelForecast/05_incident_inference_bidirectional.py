@@ -3,7 +3,7 @@
 # MAGIC %md
 # MAGIC # CGM Incident Simulation - Device Calibration Bug (BIDIRECTIONAL variant)
 # MAGIC
-# MAGIC **Status (2026-05-17):** Bidirectional core logic IMPLEMENTED. Cohort splits into +N/-N groups
+# MAGIC **Status:** Bidirectional core logic implemented. Cohort splits into +N/-N groups
 # MAGIC deterministically by seed; signed bias applied via `signed_bias_mgdl` column; new
 # MAGIC `incident_direction` schema column flows through `pseudo_incident_7d_labeled` → feature dataframe
 # MAGIC → MAE breakouts. MAE summary print breaks out by direction (both should be ~equal, proving
@@ -21,10 +21,8 @@
 # MAGIC    value (downstream consumers can `ABS()` if they need magnitude).
 # MAGIC 4. ✅ Visualization: 3-panel "all/affected/unaffected" — affected panel now shows TWO device lines
 # MAGIC    (red positive cohort + blue negative cohort) instead of one signed-average that canceled.
-# MAGIC    direction). See follow-up task; could be folded into #47 helper extract.
+# MAGIC    direction). Could be extracted into a shared helper alongside the SingleIncident sibling.
 # MAGIC 5. ✅ MAE summary print breaks out by `incident_direction` (positive vs negative groups).
-# MAGIC
-# MAGIC See `ref_notes/2026-05-16_app-display-and-incident-simulation.md` for full design + code sketch.
 # MAGIC
 # MAGIC **Lakebase F integration:** the new `incident_direction` column on
 # MAGIC `pseudo_incident_7d_labeled` is what populates the `bias_direction` field on the alerts table.
@@ -1706,7 +1704,7 @@ print("")
 # on BOTH the dark React app theme (~4.5:1 vs slate-950, passes WCAG AA)
 # AND the notebook UI's light bg (~4.8:1 vs white, passes WCAG AA). Earlier
 # iterations used 'white' which was crisp on React but INVISIBLE in the
-# notebook UI; user flagged late-evening 2026-05-19. The mid-grey trade-off
+# notebook UI. The mid-grey trade-off
 # loses a bit of crispness on React but works in both contexts without
 # generating two separate PNGs.
 # IMPORTANT: do NOT override `text.color` (the GLOBAL text color) — that

@@ -54,7 +54,7 @@ START_DATE    = datetime(2025, 10, 1)
 # shape. Replaces an earlier discrete phenotype library design that
 # produced bimodal artifacts when phenotype means clustered into distinct
 # groups. Iteration history + the prior-design failures are documented in
-# CHANGELOG (2026-05-26 entry).
+# CHANGELOG.
 #
 # Distribution design:
 #   - Mean: normal(125, 35) clipped to [70, 200]. Slightly below HUPA-UCM

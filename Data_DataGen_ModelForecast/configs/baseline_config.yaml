@@ -14,7 +14,7 @@ dev:
   interp_max_gap_points: 6
   incident_pct: 0.3
   calibration_bias_mgdl: 40.0                # kept for backwards-compat with original 05_*.py runtime backup
-  # Two-incident mirror design (2026-05-18 — consumed by 05_incident_inference_bidirectional.py):
+  # Two-incident mirror design (consumed by 05_incident_inference_bidirectional.py):
   # Window 1 is the original buildathon-main +40 incident (Day 2 14:00-17:00, 30% of fleet).
   # Window 2 mirrors it on Day 5 10:00-13:00 with -40 bias on a DIFFERENT 30% cohort
   # (mutually exclusive from Window 1), so plots show two clearly distinct spikes at

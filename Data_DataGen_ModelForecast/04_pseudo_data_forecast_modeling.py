@@ -507,7 +507,7 @@ seg_with_strata = seg_capped.join(patient_strata.select("patient_id", "stratum")
 # Pseudo cohort matches baseline shape regardless of mode — each mode uses
 # its own source's ratios, not a fixed ratio borrowed from another source.
 # `mixed` target stays 0 (residual classification, no downstream consumer).
-# See CHANGELOG (2026-05-26 entry) for the rationale.
+# See CHANGELOG for the rationale.
 src_strata = {row['stratum']: row['n_patients']
               for row in stratum_counts.to_dict('records')}
 # Exclude `mixed` from ratio computation; absorb into normal_stable as residual.

@@ -83,8 +83,8 @@ import shutil
 # for the WHO PDF. IF NOT EXISTS is idempotent — safe if earlier tasks created it.
 spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.landing_zone")
 # dbutils.fs.mkdirs (not os.makedirs) — UC Volume FUSE returns errno 95 EOPNOTSUPP
-# on Python stdlib os.makedirs (same bug fixed in 05_incident_inference_bidirectional.py
-# 2026-05-27 commit fab2c3e). dbutils.fs.mkdirs is the DBR-native API that handles
+# on Python stdlib os.makedirs (same bug fixed in 05_incident_inference_bidirectional.py).
+# dbutils.fs.mkdirs is the DBR-native API that handles
 # UC Volume paths correctly + is idempotent (no exist_ok arg needed).
 dbutils.fs.mkdirs(DOCS_VOLUME)
 
@@ -170,8 +170,7 @@ while time.time() - ka_wait_start < KA_WAIT_MAX_SEC:
     )
     # NOTE on JSON path: the API returns serving_endpoint_name at .tile.*, not
     # at .status.* — the original notebook 09 read the wrong path and got
-    # empty strings (which the silent try/except then masked). Caught
-    # 2026-05-15 during L-full validation.
+    # empty strings (which the silent try/except then masked).
     KA_ENDPOINT_NAME = (
         ka_info.get("knowledge_assistant", {})
                .get("tile", {})
@@ -234,7 +233,7 @@ if existing_room:
     GENIE_SPACE_ID = existing_room.get("space_id") or existing_room.get("id")
     print(f"Genie space already exists: {GENIE_SPACE_ID}")
     # Rebind the reused space to the current catalog's tables + bundle-managed
-    # warehouse. Verified via direct PATCH test 2026-05-27: the Data Rooms API
+    # warehouse. Verified via direct PATCH test: the Data Rooms API
     # supports PATCH /api/2.0/data-rooms/{id} with `display_name` (required),
     # `table_identifiers`, and `warehouse_id` — returns the updated space.
     # Without this rebind, the reused space stays bound to whatever tables +
@@ -271,7 +270,7 @@ _api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
     "instruction_type": "TEXT",
 })
 
-# Time-window interpretation instruction (2026-05-18). Demo data is a fixed
+# Time-window interpretation instruction. Demo data is a fixed
 # 7-day window so MAX(time) is NOT today's wall-clock — it's the latest point
 # in the demo dataset. Without this instruction Genie generates
 # `WHERE time >= NOW() - INTERVAL 24 HOUR` which returns 0 results because
@@ -301,12 +300,10 @@ print(f"Genie Space ID: {GENIE_SPACE_ID}")
 # COMMAND ----------
 
 # DBTITLE 1, Create MAS Supervisor Agent
-# Previously wrapped in `try/except Exception` with "non-fatal" warning, which
-# silently swallowed real failures (the task would succeed in DABs even when
-# MAS was never created — caught 2026-05-15 on mmt_aws_usw2 L3 test). Fix: let
-# errors propagate. KA-ready wait above is the precondition that makes this
-# safe to fail fast. If a real preview-feature toggle is needed, the error
-# message will surface it cleanly instead of hiding behind a print.
+# NOT wrapped in `try/except Exception` — a previous "non-fatal" warning
+# pattern silently swallowed real failures (the task would succeed in DABs
+# even when MAS was never created). Errors propagate. The KA-ready wait
+# above is the precondition that makes this safe to fail fast.
 MAS_TILE_ID = ""
 MAS_ENDPOINT_NAME = ""
 

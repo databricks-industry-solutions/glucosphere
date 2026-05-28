@@ -78,7 +78,7 @@ def discover_bundle_warehouse_id(target: str, profile: str | None) -> str:
     the `DATABRICKS_CONFIG_PROFILE` env var (the SSOT-pattern source via
     `.env.bundle`). CLI v0.297.2's `warehouses list` does NOT inherit the env
     var when run from a bundle directory — it requires explicit `-p <profile>`
-    or fails with "please specify target" (verified 2026-05-27).
+    or fails with "please specify target".
 
     Fails hard (sys.exit(1)) if the warehouses list call errors OR if no
     warehouse with the expected name suffix is found. Precondition: a successful
@@ -154,10 +154,10 @@ def main() -> int:
         content = patch(content,
             r'(- name: sql-warehouse\b[\s\S]*?sql_warehouse:\s+id: )\S+',
             rf'\g<1>{warehouse_id}', "resource sql-warehouse.id")
-    # ENDPOINT_NAME and GENIE_SPACE_ID env vars reverted to plain `value:` on
-    # 2026-05-18 — `valueFrom:` did not resolve at runtime (app object's
-    # `resources` field came back empty after deploy, so valueFrom references
-    # came up empty). Rewrite BOTH the env var `value:` field AND the
+    # ENDPOINT_NAME and GENIE_SPACE_ID env vars use plain `value:` because
+    # `valueFrom:` did not resolve at runtime (app object's `resources` field
+    # came back empty after deploy, so valueFrom references came up empty).
+    # Rewrite BOTH the env var `value:` field AND the
     # resource block so the resource bindings stay declared for SP permissions
     # even though we no longer rely on valueFrom to populate the env value.
     if args.mas_endpoint:
