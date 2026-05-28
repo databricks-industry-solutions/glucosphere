@@ -1180,6 +1180,10 @@ ax2.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed
 # (transparent bg so the image inherits parent card color in any theme — dark or light)
+# Ensure the pipeline_data volume exists — 05 runs before the tasks that
+# create the volume otherwise (08 + create_device_telemetry +
+# create_patient_registry all create it). Idempotent.
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.pipeline_data")
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/incident_inference_assets"
 dbutils.fs.mkdirs(_ASSET_DIR)
 _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
