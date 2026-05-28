@@ -343,4 +343,4 @@ Where the pieces came from:
 
 ### Post-buildathon hardening + future feature work
 
-**Justin Ward, May Merkle-Tan, Morgan Williams** — MVP tidy-up + future feature adds.
+led by **May Merkle-Tan, Justin Ward, Morgan Williams** — MVP tidy-up + future feature adds.
