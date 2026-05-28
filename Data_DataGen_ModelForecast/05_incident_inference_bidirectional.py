@@ -1181,13 +1181,10 @@ plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed
 # (transparent bg so the image inherits parent card color in any theme — dark or light)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
-try:
-    dbutils.fs.mkdirs(_ASSET_DIR)
-    _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
-    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
-    print(f"[ASSET] Saved {_asset_path}")
-except Exception as _e:
-    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
+dbutils.fs.mkdirs(_ASSET_DIR)
+_asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
+plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+print(f"[ASSET] Saved {_asset_path}")
 plt.show()
 
 print("[SUCCESS] Visualization complete!")
@@ -1359,13 +1356,10 @@ ax3.grid(True, alpha=0.3)
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
-try:
-    dbutils.fs.mkdirs(_ASSET_DIR)
-    _asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
-    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
-    print(f"[ASSET] Saved {_asset_path}")
-except Exception as _e:
-    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
+dbutils.fs.mkdirs(_ASSET_DIR)
+_asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
+plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+print(f"[ASSET] Saved {_asset_path}")
 plt.show()
 
 print("[SUCCESS] 3-panel MAE comparison complete!")
@@ -1609,13 +1603,10 @@ ax3.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
-try:
-    dbutils.fs.mkdirs(_ASSET_DIR)
-    _asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
-    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
-    print(f"[ASSET] Saved {_asset_path}")
-except Exception as _e:
-    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
+dbutils.fs.mkdirs(_ASSET_DIR)
+_asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
+plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+print(f"[ASSET] Saved {_asset_path}")
 plt.show()
 
 print("[SUCCESS] 3-panel glucose timeline comparison complete!")
@@ -1908,13 +1899,10 @@ plt.tight_layout()
 # notebook UI light bg (passes WCAG AA ~4.5:1 on both). Single PNG, no
 # per-theme regeneration needed.
 _ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
-try:
-    dbutils.fs.mkdirs(_ASSET_DIR)
-    _asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
-    plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
-    print(f"[ASSET] Saved {_asset_path}")
-except Exception as _e:
-    print(f"[ASSET] WARN: could not save PNG to UC Volume: {_e}")
+dbutils.fs.mkdirs(_ASSET_DIR)
+_asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
+plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+print(f"[ASSET] Saved {_asset_path}")
 plt.show()
 # Restore rcParams so any later cell in this notebook uses defaults.
 plt.rcParams.update(_DUAL05_FIG4_RCPARAMS_SAVED)
