@@ -12,53 +12,136 @@ Dates use ISO 8601 (YYYY-MM-DD), grouped by author date of the commits
 landed on the branch.
 
 This project is a Databricks demo, not a versioned library — entries are
-grouped by date rather than semver tags. The "Unreleased" section above the
-dated history captures work in progress / planned work.
+grouped by date rather than semver tags.
 
 ---
 
-## [Unreleased]
+## [2026-05-28]
 
-### Planned
+PR-to-main polish: cycle-2 regression fix + standardization sweep + UC Volume
+rename (`landing_zone` → `pipeline_data`) + external-audience documentation
+pass + legal/CI scaffold from `origin/main`. 34 commits on
+`feature/dual-baseline-mmt-aws-usw2`.
 
-#### Demo features (sequenced)
+### Fixed
 
-- **#42 — Lakebase F kickoff** (~4 hr) — alerts + alert_transitions tables on workspace-scoped Lakebase Autoscaling instance; Flask wiring; React Open Alerts panel as `#56` follow-up. Design landed earlier in week (`ref_notes/2026-05-16_lakebase-f-kickoff-design.md`).
-- **#68 — Verify synthetic baseline path end-to-end** — `bundle deploy --var "baseline_source=synthetic"` against a sandbox; confirm `condition_task` dispatch + spot-check incident plots + React charts; drop sandbox after. Synthetic path not re-validated since v9 palette + two-incident mirror landed 2026-05-18.
-- **#47 — Extract shared incident-sim helper** — consolidate duplicated logic between `dual_05_*_Bidirectional.py` and `dual_05_*_SingleIncident.py` siblings.
-- **#70 — Post-pipeline asset refresh** (in flight 2026-05-19 evening) — `fs cp` fig4 PNG from UC Volume → repo, `npm run build`, commit + push, `bundle deploy + bundle run glucosphere_dashboard`. Pairs with the matplotlib fix in `6fd9222`.
+- **Heatmap firmware variety regressed 3 → 2** (Device Support page). Root
+  cause: `Create Raw Device Data.ipynb` hardcoded Jan 7-9 2026 firmware-event
+  timestamps; `demo_week_start` auto-resolves to `today_utc - 6 days`, so May
+  2026 data fell outside the Jan firmware windows, leaving only B1 and B5
+  branches active. Fix derives the 4 firmware-event timestamps from
+  `cfg.demo_week_start + timedelta` offsets (Day 3 + Day 5 of the demo
+  window). Also dropped the dead duplicate Cell 1 (98-line copy of Cell 2's
+  `make_device_firmware()`).
+- **MetricsExplained PNG missing**. Silent `try/except` around 4 PNG saves in
+  `05_incident_inference_bidirectional.py` swallowed write failures while
+  task reported SUCCESS. Removed the try/except so failures throw. Added
+  `CREATE VOLUME IF NOT EXISTS pipeline_data` guard before the first
+  `dbutils.fs.mkdirs(_ASSET_DIR)` — surfaced a real DAG-ordering issue on
+  fresh-schema deploys that the silent except had been masking.
+- **`Create Raw Device Data.ipynb` missing `pyyaml`** added to the `%pip
+  install` line (required by the Config-class loader).
 
-#### Infra & portability
+### Changed
 
-- **#39 — Standalone catalog cutover** (`mmt_aws_usw2_catalog` → `mmt_aws_usw2`) — manual playbook test; includes schema-naming decision (`glucosphere_dev` → `glucosphere`?). Validates the cutover playbook for the eventual fe-vm-hls-amer rollout.
-- **#58 — Send fe-vm Variant E follow-up** — unblock app quota + Lakebase enablement on fe-vm-hls-amer.
-- **fe-vm-hls-amer catalog rollout** — applies cutover playbook + deploy template once #58 unblocks the workspace's 100/100 app quota (admin SP cleanup of cross-workspace SP entanglement pending in parent workspace).
+- **UC Volume rename `landing_zone` → `pipeline_data`** — semantic accuracy
+  (volume holds raw parquet + rendered PNGs + WHO PDFs, not just landing
+  files). Single-pass grep-clean rename across `databricks.yml`, all pipeline
+  notebooks (01-09), `App/databricks/app.py`,
+  `App/src/pages/MetricsExplained.jsx`, `09_grant_app_permissions.py`
+  (`GRANT READ VOLUME ... pipeline_data`), `DEPLOY.md`, `REPO_LAYOUT.md`,
+  `README.md`. Historical entries below retain `landing_zone` for accuracy
+  of past-state record.
+- **Widget standardization** — catalog/schema defaults + widget names +
+  variable refs + `databricks.yml` `base_parameters` keys all unified to
+  `CATALOG_NAME` / `SCHEMA_NAME` (UPPERCASE-with-`_NAME`-suffix). Touched 13
+  `.py` files and 3 `.ipynb` files (`Create Raw Device Data.ipynb`, `Create
+  Patient_Device Table.ipynb`, `Create Raw Patient_Registry Data.ipynb`)
+  which previously used lowercase `catalog`/`schema` widget names. Default
+  values now use placeholder `your_workspace_catalog` (was a mix of
+  `glucosphere_catalog`, `hls_glucosphere`, `cgm`).
+- **`DEMO_WEEK_START` override widget** added to `04_*.py`, `05_*.py`,
+  `06_*.py`, `07_*.py`. Empty value falls back to the `databricks.yml`
+  `DEMO_WEEK_START` parameter (`auto` or a specific date); non-empty value
+  populates `widget_overrides["DEMO_WEEK_START"]` and feeds into the
+  Config-class loader. Validated via one-off run with `notebook_params:
+  {"DEMO_WEEK_START": "2026-05-01"}` — gold time range came back exactly
+  `2026-05-01 → 2026-05-07` with 3 firmware values.
+- **Smoke test extended 6 → 8 checks** — new `check_firmware_variety()`
+  asserts `COUNT(DISTINCT firmware_version) >= 3` on
+  `gold_patient_device_readings`; new `check_uc_asset_png()` fetches the
+  MetricsExplained 4-panel PNG via the Files API (`GET
+  /api/2.0/fs/files/Volumes/.../pipeline_data/incident_inference_assets/...`)
+  using curl + auth token from `databricks auth describe` (the CLI's `api
+  get` chokes on binary PNG bytes), validates HTTP 200 + PNG magic-bytes
+  header. Catches both cycle-2 bug classes automatically next time.
+- **Warehouse `auto_stop_mins: 10 → 30`** in
+  `databricks.yml: resources.sql_warehouses.glucosphere_warehouse`. Reduces
+  cold-start latency on the GlucoStream Intelligence landing page.
+- **`README.md` repo title** `hls-glucosphere` → `Glucosphere` —
+  external-audience cleanup. The `hls-` prefix was internal-tracking
+  branding, not user-facing.
+- **`README.md` Contributors section** rewritten as flowing narrative with
+  per-person attribution. Two pre-Buildathon threads — (1) the Nov 4 2025
+  MedTech Q4 QBR Hackathon (Jon Van Hofwegen, Sabrina Wang, Sumanth Ghanta,
+  May Merkle-Tan) produced the data/ML foundations + MVP App with
+  Multi-Agent Supervisor (MAS) agentic layer; (2) in parallel, Morgan
+  Williams's prior customer-driven faulty-firmware device alert demo became
+  the incident-simulation scaffolding. → Buildathon FY26Q4 Team 11 (Justin
+  Ward, Morgan Williams, May Merkle-Tan, Nikita Kamraj, Sabrina Wang)
+  integrated the two threads — May grounded the device story in real FDA
+  recall context; Morgan integrated his prior demo into a pseudo-online
+  DLT pipeline with firmware versions tracking the incident timeline;
+  Justin led appification via the ai-dev-kit + React frontend + bundle
+  scaffolding. → Post-Buildathon MVP tidy-up (Justin, May, Morgan).
+- **README + DEPLOY runtime estimates** corrected to cycle-2-verified
+  numbers (full `glucosphere_full_setup` job ~48 min).
+- **External-audience cleanup pass** across `README.md`, `DEPLOY.md`, inline
+  comments in `databricks.yml`, `08_genie_ka_mas.py`,
+  `09_grant_app_permissions.py`, `03_compare_baseline_modes.py`, and widget
+  descriptions. Stripped internal task numbers, workspace-specific
+  catalog/schema examples, dated lapse notes, commit-ref pointers. Kept
+  WHAT + WHY + override knobs.
 
-#### Deploy template & repo cleanup
+### Added
 
-- **#43 — Deploy template** (`glucosphere.deploy.yaml` + `scripts/deploy_glucosphere.py`) — one-command fresh-workspace bootstrap. Captures patterns from #41/#42/#39.
-- **#48 — Renumber + rename notebooks** for clean execution-order convention (POST #43). Re-apply the notebook-rename playbook (`ref_notes/2026-05-18_notebook-rename-playbook.md`).
-- **#69 — Full repo branch cleanup audit** (new 2026-05-19) — holistic sweep: for each top-level file, assess relevance + upstream/downstream dependencies + staleness markers. Pairs with the docs work below. Half-day to full-day effort.
+- **`CONTRIBUTING.md`** (NEW, repo root) — invites external contributors
+  with CLA scaffold prepended from `origin/main`'s
+  `databricks-industry-solutions` Solution Accelerator template. Documents
+  local-dev loop (`uv` + Databricks CLI), branch + PR conventions, and the
+  CLA-on-first-PR pattern.
+- **`LICENSE.md`**, **`NOTICE.md`**, **`SECURITY.md`**,
+  **`.github/scripts/`**, **`.github/workflows/`** — cherry-picked from
+  `origin/main` Solution Accelerator template scaffold. Resolves the
+  unrelated-histories state between
+  `feature/dual-baseline-mmt-aws-usw2` and `main` ahead of PR-to-main
+  without restructuring `App/` or `Data_DataGen_ModelForecast/`.
+- **`README.md` Architecture subsection** — Genie / KA / MAS endpoint
+  distinction documented with a routing mermaid. NL-SQL → Genie space over
+  gold tables; RAG over WHO PDF → KA endpoint; MAS supervisor routes
+  clinical reasoning between them.
+- **`DEPLOY.md` deploy-flow mermaid** at the top of the guide — visualizes
+  the 7-stage flow (env setup → first deploy → render → second deploy →
+  run pipeline → start app → smoke test).
+- **`docs/internal-setup.md`** (NEW) — catalog naming convention for
+  internal fevm workspaces + maintainer-set caveat. Split out of `README.md`
+  to keep the main README external-facing while preserving the guidance for
+  teammates deploying onto internal catalogs.
 
-#### Docs
+### Verified
 
-- **#46 — Rewrite `Data_DataGen_ModelForecast/README.md`** — current text references deleted `01_download_data.py` / `02_parseNcombine_processed_data.py` / `03_extract_baselineTS_EDAcheck.py`; needs refresh to current `dual_*` notebook set.
-- **#50 — Add demo usage / deployment instructions for end users** — pairs with #46.
-- **#53 — Incorporate Lakebase positioning into README + demo docs** — lands once #42 implementation is live so docs match what the app actually does. Pairs with #46/#50.
-- **#64 — Markdown audit + cleanup sweep** across `dual_*` notebook `# MAGIC %md` cells (post-bidirectional + post-palette + post-rename). Targets human-readable narrative inside notebooks for review quality.
-- **#40 — User review of README** (commit `d897eaa`).
-- **Landing-page intro to demo's component map** — orientation banner on GlucoStream Intelligence landing page explaining the four sub-dashboards (GlucoStream, Device Support, Diabetes Coach, Care Management placeholder) and which persona each serves.
-
-#### Outreach
-
-- **DAIS demo readiness** — polish for booth pickup if CGM / connected-device monitoring use cases come up.
-
-### Open question
-
-- **Workspace decision** (raised with Rebecca 2026-05-18): keep on
-  fe-vm-hls-amer (currently 100/100 app quota blocked) OR move to newer prod
-  workspace where Genesis Workbench is being added via
-  databricks-industry-solutions accelerator repo.
+- **Fresh-deploy `mmt_aws_usw2` end-to-end**: `bundle destroy` (bundle
+  resources + `DROP SCHEMA CASCADE` + manual API cleanup of KA/MAS/Genie
+  tiles + serving endpoints) → `bundle deploy` (pass 1) →
+  `render_app_yaml.py` → `bundle deploy` (pass 2) → `bundle run
+  glucosphere_full_setup` (full 15-task DAG) → `bundle run glucosphere_app`
+  → `smoke_test.py`. Result: smoke 8/8 PASS.
+- **Visual UI checks**: Metrics Explained → 4-panel comparison PNG renders
+  via `/uc-assets/`; Device Support → heatmap shows 3 firmware columns
+  (`3.14` / `4.0` / `4.1`) × 6 device models = 18 cells; GlucoStream
+  Intelligence landing → all 3 panel plots render after warm warehouse.
+- **`DEMO_WEEK_START` widget override path** validated end-to-end (see
+  Changed above).
 
 ---
 
