@@ -259,7 +259,7 @@ Databricks Field Engineering maintains an internal `fe-vibe` plugin marketplace 
 
 ## Contributors
 
-Glucosphere came together in three phases.
+Glucosphere came together in phases.
 
 **Origins.** Two pre-Buildathon threads:
 
