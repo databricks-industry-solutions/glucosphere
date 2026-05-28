@@ -184,7 +184,7 @@ databricks bundle run glucosphere_app -t <target> --profile <profile>
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
-End-to-end wall clock: **~45-50 min on subsequent deploys** (reuses existing KA/MAS/Genie + model serving endpoints) or **~60-75 min on first deploy to a fresh workspace** (CREATE path for KA/MAS/Genie + model serving endpoint provisioning). The setup job alone dominates at ~45 min (verified empirically) — longest tasks are `deploy_model_endpoints` (~22 min update / longer on fresh create), `datagen_modeling` (~13 min), `ingest_real_baseline` (~7 min). Deploy + render + App start + smoke test adds ~3 min. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
+End-to-end wall clock: **~48 min on subsequent deploys** (reuses existing KA/MAS/Genie + model serving endpoints) and **~51 min on first deploy to a fresh workspace** (CREATE path for KA/MAS/Genie + model serving endpoints — only ~3 min slower than reuse). The setup job alone dominates at ~45-48 min — longest tasks are `deploy_model_endpoints` (~22 min), `datagen_modeling` (~13 min), `ingest_real_baseline` (~7-8 min). Deploy + render + App start + smoke test adds ~3 min. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
 
 > **Note:** The first deploy downloads the HUPA-UCM zip from Mendeley (~25 MB) and auto-creates the `raw_baseline` UC Volume. No pre-setup needed.
 
@@ -197,7 +197,7 @@ databricks bundle deploy -t <target> --var "baseline_source=synthetic" --profile
 # (remaining steps — render, pass 2, setup job, post-job re-render, App start — same as default)
 ```
 
-End-to-end runtime is somewhat shorter than the real-data path because the synthetic baseline ingest (`01_synthetic_baseline.py`) is in-cluster (no Mendeley download), shaving the ~7 min `ingest_real_baseline` task. The bulk of the runtime (model endpoint deploy + datagen modeling) is unchanged, so realistic wall clock is **~40-45 min subsequent / ~55-70 min first deploy**. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
+End-to-end runtime is slightly shorter than the real-data path because the synthetic baseline ingest (`01_synthetic_baseline.py`) is in-cluster (no Mendeley download), shaving ~7-8 min off the `ingest_real_baseline` task. The bulk of the runtime (model endpoint deploy + datagen modeling) is unchanged, so realistic wall clock is **~40 min subsequent / ~43 min first deploy**. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
 
 > ⚠️ **`--var` placement matters:** it MUST go on `bundle deploy`, not `bundle run`. The `${var.baseline_source}` in the dispatch condition is interpolated at deploy time. Putting `--var` on `bundle run` silently routes to whatever the deployed default is.
 
@@ -329,18 +329,10 @@ The `fe-vibe` marketplace entry for `databricks-ai-dev-kit` advertises `version:
 
 ## Contributors
 
-### Buildathon FY26Q4
+Glucosphere came together in three phases.
 
-Team 11 (HLS) — Real-time Digital Health Apps for Connected Devices
+**Origins (Nov 4, 2025, Denver — MedTech Q4 QBR Hackathon).** Team members: Jon Van Hofwegen, Sabrina Wang, Sumanth Ghanta, and May Merkle-Tan. May coined the "Glucosphere" name and built the foundations the current pipeline still rests on: a real CGM data source for simulations, the forecast-monitoring ML modeling, and a statistical approach for online monitoring.
 
-Justin Ward | Morgan Williams | May Merkle-Tan | Nikita Kamraj | Sabrina Wang
+**Buildathon FY26Q4 — Team 11 (HLS), "Real-time Digital Health Apps for Connected Devices"** (Justin Ward, Morgan Williams, May Merkle-Tan, Nikita Kamraj, Sabrina Wang). The buildathon turned the prior modeling work into a deployed Databricks App. **Justin Ward** led appification — introduced the [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit) into the workflow, turned the modeling notebooks into a Databricks App + React frontend, and scaffolded the bundle. **Morgan Williams** contributed the skeleton of a prior faulty firmware device demo that became the incident-simulation storyline. **May Merkle-Tan** integrated her prior MedTech-hackathon work on data synthesis + forecast-monitoring ML, and grounded the device story with real-life FDA recall context.
 
-Where the pieces came from:
-
-- **Justin Ward** — appification lead: introduced the [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit) into the workflow, turned the modeling notebooks into a deployed Databricks App + React frontend, and scaffolded the bundle.
-- **Morgan Williams** — contributed skeleton of prior faulty firmware device demo (the incident-simulation storyline).
-- **May Merkle-Tan** — integrated prior work from the MedTech hackathon (real CGM data source for simulations + forecast-monitoring ML modeling + statistical approach for online monitoring); grounded the device story with real-life FDA recall context.
-
-### Post-buildathon hardening + future feature work
-
-led by **May Merkle-Tan, Justin Ward, Morgan Williams** — MVP tidy-up + future feature adds.
+**Post-buildathon hardening + future feature work.** Led by May Merkle-Tan, Justin Ward, and Morgan Williams — MVP tidy-up + future feature adds.
