@@ -105,6 +105,10 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   descriptions. Stripped internal task numbers, workspace-specific
   catalog/schema examples, dated lapse notes, commit-ref pointers. Kept
   WHAT + WHY + override knobs.
+- **`.env.bundle.example` profile placeholder** changed from
+  `acme-aws-usw2` (fake-org style) to `your-workspace-profile` to match
+  the `your_workspace_*` placeholder convention used elsewhere in the
+  same reference example block (line 67: `your_workspace_catalog`).
 
 ### Added
 
