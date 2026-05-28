@@ -28,6 +28,7 @@ The entire deployable surface is described by a single file: [`databricks.yml`](
 | [`.env.bundle.example`](.env.bundle.example) | template you `cp` to local `.env.bundle` (operator-owned) and fill in 3 tokens |
 | [`databricks.yml`](databricks.yml) | the bundle definition — `targets`, `variables`, `resources` (all of them) |
 | [`scripts/render_app_yaml.py`](scripts/render_app_yaml.py) | rewrites `App/databricks/app.yaml` per target (discovers bundle-managed warehouse by name) |
+| [`scripts/smoke_test.py`](scripts/smoke_test.py) | pre-PR automated smoke test — 6 checks covering App state + URL + warehouse + gold table data + KA/MAS endpoints + Genie space |
 
 Quick deploy sequence (after `source .env.bundle`):
 
@@ -38,6 +39,7 @@ databricks bundle deploy -t <target>                       # pass 2 — picks up
 databricks bundle run glucosphere_full_setup -t <target>   # ~45 min pipeline (creates KA/MAS/Genie)
 # (re-render app.yaml with --mas-endpoint/--ka-endpoint/--genie-space-id from job logs + redeploy — first-deploy-only)
 databricks bundle run glucosphere_app -t <target>          # deploy App source + start compute
+uv run python scripts/smoke_test.py --target <target> --profile <profile>  # 6-check automated gate
 ```
 
 See [`DEPLOY.md`](DEPLOY.md) for the canonical step-by-step.

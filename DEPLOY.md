@@ -269,7 +269,21 @@ Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows
 
 ## Step 10: Smoke-test the deployed app
 
-Before declaring the deployment "done," walk through these checks in the browser. Each catches a specific class of post-deploy issue (UI build, backend wiring, agent endpoints, Genie binding, data access). All should complete in <5 minutes.
+### Automated subset (recommended pre-PR gate)
+
+Run the 6-check smoke test:
+
+```bash
+uv run python scripts/smoke_test.py --target <target> --profile <profile>
+```
+
+Validates: App state (ACTIVE + RUNNING), App URL serving (non-5xx), bundle-managed warehouse exists, gold-table `COUNT(*) > 0` (via Statement Execution API — proves DLT pipeline succeeded + SP can read), KA + MAS serving endpoints exist by name prefix, Genie space exists by display-name match. Exit 0 on pass, exit 1 on any failure with per-check diagnostic detail. Runtime ~15-30s.
+
+Catches the same backend failure modes as the manual browser checks below WITHOUT needing App SSO auth — fast enough to run after every redeploy.
+
+### Manual browser-driven checks (full functional coverage)
+
+The automated smoke test does NOT cover: React UI build artifacts, end-to-end agent query roundtrip (`/api/agent/query`), end-to-end Genie NL query roundtrip (`/api/genie/query`). Those require App SSO auth, so they're verified manually below. All should complete in <5 minutes.
 
 Open the app URL from `databricks apps get glucosphere-app --output json | jq -r .url`, then:
 

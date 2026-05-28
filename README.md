@@ -178,6 +178,10 @@ databricks bundle deploy -t <target> --profile <profile>
 
 # Start the App
 databricks bundle run glucosphere_app -t <target> --profile <profile>
+
+# Automated smoke-test gate (6 checks: App state, URL serving, warehouse, gold-table data,
+# KA/MAS endpoints, Genie space) — runs in ~15-30s, exits non-zero on any failure
+uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
 End-to-end ~25-40 min after the setup job kicks off. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
