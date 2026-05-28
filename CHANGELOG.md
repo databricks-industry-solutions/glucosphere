@@ -1,15 +1,18 @@
 # Changelog
 
-> **Branch:** `feature/dual-baseline-mmt-aws-usw2`
-> **Parent:** `origin/feature/ward-app-cleanup-upstream` (Justin Ward's post-buildathon cleanup branch)
-> **Tracked range:** from `bd15400` (branch base, 2026-05-17) through current HEAD on origin. See dated sections below for per-commit detail.
+> **Provenance.** The dated entries below capture the dual-baseline series
+> of changes brought into `main` via the initial PR from
+> `feature/dual-baseline-mmt-aws-usw2`, which forked from the post-Buildathon
+> cleanup base `feature/ward-app-cleanup-upstream` at commit `bd15400`
+> (2026-05-17). See per-date sections for commit-level detail. New entries
+> are appended at the **top** of the dated history (newest-first).
 
-All notable changes to the Glucosphere demo project on the
-`feature/dual-baseline-mmt-aws-usw2` branch are documented in this file.
+All notable changes to the Glucosphere demo project are documented in
+this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Dates use ISO 8601 (YYYY-MM-DD), grouped by author date of the commits
-landed on the branch.
+landed in the project.
 
 This project is a Databricks demo, not a versioned library — entries are
 grouped by date rather than semver tags.

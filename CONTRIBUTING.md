@@ -39,6 +39,38 @@ If you are contributing on behalf of an organization, you confirm that you have 
 - **Commits**: Conventional-Commits-ish — `feat(scope): ...`, `fix(scope): ...`, `docs: ...`, `chore: ...`, `refactor: ...`, `test: ...`. Subject lines ≤72 chars; body explains WHY when the change isn't self-evident.
 - **Co-author trailer**: add `Co-authored-by: <Name> <email>` if pair-programmed or AI-assisted.
 
+## Updating the CHANGELOG
+
+We follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format,
+date-grouped instead of semver-tagged (this is a Databricks demo, not a
+versioned library). Entries are ordered newest-first.
+
+**In the same PR that lands the change**, add an entry under today's date:
+
+- If today's `## [YYYY-MM-DD]` section already exists at the top of the
+  dated history, add a bullet under the appropriate sub-heading
+  (`### Added` / `### Changed` / `### Fixed` / `### Removed`).
+- If not, insert a new `## [YYYY-MM-DD]` section at the **top** of the
+  dated history (just below the intro paragraph + provenance note, above
+  the previous newest entry), with the relevant sub-headings.
+
+What a good bullet captures:
+
+- **WHAT** changed (concise — the diff explains the how)
+- **WHY** it changed (the motivation, especially for behavior changes)
+- File paths or resource names if they aid grep-ability later
+
+What to keep OUT of CHANGELOG entries (this file is user-facing):
+
+- Internal task numbers, run IDs, workspace-specific paths
+- Iteration journey ("tried X, then Y, settled on Z") — only the final
+  state matters
+- Dated lapse notes or `TODO:` cleanup pointers
+
+If you're unsure whether something warrants a CHANGELOG entry, ask in
+the PR — small/internal changes (e.g., dependency bumps, comment-only
+fixes) often don't.
+
 ## Before opening a PR
 
 - [ ] Code runs against the bundle's `cgm_pipeline_job` end-to-end (or a harness target if changes are isolated)
