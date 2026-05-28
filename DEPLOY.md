@@ -4,6 +4,31 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 
 > **New to the repo?** Read [`REPO_LAYOUT.md`](REPO_LAYOUT.md) first for a navigation guide: which files do what, the full workflow DAG, what's PR-shipped vs internal-refs.
 
+## Deploy flow at a glance
+
+The full first-deploy sequence (operator-driven; each box is a single CLI command run locally). Total wall clock ~51 min on a fresh workspace; subsequent redeploys reuse KA/MAS/Genie + model endpoints and run ~48 min.
+
+```mermaid
+flowchart TD
+    classDef cmd fill:#fff,stroke:#333,stroke-width:1px,color:#000
+    classDef wait fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
+    classDef gate fill:#e6f7e6,stroke:#2d7a2d,stroke-width:1px,color:#000
+
+    Z[Edit .env.bundle<br/><i>BUNDLE_VAR_catalog / _schema / DATABRICKS_CONFIG_PROFILE</i>]:::cmd
+    A[Step 6 — bundle deploy pass 1<br/><i>creates warehouse + jobs + pipelines + app stub</i>]:::cmd
+    B[Step 6 — scripts/render_app_yaml.py<br/><i>writes WAREHOUSE_ID into App/databricks/app.yaml</i>]:::cmd
+    C[Step 6 — bundle deploy pass 2<br/><i>picks up rendered app.yaml</i>]:::cmd
+    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see REPO_LAYOUT.md mermaid for in-job DAG</i>]:::wait
+    E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
+    F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
+    G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
+    H[Step 10 — scripts/smoke_test.py<br/><i>8-check automated gate; non-zero exit on any failure</i>]:::gate
+
+    Z --> A --> B --> C --> D --> E --> F --> G --> H
+```
+
+The Step 7 pipeline job is itself a 16-task DAG — see `REPO_LAYOUT.md` for that breakdown.
+
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
 > and capture the KA/MAS/Genie IDs from the Step 7 job logs — they're needed for Step 8.
