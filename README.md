@@ -1,4 +1,4 @@
-# hls-glucosphere
+# Glucosphere
 
 ## Overview
 
@@ -31,11 +31,11 @@ Glucosphere supports three **baseline source modes** for the CGM data that feeds
 | `synthetic` | In-cluster generator: textbook diabetes phenotype + AR(1) glucose dynamics | 1,000 pseudo-patients | opt-in via `--var` | CI / smoke tests / restricted-egress workspaces (no network call to Mendeley) / scenarios where deterministic in-cluster generation is preferred. |
 | `from_table` | CTAS from an existing UC table you point at | configurable via widgets | opt-in via `--var` | Once you've ingested HUPA-UCM elsewhere and want to mirror without re-downloading. |
 
-**Why `from_source` is the default** (changed 2026-05-16, empirically reaffirmed 2026-05-26): the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
+**Why `from_source` is the default**: the buildathon demo is built around clinical realism — real CGM signal dynamics, sustained hyperglycemic events, hypoglycemia incidents, sensor outliers. Synthetic mode produces a "well-managed diabetes" idealization that under-stresses the anomaly detection, MAS clinical reasoning, and MAE-shift incident demos. The Mendeley URL has been reliable across multiple runs. Synthetic stays available via `--var "baseline_source=synthetic"` for CI / restricted-egress scenarios.
 
-End-to-end harness testing on 2026-05-26 found this empirically: synthetic distributions are narrow and require iterated phenotype curation to populate the hypo + hyper strata that real HUPA-UCM gives for free. Bidirectional incident simulation (over-reading AND under-reading device calibration bugs) needs both natural tails populated — real-baseline mode provides this without artificial construction. Full analysis + iteration log in `CHANGELOG.md` (`[2026-05-26]` section, "Synthetic vs real data — structural realism for incident simulation").
+Synthetic distributions are narrow and require iterated phenotype curation to populate the hypo + hyper strata that real HUPA-UCM gives for free. Bidirectional incident simulation (over-reading AND under-reading device calibration bugs) needs both natural tails populated — real-baseline mode provides this without artificial construction. Full analysis lives in `CHANGELOG.md` under "Synthetic vs real data — structural realism for incident simulation".
 
-### Model performance — clean vs incident (2026-05-16, real-trained)
+### Model performance — clean vs incident (real-trained)
 
 The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) trained on real HUPA-UCM-derived data, evaluated under a simulated +40 mg/dL device calibration bug overlay:
 
@@ -67,7 +67,7 @@ In real-mode, what you get is **real CGM signal dynamics carried by synthetic pa
 - "Glucose values and Fitbit readings are from real type-1 diabetes patients (HUPA-UCM dataset)."
 - "Patient names, device IDs, demographics, and incident scenarios are synthetic for privacy and demo purposes."
 
-### How synthetic and real compare (verified 2026-05-16)
+### How synthetic and real compare
 
 | metric | synthetic | from_source |
 |---|---:|---:|
@@ -179,8 +179,9 @@ databricks bundle deploy -t <target> --profile <profile>
 # Start the App
 databricks bundle run glucosphere_app -t <target> --profile <profile>
 
-# Automated smoke-test gate (6 checks: App state, URL serving, warehouse, gold-table data,
-# KA/MAS endpoints, Genie space) — runs in ~15-30s, exits non-zero on any failure
+# Automated smoke-test gate (8 checks: App state, URL serving, warehouse, gold-table data,
+# KA/MAS endpoints, Genie space, firmware-variety, MetricsExplained UC-asset PNG) —
+# runs in ~15-30s, exits non-zero on any failure
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
@@ -198,6 +199,10 @@ databricks bundle deploy -t <target> --var "baseline_source=synthetic" --profile
 ```
 
 End-to-end runtime is slightly shorter than the real-data path because the synthetic baseline ingest (`01_synthetic_baseline.py`) is in-cluster (no Mendeley download), shaving ~7-8 min off the `ingest_real_baseline` task. The bulk of the runtime (model endpoint deploy + datagen modeling) is unchanged, so realistic wall clock is **~40 min subsequent / ~43 min first deploy**. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
+
+### Pin a specific demo week (reproducible runs)
+
+The 7-day demo window auto-resolves to `today_utc - 6 days` by default — see `configs/baseline_config.yaml:35` (`demo_week_start: 'auto'`). For reproducible runs (CI snapshots, demo recordings, comparison datasets), pin a specific date — full instructions in [`DEPLOY.md`](DEPLOY.md#overriding-demo_week_start-date-window) (covers both YAML pin and the per-run `notebook_params` widget override).
 
 > ⚠️ **`--var` placement matters:** it MUST go on `bundle deploy`, not `bundle run`. The `${var.baseline_source}` in the dispatch condition is interpolated at deploy time. Putting `--var` on `bundle run` silently routes to whatever the deployed default is.
 

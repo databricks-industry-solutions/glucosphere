@@ -42,14 +42,14 @@ if os.path.exists(config_file):
 else:
     print(f"⚠️  Config file not found: {config_file}")
     print(f"\nPlease ensure the config file exists at: {config_file}")
-    print(f"\nIf missing, create it with the baseline notebook or copy from:")
-    print(f"  /Users/may.merkletan@databricks.com/hls-glucosphere/Data/configs/baseline_config.yaml")
+    print(f"\nIf missing, restore from the repo:")
+    print(f"  Data_DataGen_ModelForecast/configs/baseline_config.yaml")
 
 # COMMAND ----------
 
-# DBTITLE 1,Essential Widgets (6 only - YAML config approach)
+# DBTITLE 1,Essential Widgets (7 only - YAML config approach)
 # ------------------------
-# Essential Widgets (6 only - down from 50!)
+# Essential Widgets (7 only)
 # All other parameters loaded from YAML config
 # ------------------------
 

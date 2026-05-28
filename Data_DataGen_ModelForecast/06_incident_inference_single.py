@@ -84,9 +84,9 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,Essential Widgets (7 only - YAML config approach)
+# DBTITLE 1,Essential Widgets (8 only - YAML config approach)
 # ------------------------
-# Essential Widgets (7 only - down from 20+!)
+# Essential Widgets (8 only)
 # All other parameters loaded from YAML config
 # ------------------------
 

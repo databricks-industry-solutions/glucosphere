@@ -345,11 +345,9 @@ databricks bundle deploy -t <target> --profile <profile>
 databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_source=from_source" --profile <profile>
 ```
 
-(Burned 2026-05-16 evening when the run was misrouted to synthetic instead of real.)
-
 ### `render_app_yaml.py` — what it does
 
-`scripts/render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. As of 2026-05-19, the committed `App/databricks/app.yaml` has `mmt_aws_usw2`-target values from the most recent render — `bundle deploy -t mmt_aws_usw2` works directly without re-rendering, but ANY OTHER target requires `render_app_yaml.py --target <your-target>` first to avoid mismatched catalog/schema/endpoint references in the deployed app.
+`scripts/render_app_yaml.py` reads the resolved bundle vars and rewrites the 7 per-target fields in `App/databricks/app.yaml` (4 env values + 3 resource block names/IDs). It is idempotent — re-run any time you switch target or discover new endpoint/Genie IDs. The committed `App/databricks/app.yaml` reflects the most-recent render against the default target — switching to a different target requires `render_app_yaml.py --target <your-target>` first to avoid mismatched catalog/schema/endpoint references in the deployed app.
 
 ### Grants preflight — the deployed app's service principal needs
 
@@ -486,9 +484,53 @@ databricks jobs get-run <RUN_ID> --profile <profile> \
 ### Common agent lapses to avoid
 
 - **Don't assume catalog state from memory.** "The catalog already exists" might be true for an old workspace but not the current target. Either run the pre-flight catalog/schema/volume creation snippet (above) to create-if-not-exists, or query the catalog list first.
-- **Don't cite default values from memory.** `baseline_source`, `catalog`, `warehouse_id` etc. can flip between snapshot date and now. Always grep `databricks.yml` for the current value before stating it as fact. (2026-05-19 lapse logged in `feedback_always_verify.md`.)
+- **Don't cite default values from memory.** `baseline_source`, `catalog`, `warehouse_id` etc. can flip between snapshot date and now. Always grep `databricks.yml` for the current value before stating it as fact.
 - **Don't conflate `committed locally` / `pushed to origin` / `deployed to workspace` / `app restarted`.** These are four different state transitions. State exactly which one you did.
 - **App resources don't return a job `run_id`** when you run `bundle run <app-name>` — they're synchronous. Other resources (jobs, pipelines) do return a `run_id` that needs polling.
+
+---
+
+## Overriding `demo_week_start` (date window)
+
+The 7-day demo window auto-resolves to `today_utc - 6 days` by default (see `Data_DataGen_ModelForecast/configs/baseline_config.yaml:35`, `demo_week_start: 'auto'`). The auto behavior keeps the demo current (data always ends "today") but produces a sliding window — graphs shift each day. Two ways to pin a specific date for reproducible runs:
+
+### Option A — YAML pin (CI snapshots, release recordings)
+
+Edit `Data_DataGen_ModelForecast/configs/baseline_config.yaml`:
+
+```yaml
+demo_week_start: '2026-05-01'   # was 'auto' — pinned to this 7-day window
+```
+
+Then redeploy + re-run the pipeline:
+
+```bash
+databricks bundle deploy -t <target> --profile <profile>
+databricks bundle run glucosphere_full_setup -t <target> --profile <profile>
+```
+
+Gold table time range will be exactly `2026-05-01 → 2026-05-07` regardless of when the pipeline runs. To revert, change back to `'auto'` and redeploy.
+
+### Option B — Widget override at run-time (one-off comparison / debugging)
+
+Pass the pinned date via `notebook_params` on `databricks jobs run-now` — no code edit, no redeploy. The `DEMO_WEEK_START` widget (declared in 04/05/06/07 + `utils/additional_patient_info/Create Raw Device Data.ipynb`) flows through the Config class and takes precedence over the YAML value:
+
+```bash
+# Get the deployed job_id once
+JOB_ID=$(databricks jobs list --profile <profile> -o json \
+  | jq -r '.[] | select(.settings.name | test("glucosphere-full-setup-<target>")) | .job_id')
+
+# Trigger with the override
+databricks jobs run-now --profile <profile> \
+  --json "{\"job_id\": ${JOB_ID}, \"notebook_params\": {\"DEMO_WEEK_START\": \"2026-05-01\"}}"
+```
+
+The override applies only to that single run — subsequent runs without `notebook_params` revert to YAML's `'auto'` resolution automatically. The pinned date produces a gold-table time range of exactly `2026-05-01T00:00:00 → 2026-05-07T23:55:00` with 3 distinct firmware values (`3.14`, `4.0`, `4.1`) — the full firmware-event narrative (baseline → transient fault → fix) fires inside the window.
+
+### Which to use
+
+- **CI / pinned release demo** → Option A (committed to repo, reproducible across deploys)
+- **One-off comparison run / debugging** → Option B (no commit, transient, current YAML default unaffected)
 
 ---
 
