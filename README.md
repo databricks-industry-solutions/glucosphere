@@ -184,7 +184,7 @@ databricks bundle run glucosphere_app -t <target> --profile <profile>
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
-End-to-end ~25-40 min after the setup job kicks off. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
+End-to-end wall clock: **~45-50 min on subsequent deploys** (reuses existing KA/MAS/Genie + model serving endpoints) or **~60-75 min on first deploy to a fresh workspace** (CREATE path for KA/MAS/Genie + model serving endpoint provisioning). The setup job alone dominates at ~45 min (verified empirically) — longest tasks are `deploy_model_endpoints` (~22 min update / longer on fresh create), `datagen_modeling` (~13 min), `ingest_real_baseline` (~7 min). Deploy + render + App start + smoke test adds ~3 min. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
 
 > **Note:** The first deploy downloads the HUPA-UCM zip from Mendeley (~25 MB) and auto-creates the `raw_baseline` UC Volume. No pre-setup needed.
 
@@ -197,7 +197,7 @@ databricks bundle deploy -t <target> --var "baseline_source=synthetic" --profile
 # (remaining steps — render, pass 2, setup job, post-job re-render, App start — same as default)
 ```
 
-End-to-end ~15-20 min. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
+End-to-end runtime is somewhat shorter than the real-data path because the synthetic baseline ingest (`01_synthetic_baseline.py`) is in-cluster (no Mendeley download), shaving the ~7 min `ingest_real_baseline` task. The bulk of the runtime (model endpoint deploy + datagen modeling) is unchanged, so realistic wall clock is **~40-45 min subsequent / ~55-70 min first deploy**. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
 
 > ⚠️ **`--var` placement matters:** it MUST go on `bundle deploy`, not `bundle run`. The `${var.baseline_source}` in the dispatch condition is interpolated at deploy time. Putting `--var` on `bundle run` silently routes to whatever the deployed default is.
 
