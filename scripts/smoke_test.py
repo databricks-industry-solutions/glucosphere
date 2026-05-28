@@ -7,7 +7,7 @@ endpoints + Genie space). Run after `databricks bundle run glucosphere_app …`
 completes (DEPLOY.md Step 9). Catches the backend failure modes that the manual
 browser-driven checks in DEPLOY.md Step 10 also catch, without needing SSO auth.
 
-What's automated (6 checks):
+What's automated (8 checks):
     1. App state: `databricks api get /api/2.0/apps/<name>` → compute_status.state == ACTIVE
        and app_status.state == RUNNING.
     2. App URL: HEAD request to the App URL → non-5xx response (auth redirect is fine —
@@ -20,6 +20,14 @@ What's automated (6 checks):
        endpoint names matching the App's `app.yaml` references.
     6. Genie space: `databricks api get /api/2.0/data-rooms` contains a room with the
        configured display name.
+    7. Firmware variety: gold table has >= 3 distinct firmware_version values
+       (catches the demo_week_start vs firmware-event-timestamp drift regression —
+       2026-05-28 cycle 2 silently dropped from 3 → 2 firmware values).
+    8. MetricsExplained PNG: UC Files API GET of
+       `/Volumes/<catalog>/<schema>/landing_zone/incident_inference_assets/distribution_comparison_4panel.png`
+       returns 200 + image/png bytes (catches the silent try/except in
+       05_incident_inference_bidirectional.py PNG-save block — cycle 2 incident_inference
+       task showed SUCCESS while the PNG was never written).
 
 NOT covered (still needs the manual DEPLOY.md Step 10 checklist):
     - React UI build artifacts loading correctly
@@ -137,6 +145,58 @@ def check_genie_space(profile: str, expected_name_contains: str = "Glucosphere")
     return True, f"display_name={match.get('display_name')!r}, id={match.get('space_id') or match.get('id')!r}"
 
 
+def check_firmware_variety(catalog: str, schema: str, warehouse_id: str, profile: str,
+                            min_distinct: int = 3) -> tuple[bool, str]:
+    """Gold table must have >= 3 distinct firmware_version values.
+
+    Catches the regression where `demo_week_start: 'auto'` (sliding 7-day window)
+    drifted past the hardcoded Jan 7-9 firmware-event timestamps in
+    Create Raw Device Data.ipynb, collapsing 3 firmware values (3.14, 4.0, 4.10)
+    down to 2 (3.14, 4.10).
+    """
+    body = {
+        "warehouse_id": warehouse_id,
+        "statement": (
+            f"SELECT COUNT(DISTINCT firmware_version) AS n "
+            f"FROM {catalog}.{schema}.gold_patient_device_readings"
+        ),
+        "wait_timeout": "30s",
+    }
+    d = _databricks_api("POST", "/api/2.0/sql/statements", profile, body)
+    status = d.get("status", {}).get("state", "?")
+    if status != "SUCCEEDED":
+        err = d.get("status", {}).get("error", {}).get("message", "")[:200]
+        return False, f"status={status}, error={err!r}"
+    rows = d.get("result", {}).get("data_array", [])
+    if not rows:
+        return False, "0 rows in result"
+    n = int(rows[0][0])
+    return n >= min_distinct, f"distinct firmware_version count = {n} (need >= {min_distinct})"
+
+
+def check_uc_asset_png(catalog: str, schema: str, profile: str,
+                       asset_subpath: str = "incident_inference_assets/distribution_comparison_4panel.png"
+                       ) -> tuple[bool, str]:
+    """UC Volume PNG asset must exist + be readable by the App SP path.
+
+    Uses the same Files API (`/api/2.0/fs/files/...`) that the App's `/uc-assets/`
+    route proxies. Catches the silent `try/except` in 05_incident_inference_bidirectional.py
+    that masked a failed PNG save during a fresh-schema deploy — the task showed SUCCESS
+    while the PNG was never written into the new schema's `landing_zone` volume.
+    """
+    full_path = f"/Volumes/{catalog}/{schema}/landing_zone/{asset_subpath}"
+    api_path = f"/api/2.0/fs/files{full_path}"
+    cmd = ["databricks", "api", "get", api_path, "--profile", profile]
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        msg = e.output.decode("utf-8", errors="replace") if isinstance(e.output, bytes) else str(e.output)
+        return False, f"Files API GET failed for {full_path}: {msg.strip()[:200]}"
+    if len(out) < 8 or out[:8] != b"\x89PNG\r\n\x1a\n":
+        return False, f"path={full_path}: {len(out)} bytes returned but PNG header missing"
+    return True, f"path={full_path}: {len(out)} bytes, valid PNG header"
+
+
 def _resolved_vars(target: str, profile: str) -> tuple[str, str]:
     out = subprocess.check_output(
         ["databricks", "bundle", "validate", "-t", target, "--profile", profile, "-o", "json"],
@@ -191,19 +251,27 @@ def main() -> int:
 
     wh_id = _warehouse_id(args.target, args.profile)
     if wh_id:
-        run("4. Gold table data",   lambda: check_gold_table(args.catalog, args.schema, wh_id, args.profile))
+        run("4. Gold table data",       lambda: check_gold_table(args.catalog, args.schema, wh_id, args.profile))
     else:
         print("  [SKIP] 4. Gold table data: no warehouse_id (check 3 must pass first)")
         fails += 1
 
-    run("5. Serving endpoints", lambda: check_serving_endpoints(args.profile))
-    run("6. Genie space",       lambda: check_genie_space(args.profile))
+    run("5. Serving endpoints",     lambda: check_serving_endpoints(args.profile))
+    run("6. Genie space",           lambda: check_genie_space(args.profile))
+
+    if wh_id:
+        run("7. Firmware variety",  lambda: check_firmware_variety(args.catalog, args.schema, wh_id, args.profile))
+    else:
+        print("  [SKIP] 7. Firmware variety: no warehouse_id (check 3 must pass first)")
+        fails += 1
+
+    run("8. UC asset PNG",          lambda: check_uc_asset_png(args.catalog, args.schema, args.profile))
 
     print()
     if fails:
-        print(f"FAIL — {fails}/6 smoke-test checks failed")
+        print(f"FAIL — {fails}/8 smoke-test checks failed")
         return 1
-    print("PASS — all 6 smoke-test checks passed")
+    print("PASS — all 8 smoke-test checks passed")
     return 0
 
 

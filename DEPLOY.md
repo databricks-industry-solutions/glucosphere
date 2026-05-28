@@ -271,13 +271,13 @@ Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows
 
 ### Automated subset (recommended pre-PR gate)
 
-Run the 6-check smoke test:
+Run the 8-check smoke test:
 
 ```bash
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
-Validates: App state (ACTIVE + RUNNING), App URL serving (non-5xx), bundle-managed warehouse exists, gold-table `COUNT(*) > 0` (via Statement Execution API — proves DLT pipeline succeeded + SP can read), KA + MAS serving endpoints exist by name prefix, Genie space exists by display-name match. Exit 0 on pass, exit 1 on any failure with per-check diagnostic detail. Runtime ~15-30s.
+Validates: App state (ACTIVE + RUNNING), App URL serving (non-5xx), bundle-managed warehouse exists, gold-table `COUNT(*) > 0` (via Statement Execution API — proves DLT pipeline succeeded + SP can read), KA + MAS serving endpoints exist by name prefix, Genie space exists by display-name match, gold-table firmware_version distinct count ≥ 3 (catches demo-window vs firmware-event-timestamp drift), MetricsExplained UC-asset PNG is readable via the Files API (`/api/2.0/fs/files/...` — same path the App's `/uc-assets/` route proxies; catches silent PNG-save failures during 05 incident_inference). Exit 0 on pass, exit 1 on any failure with per-check diagnostic detail. Runtime ~15-30s.
 
 Catches the same backend failure modes as the manual browser checks below WITHOUT needing App SSO auth — fast enough to run after every redeploy.
 
