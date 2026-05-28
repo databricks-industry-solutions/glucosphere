@@ -126,6 +126,20 @@ prod**. Don't conflate them when wiring up new targets or running ad-hoc
 queries — the production catalog should not absorb dev/test runs and vice
 versa.
 
+### Caveat — this is a maintainer convention, not a Databricks-wide rule
+
+This dev/prod catalog split is **set up by the current Glucosphere
+maintainers** for the `mmt_aws_usw2` workspace specifically. Both catalog
+variants (`mmt_aws_usw2_catalog` and `mmt_aws_usw2`) were created and
+role-assigned by the dev team here — it's not a universal Databricks
+or fevm-org policy.
+
+If you're working on a different fevm workspace (or wiring up a
+production-tier deploy elsewhere), **check with the workspace owner
+first** before assuming the same split holds — other workspaces may
+not have a standalone catalog provisioned, may use a different naming
+scheme, or may reserve catalog creation behind admin approval.
+
 External contributors using their own (non-fevm) workspace don't have this
 two-catalog convention — they just use whichever catalog name they create.
 The widget defaults (`your_workspace_catalog`) reflect the external-user
