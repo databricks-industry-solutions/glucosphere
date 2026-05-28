@@ -261,10 +261,7 @@ Databricks Field Engineering maintains an internal `fe-vibe` plugin marketplace 
 
 Glucosphere came together in phases.
 
-**Origins.** Two pre-Buildathon threads:
-
-- **MedTech Q4 QBR Hackathon (Nov 4, 2025, Denver)** — Jon Van Hofwegen, Sabrina Wang, Sumanth Ghanta, May Merkle-Tan. May coined "Glucosphere" and built the data/ML foundations (real CGM data source, forecast-monitoring ML, statistical online-monitoring approach). Jon and Sabrina integrated the Multi-Agent Supervisor (MAS) piece — the agentic layer.
-- **Prior faulty-firmware device demo** — Morgan Williams (customer-driven). Became the incident-simulation scaffolding. Used non-biological synthetic data.
+**Origins.** Two pre-Buildathon threads. The **MedTech Q4 QBR Hackathon (Nov 4, 2025, Denver)** — Jon Van Hofwegen, Sabrina Wang, Sumanth Ghanta, May Merkle-Tan — produced the data/ML foundations: May coined "Glucosphere" and built the real CGM data source + forecast-monitoring ML + statistical online-monitoring approach; Jon and Sabrina integrated the Multi-Agent Supervisor (MAS) agentic layer. In parallel, Morgan Williams's prior customer-driven faulty-firmware device demo became the incident-simulation scaffolding (originally synthetic, non-biological data).
 
 **Buildathon FY26Q4 — Team 11 (HLS), "Real-time Digital Health Apps for Connected Devices"** (Justin Ward, Morgan Williams, May Merkle-Tan, Nikita Kamraj, Sabrina Wang). The two threads merged here: **May Merkle-Tan** integrated her prior CGM-data + forecast-monitoring ML work and grounded the device story with real-life FDA recall context. **Morgan Williams** integrated his prior work's ingest of the device generator output + patient attributes into a pseudo-online DLT pipeline. **Justin Ward** led appification: introduced the [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit), turned the notebooks into a Databricks App + React frontend, scaffolded the bundle.
 
