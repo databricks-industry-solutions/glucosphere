@@ -110,6 +110,8 @@ Top-level bundle variables (defined in `databricks.yml`):
 | `baseline_source` | `.env.bundle` (optional) | `from_source` | `synthetic` / `from_source` / `from_table` |
 | `source_catalog` / `source_schema` / `source_table` | `.env.bundle` (optional) | `""` | Used by `from_table` mode; empty triggers auto-detect |
 | `app_name` | `.env.bundle` (optional) | `glucosphere-app` | Databricks App display name |
+| `dev_initials` | `.env.bundle` (optional) | `user` | Harness target suffix for collision avoidance when sharing a workspace; ≤7 chars |
+| `app_basename` | `.env.bundle` (optional) | `glucosphere` | Harness base name (shorten to fit the 30-char App limit if needed) |
 
 `warehouse_id` is **not** a bundle variable. The bundle declares a
 `sql_warehouses.glucosphere_warehouse` resource that creates the warehouse

@@ -32,6 +32,22 @@ variables:
   app_name:
     description: Databricks App display name
     default: glucosphere-app
+  dev_initials:
+    description: |
+      Personal initials suffix for harness target App + DB instance name
+      isolation. Default `user` is safe for single-deployer use. Set in
+      .env.bundle (e.g. `mmt`) when sharing a workspace with other deployers
+      so harness Apps and DB instances don't collide. Keep ≤7 chars — bounded
+      by the 30-char App name limit on the longest harness App.
+    default: user
+  app_basename:
+    description: |
+      Base name for harness target App + DB instance resources. Default
+      `glucosphere`. Override in .env.bundle to a shorter alias (e.g.
+      `gsphere`) if long `dev_initials` push App names past the 30-char limit.
+      DB instance names allow up to 63 chars (DNS-compliant), so the
+      constraint is App-side only.
+    default: glucosphere
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
@@ -90,10 +106,10 @@ targets:
       # the harness App from the live `glucosphere-app`.
       apps:
         glucosphere_app:
-          name: glucosphere-synth-e2e
+          name: ${var.app_basename}-synth-e2e-${var.dev_initials}
       database_instances:
         glucosphere_oltp:
-          name: glucosphere-oltp-synth-e2e
+          name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}
 
   # Validates the from_table mode by CTAS-copying from the synth_e2e harness
   # output into an isolated schema:
@@ -118,10 +134,10 @@ targets:
       # Parallel naming with synth_e2e harness; kept under the 30-char App limit.
       apps:
         glucosphere_app:
-          name: glucosphere-table-e2e
+          name: ${var.app_basename}-table-e2e-${var.dev_initials}
       database_instances:
         glucosphere_oltp:
-          name: glucosphere-oltp-table-e2e
+          name: ${var.app_basename}-oltp-table-e2e-${var.dev_initials}
 
   # Validates the from_source mode end-to-end: exercises the Mendeley
   # download + parse path + source-adaptive sampler against real HUPA-UCM
@@ -138,10 +154,10 @@ targets:
     resources:
       apps:
         glucosphere_app:
-          name: glucosphere-source-e2e
+          name: ${var.app_basename}-source-e2e-${var.dev_initials}
       database_instances:
         glucosphere_oltp:
-          name: glucosphere-oltp-source-e2e
+          name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
 
 resources:
 
