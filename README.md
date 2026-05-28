@@ -335,4 +335,12 @@ Team 11 (HLS) — Real-time Digital Health Apps for Connected Devices
 
 Justin Ward | Morgan Williams | May Merkle-Tan | Nikita Kamraj | Sabrina Wang
 
-**Currently active on MVP tidy-up (post-buildathon):** Justin Ward, May Merkle-Tan, Morgan Williams
+Where the pieces came from:
+
+- **Justin Ward** — appification lead: introduced the [ai-dev-kit](https://github.com/databricks-solutions/ai-dev-kit) into the workflow, turned the modeling notebooks into a deployed Databricks App + React frontend, and scaffolded the bundle.
+- **Morgan Williams** — contributed skeleton of prior faulty firmware device demo (the incident-simulation storyline).
+- **May Merkle-Tan** — integrated prior work from the MedTech hackathon (real CGM data source for simulations + forecast-monitoring ML modeling + statistical approach for online monitoring); grounded the device story with real-life FDA recall context.
+
+### Post-buildathon hardening + future feature work
+
+**Justin Ward, May Merkle-Tan, Morgan Williams** — MVP tidy-up + future feature adds.
