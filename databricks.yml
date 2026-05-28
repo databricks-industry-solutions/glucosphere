@@ -163,7 +163,7 @@ resources:
 
   # ---------------------------------------------------------------------------
   # DLT Pipeline: Silver & Gold CGM Views
-  # Reads from landing_zone volume (populated by setup job) and produces:
+  # Reads from pipeline_data volume (populated by setup job) and produces:
   #   silver_patient_registry, silver_device_telemetry_stream,
   #   silver_patient_readings, gold_patient_device_readings
   # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ resources:
   #            ↓                       ↓                ↓
   #            ↘            create_patient_registry  create_device_telemetry
   #             ↘                      ↓
-  #              ↘             run_dlt_pipeline      (silver/gold from landing_zone)
+  #              ↘             run_dlt_pipeline      (silver/gold from pipeline_data)
   #               ↘                    ↓
   #                ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
   #                 ↘                  ↓
@@ -373,7 +373,7 @@ resources:
           environment_key: default
 
         - task_key: create_patient_registry
-          description: Generate synthetic patient registry parquet files into landing_zone volume
+          description: Generate synthetic patient registry parquet files into pipeline_data volume
           max_retries: 0
           depends_on:
             - task_key: generate_patient_device_data
@@ -385,7 +385,7 @@ resources:
           environment_key: default
 
         - task_key: create_device_telemetry
-          description: Generate synthetic device telemetry parquet files into landing_zone volume
+          description: Generate synthetic device telemetry parquet files into pipeline_data volume
           max_retries: 0
           depends_on:
             - task_key: generate_patient_device_data
@@ -398,7 +398,7 @@ resources:
 
         # ── DLT Pipeline ──────────────────────────────────────────────────
         - task_key: run_dlt_pipeline
-          description: Run DLT pipeline to produce silver/gold CGM tables from landing_zone
+          description: Run DLT pipeline to produce silver/gold CGM tables from pipeline_data
           max_retries: 0
           depends_on:
             - task_key: create_patient_registry

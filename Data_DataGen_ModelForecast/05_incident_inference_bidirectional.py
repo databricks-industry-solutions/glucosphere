@@ -503,7 +503,7 @@ window2_signed_bias = -bias_magnitude if window2_direction == 'negative' else +b
 # at runtime (e.g., on a fresh workspace where raw data hasn't landed yet).
 POS_POOL_MODELS = ['Alpha', 'Gamma']
 NEG_POOL_MODELS = ['Beta', 'Delta']
-_RAW_REGISTRY_PATH = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/raw_patient_registry/"
+_RAW_REGISTRY_PATH = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/raw_patient_registry/"
 _device_model_join_available = False
 try:
     _patient_models = (spark.read.format("parquet").load(_RAW_REGISTRY_PATH)
@@ -1180,7 +1180,7 @@ ax2.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed
 # (transparent bg so the image inherits parent card color in any theme — dark or light)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/incident_inference_assets"
 dbutils.fs.mkdirs(_ASSET_DIR)
 _asset_path = f"{_ASSET_DIR}/incident_impact_2panel.png"
 plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
@@ -1355,7 +1355,7 @@ ax3.grid(True, alpha=0.3)
 
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/incident_inference_assets"
 dbutils.fs.mkdirs(_ASSET_DIR)
 _asset_path = f"{_ASSET_DIR}/mae_breakdown_3panel.png"
 plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
@@ -1602,7 +1602,7 @@ ax3.axhline(y=180, color='orange', linestyle=':', linewidth=1, alpha=0.5)
 
 plt.tight_layout()
 # Save PNG asset to UC Volume for repo refresh + MetricsExplained embed (transparent bg)
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/incident_inference_assets"
 dbutils.fs.mkdirs(_ASSET_DIR)
 _asset_path = f"{_ASSET_DIR}/glucose_timeline_3panel.png"
 plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')
@@ -1898,7 +1898,7 @@ plt.tight_layout()
 # the rcParams override above — works on BOTH the dark React app theme AND
 # notebook UI light bg (passes WCAG AA ~4.5:1 on both). Single PNG, no
 # per-theme regeneration needed.
-_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/incident_inference_assets"
+_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/incident_inference_assets"
 dbutils.fs.mkdirs(_ASSET_DIR)
 _asset_path = f"{_ASSET_DIR}/distribution_comparison_4panel.png"
 plt.savefig(_asset_path, transparent=True, dpi=150, bbox_inches='tight')

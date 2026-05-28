@@ -137,13 +137,13 @@ sql_grants = [
     f"GRANT USE CATALOG ON CATALOG {CATALOG_NAME} TO `{sp_app_id}`",
     f"GRANT USE SCHEMA ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     f"GRANT SELECT ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
-    # READ VOLUME on landing_zone — required for the Flask /uc-assets/ route in
+    # READ VOLUME on pipeline_data — required for the Flask /uc-assets/ route in
     # App/databricks/app.py to fetch notebook-generated PNGs live from UC Volume
     # at runtime. Without this grant, the App gets 403 PERMISSION_DENIED when
     # MetricsExplained.jsx tries to load the distribution-comparison PNG.
-    # Volume name "landing_zone" is hardcoded across the pipeline (see grep
+    # Volume name "pipeline_data" is hardcoded across the pipeline (see grep
     # results in 02/05/app.py + transformations.sql).
-    f"GRANT READ VOLUME ON VOLUME {CATALOG_NAME}.{SCHEMA_NAME}.landing_zone TO `{sp_app_id}`",
+    f"GRANT READ VOLUME ON VOLUME {CATALOG_NAME}.{SCHEMA_NAME}.pipeline_data TO `{sp_app_id}`",
 ]
 
 for sql in sql_grants:

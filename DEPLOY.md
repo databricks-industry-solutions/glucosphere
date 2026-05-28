@@ -50,8 +50,8 @@ sanity_summary  (asserts diabetes_data non-empty + plausible)
   → Serving Endpoints (15m/30m forecast)                              │
                                                                       │
 utils/additional_patient_info/ notebooks                              │
-  → UC Volume: landing_zone/raw_patient_registry/                     │
-  → UC Volume: landing_zone/raw_device_telemetry_stream/              │
+  → UC Volume: pipeline_data/raw_patient_registry/                     │
+  → UC Volume: pipeline_data/raw_device_telemetry_stream/              │
                                                                       │
 DLT Pipeline (transformations.sql)  ◄─────────────────────────────────┘
   → LIVE: silver_patient_registry
@@ -61,7 +61,7 @@ DLT Pipeline (transformations.sql)  ◄─────────────�
 
 08_genie_ka_mas.py
   → Genie space (gold_patient_device_readings)    ──→ App /api/genie/query
-  → KA endpoint (RAG over assets/who_docs/WHO_NCD_NCS_99.2.pdf, copied to UC Volume landing_zone/who_docs/)
+  → KA endpoint (RAG over assets/who_docs/WHO_NCD_NCS_99.2.pdf, copied to UC Volume pipeline_data/who_docs/)
                                                 ┐
   → MAS endpoint (Multi-Agent Supervisor)       │ routes clinical-guidance Qs → KA,
                                                 │ structured-data Qs → Genie
@@ -213,7 +213,7 @@ deploy_model_endpoints       generate_patient_device_data
          ↓                       ↓                ↓
          ↘            create_patient_registry  create_device_telemetry
           ↘                      ↓
-           ↘             run_dlt_pipeline      (silver/gold from landing_zone)
+           ↘             run_dlt_pipeline      (silver/gold from pipeline_data)
             ↘                    ↓
              ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
               ↘                  ↓
@@ -408,7 +408,7 @@ databricks statement-execution execute-statement \
 
 databricks statement-execution execute-statement \
   --profile <your-profile> --warehouse-id <your-warehouse-id> \
-  --statement "CREATE VOLUME IF NOT EXISTS <your-catalog>.<your-schema>.landing_zone"
+  --statement "CREATE VOLUME IF NOT EXISTS <your-catalog>.<your-schema>.pipeline_data"
 ```
 
 If there's no SQL warehouse yet, create a Serverless SQL warehouse from the UI: **SQL Warehouses → Create warehouse → Serverless**.

@@ -24,7 +24,7 @@ What's automated (8 checks):
        (catches the demo_week_start vs firmware-event-timestamp drift regression —
        2026-05-28 cycle 2 silently dropped from 3 → 2 firmware values).
     8. MetricsExplained PNG: UC Files API GET of
-       `/Volumes/<catalog>/<schema>/landing_zone/incident_inference_assets/distribution_comparison_4panel.png`
+       `/Volumes/<catalog>/<schema>/pipeline_data/incident_inference_assets/distribution_comparison_4panel.png`
        returns 200 + image/png bytes (catches the silent try/except in
        05_incident_inference_bidirectional.py PNG-save block — cycle 2 incident_inference
        task showed SUCCESS while the PNG was never written).
@@ -182,9 +182,9 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     Uses the same Files API (`/api/2.0/fs/files/...`) that the App's `/uc-assets/`
     route proxies. Catches the silent `try/except` in 05_incident_inference_bidirectional.py
     that masked a failed PNG save during a fresh-schema deploy — the task showed SUCCESS
-    while the PNG was never written into the new schema's `landing_zone` volume.
+    while the PNG was never written into the new schema's `pipeline_data` volume.
     """
-    full_path = f"/Volumes/{catalog}/{schema}/landing_zone/{asset_subpath}"
+    full_path = f"/Volumes/{catalog}/{schema}/pipeline_data/{asset_subpath}"
     # Use curl with the profile's host+token directly. `databricks api get` tries
     # to JSON-decode the response body, which chokes on binary PNG bytes
     # (the `\x89PNG\r\n` header). curl returns raw bytes — same flow the App's

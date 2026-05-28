@@ -10,7 +10,7 @@ AS SELECT
   birth_year,
   device_model
 FROM read_files(
-  '/Volumes/${catalog}/${schema}/landing_zone/raw_patient_registry/',
+  '/Volumes/${catalog}/${schema}/pipeline_data/raw_patient_registry/',
   format => 'parquet'
 );
 
@@ -26,7 +26,7 @@ AS SELECT
   end_time,
   firmware_version
 FROM read_files(
-  '/Volumes/${catalog}/${schema}/landing_zone/raw_device_telemetry_stream/',
+  '/Volumes/${catalog}/${schema}/pipeline_data/raw_device_telemetry_stream/',
   format => 'parquet'
 );
 

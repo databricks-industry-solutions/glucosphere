@@ -178,7 +178,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 - `Data_DataGen_ModelForecast/configs/baseline_config.yaml` — pipeline hyperparameters
 - `Data_DataGen_ModelForecast/assets/architecture.png` — system architecture diagram
 - `Data_DataGen_ModelForecast/assets/*.png` — plot exports surfaced in dashboards or docs
-- `Data_DataGen_ModelForecast/assets/who_docs/WHO_NCD_NCS_99.2.pdf` — knowledge base for the **Knowledge Assistant (KA) endpoint**. `08_genie_ka_mas.py` copies this PDF into UC Volume `landing_zone/who_docs/` (shared landing_zone — same UC Volume that holds raw_patient_registry/, raw_device_telemetry_stream/, and incident_inference_assets/) and creates a KA via `/api/2.0/knowledge-assistants` that does RAG over it. The MAS (Multi-Agent Supervisor) endpoint routes the App's clinical-guidance natural-language queries to this KA; SQL / structured-data queries go to Genie instead.
+- `Data_DataGen_ModelForecast/assets/who_docs/WHO_NCD_NCS_99.2.pdf` — knowledge base for the **Knowledge Assistant (KA) endpoint**. `08_genie_ka_mas.py` copies this PDF into UC Volume `pipeline_data/who_docs/` (shared pipeline_data — same UC Volume that holds raw_patient_registry/, raw_device_telemetry_stream/, and incident_inference_assets/) and creates a KA via `/api/2.0/knowledge-assistants` that does RAG over it. The MAS (Multi-Agent Supervisor) endpoint routes the App's clinical-guidance natural-language queries to this KA; SQL / structured-data queries go to Genie instead.
 
 ### Auto-generated, per-target rendered
 

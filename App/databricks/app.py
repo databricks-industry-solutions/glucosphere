@@ -540,18 +540,18 @@ def serve_assets(filename):
 def serve_uc_asset(filename):
     """Serve PNG/JPG assets directly from UC Volume at runtime.
 
-    Path is interpreted relative to /Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/.
+    Path is interpreted relative to /Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/.
     Eliminates the need to `fs cp` notebook-generated PNGs into the repo before
     vite build — the App fetches them live from UC Volume. Pipeline reruns
     overwrite the UC Volume file; this route serves the latest with no-cache.
 
     Example: <img src="/uc-assets/incident_inference_assets/distribution_comparison_4panel.png">
-    Resolves to: /Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/landing_zone/incident_inference_assets/distribution_comparison_4panel.png
+    Resolves to: /Volumes/${CATALOG_NAME}/${SCHEMA_NAME}/pipeline_data/incident_inference_assets/distribution_comparison_4panel.png
     """
     host, token = get_auth()
     if not token:
         return jsonify({'error': 'DATABRICKS_TOKEN not available'}), 500
-    full_path = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/landing_zone/{filename}"
+    full_path = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/{filename}"
     url = f"{host}/api/2.0/fs/files{full_path}"
     print(f"[UC-ASSET] Fetching {full_path}")
     resp = requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=30)
