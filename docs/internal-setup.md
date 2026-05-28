@@ -111,6 +111,28 @@ Plugins install into `~/.claude/plugins/` and persist across sessions, re-logins
 
 ---
 
+## Catalog naming convention (internal fevm workspaces)
+
+Internal Databricks workspaces (`fevm-*`) typically expose two catalog
+variants for the same workspace. Treat them differently:
+
+| Catalog form | Example (fevm-mmt-aws-usw2) | Treat as | Why |
+|---|---|---|---|
+| **`<workspace>_catalog`** (with `_catalog` suffix) | `mmt_aws_usw2_catalog` | **dev / staging** | Workspace-default catalog — tied to the specific fevm workspace. Use for harness e2e validation, exploratory deploys, throwaway runs. Bundle's harness targets (`*_synth_e2e`, `*_from_source_e2e`, `*_from_table_e2e`) write here per `databricks.yml`. |
+| **`<workspace>`** (no `_catalog` suffix, standalone) | `mmt_aws_usw2` | **production / live demo** | Standalone catalog — created independently of the workspace, portable across workspaces if needed. Use for the canonical live demo deploy, customer-facing recordings, anything that needs to survive a workspace migration. Live target writes here per `.env.bundle` (`BUNDLE_VAR_catalog=mmt_aws_usw2`). |
+
+In short: **the `_catalog`-suffixed name is dev; the standalone name is
+prod**. Don't conflate them when wiring up new targets or running ad-hoc
+queries — the production catalog should not absorb dev/test runs and vice
+versa.
+
+External contributors using their own (non-fevm) workspace don't have this
+two-catalog convention — they just use whichever catalog name they create.
+The widget defaults (`your_workspace_catalog`) reflect the external-user
+case; internal contributors override via `.env.bundle`.
+
+---
+
 ## Known issue: marketplace catalog version mismatch
 
 The `fe-vibe` marketplace entry for `databricks-ai-dev-kit` advertises `version: "1.0.0"` but the actual repo's latest tag is `v0.1.11` at time of writing. The install still succeeds because the marketplace's `source.ref` points to `main`. If a future install fails with a version/tag error, check the entry in `~/.vibe/marketplace/.claude-plugin/marketplace.json` and report to the fe-vibe maintainers.

@@ -8,6 +8,8 @@ Thanks for your interest in contributing. This is an open demo + reference archi
 2. **Local Python env via [`uv`](https://docs.astral.sh/uv/)** — `uv sync` once in the repo root creates the project venv (Python 3.11 per `.python-version`) used by `scripts/render_app_yaml.py` and `scripts/smoke_test.py`.
 3. **Configure your workspace** — `cp .env.bundle.example .env.bundle` and fill in the three required tokens (catalog, schema, profile).
 
+> **Internal Databricks contributors** (using a `fevm-*` workspace): see [`docs/internal-setup.md`](docs/internal-setup.md) for the catalog naming convention — the `*_catalog`-suffixed catalog is workspace-default ("dev"), and the standalone non-suffixed catalog is the portable "prod" / live-demo target. Don't mix them.
+
 ## Where to contribute
 
 - **Open issues** — pick anything tagged `good-first-issue` or `help-wanted` if those labels are available
@@ -52,6 +54,7 @@ Maintainers (current: May Merkle-Tan, Justin Ward, Morgan Williams — see READM
 ## Reporting bugs
 
 Open a GitHub issue with:
+
 1. What you expected
 2. What actually happened
 3. Steps to reproduce (target name, baseline mode, command sequence)
