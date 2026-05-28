@@ -53,41 +53,30 @@ targets:
   # The operator's `.env.bundle` provides catalog/schema; adding a
   # `variables:` block here would defeat the SSOT design.
 
-  # ─── Permanent sandbox harness targets (added 2026-05-26 as part of #68) ──
+  # ─── Sandbox harness targets ─────────────────────────────────────────────
   #
-  # Both use `mode: development` per DABs docs (deployment-modes page):
-  #   - resources auto-prefixed `[dev ${workspace.current_user.short_name}]`
-  #   - schedules + triggers paused (no surprise runs)
-  #   - completely isolated from the live `mmt_aws_usw2` target
+  # All harness targets use `mode: development`:
+  #   - jobs + pipelines auto-prefixed `[dev <username>]`
+  #   - schedules + triggers paused
+  #   - isolated from live targets
   #
-  # Reusable for re-validating synth + from_table paths after structural
-  # changes (Phase 2 cleanup, Phase 4 Lakebase fork, Phase 5 portability, etc.)
-  # without touching the live target's job config.
+  # `apps` and `database_instances` resource types do not accept brackets in
+  # their names; per-target `name:` overrides below keep them from colliding
+  # with the live `glucosphere-app` + `glucosphere-oltp-*` resources.
+  #
+  # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
+  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t mmt_aws_usw2_synth_e2e ...
   #
   # Usage:
-  #   databricks bundle deploy  -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2
-  #   databricks bundle run     glucosphere_full_setup -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2 --no-wait
-  #   databricks bundle destroy -t mmt_aws_usw2_synth_e2e --profile fevm-mmt-aws-usw2 --auto-approve
-  #   # Then manually: DROP SCHEMA mmt_aws_usw2_catalog.glucosphere_synth_e2e CASCADE
-  #   #   (bundle destroy does NOT auto-drop UC schemas per verified docs)
+  #   databricks bundle deploy  -t <harness-target> --profile <profile>
+  #   databricks bundle run     glucosphere_full_setup -t <harness-target> --profile <profile>
+  #   databricks bundle destroy -t <harness-target> --profile <profile> --auto-approve
+  #   # bundle destroy does not auto-drop UC schemas — drop manually if needed:
+  #   #   DROP SCHEMA <catalog>.<schema> CASCADE
   #
-  # CAVEAT: schema names are NOT per-deployer-isolated. If two people deploy
-  # the same harness target simultaneously, they'll race on the same schema.
-  # Per-deployer isolation tracked as task #74 (bundle-vars.env.example +
-  # BUNDLE_VAR_dev_prefix + configurable personal_suffix). For now: coordinate
-  # via Slack / sign-up before running.
-  #
-  # Validates synthetic-mode pipeline end-to-end (Mendeley download skipped).
-  #
-  # NOTE on `mode: development` auto-prefix behavior (verified empirically
-  # 2026-05-26 via failed first deploy): the auto-prefix
-  # `[dev ${workspace.current_user.short_name}]` is applied to JOBS and
-  # PIPELINES only — NOT to apps or database_instances (those resource
-  # types have DNS/format constraints that exclude brackets). For those,
-  # we override the name per-target so they don't collide with the live
-  # `mmt_aws_usw2` target's `glucosphere-app` + `glucosphere-oltp-*`.
-  # Also note: dots in short_name become underscores in the actual prefix
-  # (e.g., `may.merkletan` → `[dev may_merkletan]`).
+  # Schema names are shared across deployers using the same harness target.
+  # If running concurrently with another deployer, override BUNDLE_VAR_schema
+  # to a personal value (e.g. `glucosphere_synth_e2e_<myname>`).
   mmt_aws_usw2_synth_e2e:
     mode: development
     workspace:
@@ -97,10 +86,8 @@ targets:
       schema: glucosphere_synth_e2e
       baseline_source: synthetic
     resources:
-      # App name must be 2-30 chars (verified empirically 2026-05-26).
-      # Drop `-dashboard` suffix to keep under limit; suffixed name still
-      # clearly distinguishes from live `glucosphere-app` in the
-      # workspace Apps list.
+      # App names must be 2-30 chars. Suffix `-synth-e2e` distinguishes
+      # the harness App from the live `glucosphere-app`.
       apps:
         glucosphere_app:
           name: glucosphere-synth-e2e
@@ -108,18 +95,14 @@ targets:
         glucosphere_oltp:
           name: glucosphere-oltp-synth-e2e
 
-  # Validates the from_table mode end-to-end — never previously tested
-  # (commit `1db686e` implemented it but no run-completion record exists).
-  #
-  # Source: SELF-BOOTSTRAPPING from the synth_e2e harness output
-  # (`glucosphere_synth_e2e.diabetes_data`). This means:
-  #   1. Run synth_e2e first → populates glucosphere_synth_e2e.diabetes_data
-  #   2. Then deploy + run from_table_e2e → CTAS-copies from synth output
-  #      into glucosphere_from_table_e2e.diabetes_data
-  # Rationale: avoids touching the live `glucosphere_dev` schema (no
-  # concurrency risk, no dependency on live-pipeline state). The from_table
-  # mode is source-agnostic by design — synthetic-populated source works
-  # exactly like any other UC table conforming to the diabetes_data contract.
+  # Validates the from_table mode by CTAS-copying from the synth_e2e harness
+  # output into an isolated schema:
+  #   1. Run synth_e2e first → populates <catalog>.glucosphere_synth_e2e.diabetes_data
+  #   2. Deploy + run from_table_e2e → CTAS-copies into
+  #      <catalog>.glucosphere_from_table_e2e.diabetes_data
+  # The from_table mode is source-agnostic by design — synthetic-populated
+  # source behaves like any other UC table conforming to the diabetes_data
+  # contract.
   mmt_aws_usw2_from_table_e2e:
     mode: development
     workspace:
@@ -132,7 +115,7 @@ targets:
       source_schema: glucosphere_synth_e2e
       source_table: diabetes_data
     resources:
-      # Parallel naming with synth_e2e harness; drop `-from-` to fit 30-char limit.
+      # Parallel naming with synth_e2e harness; kept under the 30-char App limit.
       apps:
         glucosphere_app:
           name: glucosphere-table-e2e
@@ -140,10 +123,10 @@ targets:
         glucosphere_oltp:
           name: glucosphere-oltp-table-e2e
 
-  # Validates the from_source mode end-to-end with all C8/C14/C17/C18 fixes —
-  # exercises the Mendeley download + parse path + source-adaptive sampler
-  # against real HUPA-UCM source distribution. Isolated sandbox schema so the
-  # live mmt_aws_usw2.glucosphere_dev table is not touched.
+  # Validates the from_source mode end-to-end: exercises the Mendeley
+  # download + parse path + source-adaptive sampler against real HUPA-UCM
+  # source distribution. Isolated sandbox schema — does not affect the
+  # live target's data.
   mmt_aws_usw2_from_source_e2e:
     mode: development
     workspace:

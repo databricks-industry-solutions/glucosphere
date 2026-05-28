@@ -12,7 +12,7 @@
 # COMMAND ----------
 
 # DBTITLE 1, Parameters
-dbutils.widgets.text("CATALOG_NAME",     "",                              "Catalog (required — set by the bundle job; e.g. mmt_aws_usw2_catalog)")
+dbutils.widgets.text("CATALOG_NAME",     "",                              "Catalog (required — set by the bundle job)")
 dbutils.widgets.text("SCHEMA_NAME",      "glucosphere_schema",           "Schema")
 dbutils.widgets.text("KA_NAME",          "Glucosphere-Knowledge-Assistant", "KA Name")
 dbutils.widgets.text("GENIE_NAME",       "Glucosphere CGM Intelligence",   "Genie Space Name")
