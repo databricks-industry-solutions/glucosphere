@@ -2,6 +2,21 @@
 
 Thanks for your interest in contributing. This is an open demo + reference architecture for real-CGM forecast-monitoring on Databricks, and we welcome improvements from anyone — Databricks customers, partners, FE engineers, and external developers building on similar patterns.
 
+## Contributor License Agreement (CLA)
+
+By submitting a contribution to this repository, you certify that:
+
+1. **You have the right to submit the contribution.**  
+   You created the code/content yourself, or you have the right to submit it under the project's license.
+
+2. **You grant us a license to use your contribution.**  
+   You agree that your contribution will be licensed under the same terms as the rest of this project, and you grant the project maintainers the right to use, modify, and distribute your contribution as part of the project.
+
+3. **You are not submitting confidential or proprietary information.**  
+   Your contribution does not include anything you don't have permission to share publicly.
+
+If you are contributing on behalf of an organization, you confirm that you have the authority to do so. You agree to confirm these terms in your pull request. Any request that does not explicitly accept the terms will be assumed to have accepted.
+
 ## Getting started
 
 1. **Read [`DEPLOY.md`](DEPLOY.md)** for the full deployment walkthrough — get a working deploy on your own Databricks workspace before proposing changes, so you can validate your contribution end-to-end.
@@ -64,6 +79,6 @@ For sensitive issues (security, PHI handling concerns), email a maintainer direc
 
 ## License + acknowledgments
 
-By contributing, you agree your contributions are licensed under the same terms as the rest of the repository. See `LICENSE` if present.
+By contributing, you agree your contributions are licensed under the same terms as the rest of the repository — see [`LICENSE.md`](LICENSE.md) (Databricks DB License) and [`NOTICE.md`](NOTICE.md). For security issues see [`SECURITY.md`](SECURITY.md).
 
 Real CGM data comes from the [HUPA-UCM dataset](https://data.mendeley.com/datasets/3hbcscwz44/1) (Universidad Complutense de Madrid) — please cite appropriately if you publish research derived from this repo.
