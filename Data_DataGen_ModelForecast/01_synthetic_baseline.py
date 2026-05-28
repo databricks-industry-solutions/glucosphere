@@ -8,8 +8,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema")
+dbutils.widgets.text("CATALOG_NAME", "your_workspace_catalog", "Catalog")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere", "Schema")
 
 CATALOG_NAME = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME  = dbutils.widgets.get("SCHEMA_NAME")

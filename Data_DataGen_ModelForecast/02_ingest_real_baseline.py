@@ -30,8 +30,8 @@
 # COMMAND ----------
 
 # Widgets — all parameterized via bundle variables (no hardcoded sources)
-dbutils.widgets.text("CATALOG_NAME", "glucosphere_catalog", "Catalog (target)")
-dbutils.widgets.text("SCHEMA_NAME", "glucosphere_schema", "Schema (target)")
+dbutils.widgets.text("CATALOG_NAME", "your_workspace_catalog", "Catalog (target)")
+dbutils.widgets.text("SCHEMA_NAME", "glucosphere", "Schema (target)")
 dbutils.widgets.text("BASELINE_SOURCE", "from_source", "Mode: from_source | from_table")
 dbutils.widgets.text(
     "DOWNLOAD_URL",

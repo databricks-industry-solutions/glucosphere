@@ -9,10 +9,10 @@ variables:
   # ───────────────────────────────────────────────────────────────────────
   catalog:
     description: Unity Catalog catalog (set via BUNDLE_VAR_catalog in .env.bundle)
-    default: glucosphere_catalog
+    default: your_workspace_catalog
   schema:
     description: UC schema / database (set via BUNDLE_VAR_schema in .env.bundle)
-    default: glucosphere_schema
+    default: glucosphere
   baseline_source:
     description: |
       Baseline ingest path. Valid: "synthetic" | "from_source" | "from_table".
@@ -368,8 +368,8 @@ resources:
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Patient_Device Table.ipynb
             base_parameters:
-              catalog: ${var.catalog}
-              schema:  ${var.schema}
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
           environment_key: default
 
         - task_key: create_patient_registry
@@ -380,8 +380,8 @@ resources:
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb
             base_parameters:
-              catalog: ${var.catalog}
-              schema:  ${var.schema}
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
           environment_key: default
 
         - task_key: create_device_telemetry
@@ -392,8 +392,8 @@ resources:
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/utils/additional_patient_info/Create Raw Device Data.ipynb
             base_parameters:
-              catalog: ${var.catalog}
-              schema:  ${var.schema}
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
           environment_key: default
 
         # ── DLT Pipeline ──────────────────────────────────────────────────

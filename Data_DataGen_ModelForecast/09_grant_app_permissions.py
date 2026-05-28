@@ -15,7 +15,7 @@
 
 # DBTITLE 1, Parameters
 dbutils.widgets.text("CATALOG_NAME",       "",                            "Catalog (required — set by the bundle job)")
-dbutils.widgets.text("SCHEMA_NAME",        "glucosphere_schema",         "Schema")
+dbutils.widgets.text("SCHEMA_NAME",        "glucosphere",         "Schema")
 dbutils.widgets.text("APP_NAME",           "glucosphere-app",            "App Name")
 dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name")
 dbutils.widgets.text("KA_ENDPOINT_NAME",   "",                           "KA Endpoint Name")
