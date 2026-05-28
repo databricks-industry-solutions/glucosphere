@@ -63,14 +63,16 @@ dbutils.widgets.text("SCHEMA_NAME", "glucosphere", "Schema")
 dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Include Incident")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
+dbutils.widgets.text("DEMO_WEEK_START", "", "Demo Week Start override (empty = use YAML 'auto'/specific date)")
 
-print("✓ Essential widgets created (6 total)")
+print("✓ Essential widgets created (7 total)")
 print("\nWidget values:")
 print(f"  ENV: {dbutils.widgets.get('ENV')}")
 print(f"  CATALOG: {dbutils.widgets.get('CATALOG_NAME')}")
 print(f"  SCHEMA: {dbutils.widgets.get('SCHEMA_NAME')}")
 print(f"  INCLUDE_INCIDENT: {dbutils.widgets.get('INCLUDE_INCIDENT')}")
 print(f"  CONFIG_FILE: {dbutils.widgets.get('CONFIG_FILE')}")
+print(f"  DEMO_WEEK_START: {dbutils.widgets.get('DEMO_WEEK_START') or '(empty — use YAML)'}")
 print(f"\nℹ️  All other parameters will be loaded from YAML config")
 
 # COMMAND ----------
@@ -197,6 +199,7 @@ catalog_name = dbutils.widgets.get("CATALOG_NAME")
 schema_name = dbutils.widgets.get("SCHEMA_NAME")
 include_incident = dbutils.widgets.get("INCLUDE_INCIDENT") == "true"
 num_pseudo_override = dbutils.widgets.get("NUM_PSEUDO_OVERRIDE").strip()
+demo_week_start_override = dbutils.widgets.get("DEMO_WEEK_START").strip()
 
 # Widget overrides (UPPERCASE keys)
 widget_overrides = {
@@ -208,6 +211,8 @@ widget_overrides = {
 # Add optional overrides
 if num_pseudo_override:
     widget_overrides["NUM_PSEUDO"] = int(num_pseudo_override)
+if demo_week_start_override:
+    widget_overrides["DEMO_WEEK_START"] = demo_week_start_override
 
 # Create config object
 cfg = Config(config_file, env, widget_overrides)

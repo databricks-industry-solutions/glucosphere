@@ -142,11 +142,12 @@ dbutils.widgets.dropdown("INCLUDE_INCIDENT", "true", ["false", "true"], "Include
 dbutils.widgets.dropdown("RUN_OPTUNA_TUNING", "false", ["false", "true"], "Run Optuna Tuning")
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
+dbutils.widgets.text("DEMO_WEEK_START", "", "Demo Week Start override (empty = use YAML 'auto'/specific date)")
 
 # Define HORIZONS here (used by multiple cells)
 HORIZONS = [1, 2, 3, 6]  # 5/10/15/30 min ahead
 
-print("✓ Essential widgets created (7 total)")
+print("✓ Essential widgets created (8 total)")
 print("\nWidget values:")
 print(f"  ENV: {dbutils.widgets.get('ENV')}")
 print(f"  CATALOG: {dbutils.widgets.get('CATALOG_NAME')}")
@@ -154,6 +155,7 @@ print(f"  SCHEMA: {dbutils.widgets.get('SCHEMA_NAME')}")
 print(f"  INCLUDE_INCIDENT: {dbutils.widgets.get('INCLUDE_INCIDENT')}")
 print(f"  RUN_OPTUNA_TUNING: {dbutils.widgets.get('RUN_OPTUNA_TUNING')}")
 print(f"  CONFIG_FILE: {dbutils.widgets.get('CONFIG_FILE')}")
+print(f"  DEMO_WEEK_START: {dbutils.widgets.get('DEMO_WEEK_START') or '(empty — use YAML)'}")
 print(f"\nℹ️  All other parameters will be loaded from YAML config")
 print(f"ℹ️  Incident parameters: cfg.incident_pct, cfg.calibration_bias_mgdl, etc.")
 
@@ -266,6 +268,7 @@ catalog_name = dbutils.widgets.get("CATALOG_NAME")
 schema_name = dbutils.widgets.get("SCHEMA_NAME")
 include_incident = dbutils.widgets.get("INCLUDE_INCIDENT") == "true"
 num_pseudo_override = dbutils.widgets.get("NUM_PSEUDO_OVERRIDE").strip()
+demo_week_start_override = dbutils.widgets.get("DEMO_WEEK_START").strip()
 
 # Widget overrides (UPPERCASE keys)
 widget_overrides = {
@@ -277,6 +280,8 @@ widget_overrides = {
 # Add optional overrides
 if num_pseudo_override:
     widget_overrides["NUM_PSEUDO"] = int(num_pseudo_override)
+if demo_week_start_override:
+    widget_overrides["DEMO_WEEK_START"] = demo_week_start_override
 
 # Create config object
 cfg = Config(config_file, env, widget_overrides)
