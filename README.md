@@ -154,40 +154,50 @@ Databricks App code (UI + dashboards + **Genie/Agent** experiences). The app rea
 
 - Databricks CLI configured for your target workspace (`databricks auth login --host <workspace-url>`)
 - UC catalog you can write to + SQL warehouse to query through
+- [uv](https://docs.astral.sh/uv/) installed locally — run `uv sync` once in the repo root to create the project venv (Python 3.11 per `.python-version`) used by `scripts/render_app_yaml.py`. Prefix the script with `uv run` to invoke without manual activation. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
 
 ### Deploy the pipeline + app (default — real HUPA-UCM data)
 
+Canonical full sequence — see [`DEPLOY.md`](DEPLOY.md) for the 10-step walkthrough with explanations. Sketch:
+
 ```bash
+source .env.bundle                                                              # load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE
+
+# Two-pass deploy (first deploy creates the warehouse; render fills WAREHOUSE_ID into app.yaml)
+databricks bundle deploy -t <target> --profile <profile>                        # pass 1
+uv run python scripts/render_app_yaml.py --target <target> --profile <profile>
+databricks bundle deploy -t <target> --profile <profile>                        # pass 2
+
+# Run the setup job (~45 min — ingest + modeling + DLT silver/gold + KA/MAS/Genie + grants)
+databricks bundle run glucosphere_full_setup -t <target> --profile <profile>
+
+# Re-render with KA/MAS/Genie IDs from job logs + redeploy (first-deploy-only on fresh workspace)
+uv run python scripts/render_app_yaml.py --target <target> --profile <profile> \
+    --mas-endpoint <name> --ka-endpoint <name> --genie-space-id <id>
 databricks bundle deploy -t <target> --profile <profile>
-databricks bundle run -t <target> glucosphere_full_setup --profile <profile> --no-wait
+
+# Start the App
+databricks bundle run glucosphere_app -t <target> --profile <profile>
 ```
 
-End-to-end ~25-40 min. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
+End-to-end ~25-40 min after the setup job kicks off. Produces 1,000 pseudo-patients oversampled from 25 real type-1 diabetes patients (HUPA-UCM dataset). Real CGM / insulin / wearable signal dynamics with clinical extremes.
 
 > **Note:** The first deploy downloads the HUPA-UCM zip from Mendeley (~25 MB) and auto-creates the `raw_baseline` UC Volume. No pre-setup needed.
 
 ### Deploy with synthetic baseline instead
 
-For CI, smoke tests, or restricted-egress workspaces where the Mendeley download is unavailable:
+For CI, smoke tests, or restricted-egress workspaces where the Mendeley download is unavailable, swap the baseline_source on **pass 1** of the canonical sequence:
 
 ```bash
-databricks bundle deploy -t <target> \
-  --var "baseline_source=synthetic" \
-  --profile <profile>
-
-databricks bundle run -t <target> glucosphere_full_setup \
-  --profile <profile> --no-wait
+databricks bundle deploy -t <target> --var "baseline_source=synthetic" --profile <profile>   # pass 1 only
+# (remaining steps — render, pass 2, setup job, post-job re-render, App start — same as default)
 ```
 
 End-to-end ~15-20 min. Produces 1,000 pseudo-patients with textbook diabetes phenotypes + AR(1) glucose dynamics — useful for prototyping + deterministic regression testing.
 
 > ⚠️ **`--var` placement matters:** it MUST go on `bundle deploy`, not `bundle run`. The `${var.baseline_source}` in the dispatch condition is interpolated at deploy time. Putting `--var` on `bundle run` silently routes to whatever the deployed default is.
 
-To restore the real-data default afterward:
-
-```bash
-databricks bundle deploy -t <target> --profile <profile>
-```
+To restore the real-data default afterward, redeploy pass 1 without the `--var` flag (the rest of the sequence runs the same).
 
 ### Verify which mode dispatched
 

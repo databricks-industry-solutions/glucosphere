@@ -1,0 +1,16 @@
+[project]
+name = "glucosphere"
+version = "0.1.0"
+description = "CGM intelligence demo platform — Databricks Asset Bundle + Flask App for synthetic + real (HUPA-UCM) glucose forecasting, incident simulation, and fleet-level monitoring."
+requires-python = ">=3.10"
+dependencies = []
+
+# Notes:
+# - This pyproject.toml pins the LOCAL Python version used for `scripts/render_app_yaml.py`
+#   (the only local Python entry point in this repo). All notebook + pipeline code runs on
+#   Databricks workspace compute and uses DBR's Python — not this env.
+# - The Flask App (`App/databricks/app.py`) runs on Databricks Apps compute and uses
+#   `App/databricks/requirements.txt` — also not this env.
+# - Project venv managed by `uv`. To bootstrap: `uv sync` creates `.venv` pinned to
+#   the version in `.python-version`. Run scripts via `uv run python scripts/...` (no
+#   manual activation), or `source .venv/bin/activate` for interactive sessions.

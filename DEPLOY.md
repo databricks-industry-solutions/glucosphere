@@ -6,13 +6,13 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
-> and capture the discovered IDs at Step 8 — they're needed for Step 9.
+> and capture the KA/MAS/Genie IDs from the Step 7 job logs — they're needed for Step 8.
 
 ## Prerequisites
 
 - [Databricks CLI v0.281.0+](https://docs.databricks.com/dev-tools/cli/install.html) installed (v0.281.0 added DAB dashboard support; earlier versions still work for jobs/pipelines/apps)
 - Node.js 18+ (for the React frontend build, Step 5)
-- Python 3.10+ (for `scripts/render_app_yaml.py`)
+- [uv](https://docs.astral.sh/uv/) installed (manages the local Python env for `scripts/render_app_yaml.py`). Run `uv sync` from the repo root once — it reads `pyproject.toml` + `.python-version` and creates `.venv` pinned to Python 3.11. After that, prefix Python commands with `uv run` (e.g. `uv run python scripts/render_app_yaml.py …`) — no manual activation needed.
 - Unity Catalog enabled on the target workspace
 - `CREATE CATALOG` privilege (or a pre-existing catalog you own)
 - Model serving enabled on the workspace
@@ -167,7 +167,7 @@ The second deploy syncs the updated app.yaml to the workspace.
 # Make sure .env.bundle is filled in (see Step 2), then:
 source .env.bundle
 databricks bundle deploy -t <target>            # Pass 1: creates warehouse + apps + jobs
-python scripts/render_app_yaml.py --target <target>    # Discover warehouse + rewrite app.yaml
+uv run python scripts/render_app_yaml.py --target <target>    # Discover warehouse + rewrite app.yaml
 databricks bundle deploy -t <target>            # Pass 2: sync updated app.yaml
 ```
 
@@ -233,41 +233,28 @@ of downstream modeling compute.
 
 ---
 
-## Step 8: Run the DLT Pipeline
+## Step 8: Re-render App Environment Variables with Real KA/MAS/Genie IDs
 
-After the setup job completes, trigger the DLT pipeline to build silver and gold tables:
+The Step 7 setup job ran `08_genie_ka_mas.py` which created (or reused) the KA, MAS, and Genie space. Capture their IDs from the job logs, then re-run `render_app_yaml.py` with the override flags to bake them into `App/databricks/app.yaml`, then redeploy:
 
 ```bash
-databricks bundle run cgm_silver_gold
+source .env.bundle
+uv run python scripts/render_app_yaml.py \
+    --target <target> \
+    --profile <profile> \
+    --mas-endpoint   <mas-endpoint-name> \
+    --ka-endpoint    <ka-endpoint-name> \
+    --genie-space-id <genie-space-id>
+databricks bundle deploy -t <target> --profile <profile>
 ```
 
-Or in the Databricks UI: **Pipelines → glucosphere-cgm-silver-gold-${bundle.target} → Start**
+On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the existing KA/MAS/Genie by name, so the IDs in `app.yaml` stay valid — Step 8 is only required on the first deploy to a fresh workspace.
 
 ---
 
-## Step 9: Update App Environment Variables
+## Step 9: Deploy and Start the App
 
-After creating your MAS endpoint and Genie room, update `App/databricks/app.yaml`:
-
-```yaml
-command: ["python", "app.py"]
-env:
-  - name: ENDPOINT_NAME
-    value: "your-mas-endpoint-name"
-  - name: GENIE_SPACE_ID
-    value: "your-genie-room-id"
-```
-
-Then redeploy:
-```bash
-databricks bundle deploy
-```
-
----
-
-## Step 10: Deploy and Start the App
-
-**Required.** Apps have an independent lifecycle from Jobs in DABs — running the pipeline job in Step 8 does NOT also deploy the App's source code. This step uploads `App/` into the App container and starts it.
+**Required.** Apps have an independent lifecycle from Jobs in DABs — the setup job in Step 7 does NOT deploy the App's source code or start its compute. This step uploads `App/` into the App container and starts it.
 
 ```bash
 source .env.bundle
@@ -280,7 +267,7 @@ Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows
 
 ---
 
-## Step 11: Smoke-test the deployed app
+## Step 10: Smoke-test the deployed app
 
 Before declaring the deployment "done," walk through these checks in the browser. Each catches a specific class of post-deploy issue (UI build, backend wiring, agent endpoints, Genie binding, data access). All should complete in <5 minutes.
 
@@ -305,7 +292,7 @@ Two bundle targets are actively used. Pick the one that matches your workspace; 
 
 ```bash
 # 1. Render app.yaml for mmt_aws_usw2 (rewrites catalog/schema/warehouse in place)
-python scripts/render_app_yaml.py --target mmt_aws_usw2
+uv run python scripts/render_app_yaml.py --target mmt_aws_usw2
 
 # 2. Deploy the bundle (job + DLT pipeline + app shell + permission grants)
 databricks bundle deploy -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
@@ -314,7 +301,7 @@ databricks bundle deploy -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 databricks bundle run glucosphere_full_setup -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 
 # 4. After step 3 completes, re-render with discovered IDs and redeploy the app
-python scripts/render_app_yaml.py --target mmt_aws_usw2 \
+uv run python scripts/render_app_yaml.py --target mmt_aws_usw2 \
     --mas-endpoint   <name-from-step-3>  \
     --ka-endpoint    <name-from-step-3>  \
     --genie-space-id <id-from-step-3>
@@ -384,7 +371,7 @@ This removes the job, DLT pipeline, and app resource from the workspace. It does
 | `deploy_model_endpoints` task fails | Ensure model serving is enabled on the workspace |
 | `create_genie_ka_mas` task fails | Check Agent Bricks / Genie are available on this workspace tier; KA endpoint must reach `ONLINE` status before MAS is created (10 min timeout) |
 | App shows "Not Found" | Frontend build wasn't run (`npm run build` in `App/`) before deploy |
-| App shows no data (SQL 500 errors) | Gold table doesn't exist — check DLT pipeline (Step 8) completed; or app SP missing grants — re-run `grant_app_permissions` task |
+| App shows no data (SQL 500 errors) | Gold table doesn't exist — check `run_dlt_pipeline` task in the Step 7 setup job completed; or app SP missing grants — re-run `grant_app_permissions` task |
 | App "Deeper Analysis" returns 404 ENDPOINT_NOT_FOUND | `app.yaml` references a deleted MAS endpoint — re-render with current `mas-<hash>-endpoint` and redeploy |
 | App "Deeper Analysis" returns 403 PERMISSION_DENIED | App SP not granted CAN_QUERY on MAS endpoint — re-run `grant_app_permissions` |
 | `databricks bundle run` fails with variable error | Pass `--profile <your-profile>` and (if overriding) `--var` flags on `bundle deploy`, not `bundle run` |
@@ -427,7 +414,7 @@ End-state checks after a successful end-to-end deploy:
 - [ ] MAS serving endpoint is in `READY` state
 - [ ] KA serving endpoint is in `ONLINE` state
 - [ ] App resource status is `RUNNING`
-- [ ] All Step 11 smoke-test checks pass in the browser
+- [ ] All Step 10 smoke-test checks pass in the browser
 
 ---
 
@@ -479,8 +466,8 @@ databricks jobs get-run <RUN_ID> --profile <profile> \
 
 - After Step 6 (`bundle deploy`): `bundle validate` exits 0; resources appear in workspace
 - After Step 7 (`glucosphere_full_setup` run): polling returns `TERMINATED` with `result_state=SUCCESS`, not just "submitted"
-- After Step 10 (`bundle run glucosphere_app`): `databricks apps get <name>` returns `compute_status.state == ACTIVE` and `app_status.state == RUNNING` with a non-empty `active_deployment.deployment_id`
-- Step 11 smoke-test checks (above) are mandatory before declaring the deploy verified end-to-end
+- After Step 9 (`bundle run glucosphere_app`): `databricks apps get <name>` returns `compute_status.state == ACTIVE` and `app_status.state == RUNNING` with a non-empty `active_deployment.deployment_id`
+- Step 10 smoke-test checks (above) are mandatory before declaring the deploy verified end-to-end
 
 ### Common agent lapses to avoid
 

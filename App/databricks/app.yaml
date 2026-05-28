@@ -19,7 +19,7 @@ env:
   # by deterministic name). Empty value here pre-render is intentional —
   # operator runs render before the second deploy, which populates this.
   - name: WAREHOUSE_ID
-    value: "26c483e659ee6420"
+    value: "bf416047a129ac0d"
 resources:
   - name: mas-endpoint
     description: "Multi-Agent Supervisor serving endpoint"
@@ -34,7 +34,7 @@ resources:
   - name: sql-warehouse
     description: "SQL warehouse for CGM data queries"
     sql_warehouse:
-      id: 26c483e659ee6420
+      id: bf416047a129ac0d
       permission: CAN_USE
   - name: genie-space
     description: "Genie space for CGM intelligence queries (ENV GENIE_SPACE_ID resolves from here)"

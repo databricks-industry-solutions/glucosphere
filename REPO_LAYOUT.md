@@ -33,10 +33,14 @@ Quick deploy sequence (after `source .env.bundle`):
 
 ```bash
 databricks bundle deploy -t <target>                       # pass 1 — creates warehouse
-python scripts/render_app_yaml.py --target <target>        # writes WAREHOUSE_ID into app.yaml
+uv run python scripts/render_app_yaml.py --target <target> # writes WAREHOUSE_ID into app.yaml
 databricks bundle deploy -t <target>                       # pass 2 — picks up rendered app.yaml
-databricks bundle run glucosphere_full_setup -t <target>   # ~45 min pipeline
+databricks bundle run glucosphere_full_setup -t <target>   # ~45 min pipeline (creates KA/MAS/Genie)
+# (re-render app.yaml with --mas-endpoint/--ka-endpoint/--genie-space-id from job logs + redeploy — first-deploy-only)
+databricks bundle run glucosphere_app -t <target>          # deploy App source + start compute
 ```
+
+See [`DEPLOY.md`](DEPLOY.md) for the canonical step-by-step.
 
 ### …understand the data + modeling pipeline
 

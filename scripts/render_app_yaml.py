@@ -12,23 +12,23 @@ Run sequence:
     # First deploy creates the warehouse:
     databricks bundle deploy -t <target>
     # Then discover warehouse + rewrite app.yaml:
-    python scripts/render_app_yaml.py --target <target>
+    uv run python scripts/render_app_yaml.py --target <target>
     # Second deploy syncs updated app.yaml:
     databricks bundle deploy -t <target>
 
 Usage:
     # Render for mmt_aws_usw2 with auto-discovered warehouse_id
-    python scripts/render_app_yaml.py --target mmt_aws_usw2
+    uv run python scripts/render_app_yaml.py --target mmt_aws_usw2
 
     # Full render after setup job created the endpoints + genie space
-    python scripts/render_app_yaml.py \\
+    uv run python scripts/render_app_yaml.py \\
         --target mmt_aws_usw2 \\
         --mas-endpoint   glucosphere-mas-endpoint \\
         --ka-endpoint    glucosphere-ka-endpoint \\
         --genie-space-id 01a2b3c4d5e6...
 
     # Override profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)
-    python scripts/render_app_yaml.py --target mmt_aws_usw2 --profile fevm-mmt-aws-usw2
+    uv run python scripts/render_app_yaml.py --target mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 """
 
 from __future__ import annotations

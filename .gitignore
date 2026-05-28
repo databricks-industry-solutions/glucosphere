@@ -109,6 +109,9 @@ App/.env
 # Per-operator bundle config (workspace-specific BUNDLE_VAR_* overrides + DATABRICKS_CONFIG_PROFILE)
 .env.bundle
 
+# uv-managed virtualenv (pyproject.toml + .python-version + uv.lock ARE committed)
+.venv/
+
 # Local working notes / investigation snapshots
 # (un-ignore on a dedicated notes/docs branch if/when consolidating)
 ref_notes/
