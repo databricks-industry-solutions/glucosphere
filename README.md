@@ -21,6 +21,41 @@ This repo contains two main parts that work together:
 
 ![Architecture](Data_DataGen_ModelForecast/assets/architecture.png)
 
+### Agent endpoints — Genie / KA / MAS (often confused)
+
+The App's natural-language query experience is powered by **three native Databricks Agent Bricks endpoints** that work together. They are NOT interchangeable — each has a distinct data source and purpose:
+
+| Endpoint | Data source | Purpose |
+|---|---|---|
+| **Genie** | Gold table `<catalog>.<schema>.gold_patient_device_readings` | Natural-language → SQL over **structured CGM data** (patient readings, device incidents, fleet stats, trends) |
+| **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
+| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type | The endpoint the App's chat UI actually calls — operator never invokes Genie or KA directly. Branded as "GlucoScope" in `08_genie_ka_mas.py` |
+
+The MAS routing logic (per `08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
+
+```mermaid
+flowchart LR
+    U[User asks question<br/>via App chat UI]
+    M[MAS endpoint<br/>'GlucoScope' supervisor]
+    G[Genie space<br/>NL → SQL]
+    K[Knowledge Assistant<br/>RAG over WHO PDF]
+    DB[(gold_patient_device_readings<br/>structured CGM data)]
+    PDF[(WHO diabetes PDF<br/>clinical guidelines)]
+
+    U --> M
+    M -- "SQL / data questions:<br/>patient glucose, device incidents,<br/>fleet stats, trends" --> G
+    M -- "Clinical guideline questions:<br/>WHO diagnostic criteria,<br/>diabetes classification" --> K
+    G --> DB
+    K --> PDF
+```
+
+Examples of the routing in practice:
+
+- *"How many patients had hypoglycemia events last week?"* → MAS routes to **Genie** → SQL over gold table
+- *"What's the WHO diagnostic threshold for type-2 diabetes?"* → MAS routes to **KA** → RAG over WHO PDF
+- *"Which device firmware has the highest out-of-range rate?"* → MAS routes to **Genie** → SQL aggregation
+- *"What does the WHO say about gestational diabetes screening?"* → MAS routes to **KA** → RAG over PDF
+
 ## Data fidelity & baseline modes
 
 Glucosphere supports three **baseline source modes** for the CGM data that feeds every downstream model and dashboard. The mode is selected at deploy time via the bundle variable `baseline_source`. The downstream notebooks (`04_*`, `05_*`, `06_*`) read a single contract table — `diabetes_data` — and don't know which mode produced it.
@@ -64,6 +99,7 @@ Real-trained vs synthetic-trained models produce nearly identical numbers (the s
 In real-mode, what you get is **real CGM signal dynamics carried by synthetic patient identities and device-fleet metadata** — i.e. pseudo-patients with real clinical waveforms. This is a deliberate privacy + demo property.
 
 **How to explain externally:**
+
 - "Glucose values and Fitbit readings are from real type-1 diabetes patients (HUPA-UCM dataset)."
 - "Patient names, device IDs, demographics, and incident scenarios are synthetic for privacy and demo purposes."
 
