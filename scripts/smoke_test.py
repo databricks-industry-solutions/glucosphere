@@ -185,16 +185,32 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     while the PNG was never written into the new schema's `landing_zone` volume.
     """
     full_path = f"/Volumes/{catalog}/{schema}/landing_zone/{asset_subpath}"
-    api_path = f"/api/2.0/fs/files{full_path}"
-    cmd = ["databricks", "api", "get", api_path, "--profile", profile]
+    # Use curl with the profile's host+token directly. `databricks api get` tries
+    # to JSON-decode the response body, which chokes on binary PNG bytes
+    # (the `\x89PNG\r\n` header). curl returns raw bytes — same flow the App's
+    # Flask /uc-assets/ route uses via Python requests at App/databricks/app.py:554.
+    host_cmd = ["databricks", "auth", "describe", "--profile", profile, "-o", "json"]
+    token_cmd = ["databricks", "auth", "token", "--profile", profile, "-o", "json"]
     try:
-        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+        host = json.loads(subprocess.check_output(host_cmd, text=True))["details"]["host"]
+        token = json.loads(subprocess.check_output(token_cmd, text=True))["access_token"]
+    except Exception as e:
+        return False, f"could not resolve host+token from profile {profile!r}: {e}"
+    url = f"{host}/api/2.0/fs/files{full_path}"
+    curl_cmd = ["curl", "-s", "-o", "-", "-w", "%{http_code}",
+                "-H", f"Authorization: Bearer {token}", url]
+    try:
+        out = subprocess.check_output(curl_cmd, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
-        msg = e.output.decode("utf-8", errors="replace") if isinstance(e.output, bytes) else str(e.output)
-        return False, f"Files API GET failed for {full_path}: {msg.strip()[:200]}"
-    if len(out) < 8 or out[:8] != b"\x89PNG\r\n\x1a\n":
-        return False, f"path={full_path}: {len(out)} bytes returned but PNG header missing"
-    return True, f"path={full_path}: {len(out)} bytes, valid PNG header"
+        return False, f"curl failed: {e.output.decode('utf-8', errors='replace')[:200]}"
+    # curl with -w "%{http_code}" appends HTTP status code at the end
+    status_code = out[-3:].decode("ascii", errors="replace")
+    body = out[:-3]
+    if status_code != "200":
+        return False, f"Files API returned HTTP {status_code} for {full_path}"
+    if len(body) < 8 or body[:8] != b"\x89PNG\r\n\x1a\n":
+        return False, f"path={full_path}: HTTP 200 but {len(body)} bytes is not a valid PNG"
+    return True, f"path={full_path}: HTTP 200, {len(body)} bytes, valid PNG header"
 
 
 def _resolved_vars(target: str, profile: str) -> tuple[str, str]:
