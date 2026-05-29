@@ -70,7 +70,7 @@ flowchart LR
     classDef app fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
 
     V{{condition_task on<br/>baseline_source}}:::branch
-    NB01[01_synthetic_baseline.py<br/><i>textbook phenotypes + AR(1)</i>]:::nb
+    NB01["01_synthetic_baseline.py<br/><i>textbook phenotypes + AR(1)</i>"]:::nb
     NB02[02_ingest_real_baseline.py<br/><i>HUPA-UCM download OR existing UC table</i>]:::nb
     T1[(diabetes_data<br/>baseline_timeseries<br/>baseline_windows_metadata)]:::data
     S[sanity_summary<br/><i>asserts non-empty + plausible</i>]:::nb
@@ -232,7 +232,7 @@ flowchart LR
     A[validate_baseline_source<br/><i>enum check + run banner</i>]
     B[check_pre_baseline_grants<br/><i>verify catalog/schema/table/volume/function perms</i>]
     C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
-    D1[generate_synthetic_baseline<br/><i>01_synthetic_baseline.py;<br/>textbook + AR(1); writes 3 tables</i>]
+    D1["generate_synthetic_baseline<br/><i>01_synthetic_baseline.py;<br/>textbook + AR(1); writes 3 tables</i>"]
     D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py;<br/>HUPA-UCM OR UC table; writes same 3 tables</i>]
     E[sanity_summary<br/><i>run_if AT_LEAST_ONE_SUCCESS;<br/>asserts diabetes_data non-empty + plausible</i>]
     F[datagen_modeling<br/><i>04_*: pseudo CGM data + XGBoost training</i>]
