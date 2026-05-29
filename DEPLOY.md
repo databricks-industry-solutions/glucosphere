@@ -6,28 +6,37 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 
 ## Deploy flow at a glance
 
-The full first-deploy sequence (operator-driven; each box is a single CLI command run locally). Total wall clock ~51 min on a fresh workspace; subsequent redeploys reuse KA/MAS/Genie + model endpoints and run ~48 min.
+The full first-deploy sequence (operator-driven; each box is a single CLI command run locally). Total wall clock ~51 min on a fresh workspace; subsequent redeploys reuse KA/MAS/Genie + model endpoints and run ~48 min. Steps 3 + 4 (MAS / Genie pre-create) are **optional** — the Step 7 setup job creates them if absent.
 
 ```mermaid
-flowchart TD
+flowchart LR
     classDef cmd fill:#fff,stroke:#333,stroke-width:1px,color:#000
     classDef wait fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
     classDef gate fill:#e6f7e6,stroke:#2d7a2d,stroke-width:1px,color:#000
+    classDef opt fill:#fafafa,stroke:#999,stroke-width:1px,stroke-dasharray:3 3,color:#555
 
-    Z[Edit .env.bundle<br/><i>BUNDLE_VAR_catalog / _schema / DATABRICKS_CONFIG_PROFILE</i>]:::cmd
+    S1[Step 1 — databricks auth login]:::cmd
+    S2[Step 2 — cp .env.bundle.example<br/><i>fill in catalog / schema / profile</i>]:::cmd
+    S3[Step 3 — optional MAS pre-create<br/><i>else Step 7 job creates it</i>]:::opt
+    S4[Step 4 — optional Genie pre-create<br/><i>else Step 7 job creates it</i>]:::opt
+    S5[Step 5 — npm install + npm run build<br/><i>skip if App/databricks/static/ is fresh</i>]:::cmd
     A[Step 6 — bundle deploy pass 1<br/><i>creates warehouse + jobs + pipelines + app stub</i>]:::cmd
     B[Step 6 — scripts/render_app_yaml.py<br/><i>writes WAREHOUSE_ID into App/databricks/app.yaml</i>]:::cmd
     C[Step 6 — bundle deploy pass 2<br/><i>picks up rendered app.yaml</i>]:::cmd
-    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see REPO_LAYOUT.md mermaid for in-job DAG</i>]:::wait
+    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see Job DAG below</i>]:::wait
     E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
     F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
     G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
     H[Step 10 — scripts/smoke_test.py<br/><i>8-check automated gate; non-zero exit on any failure</i>]:::gate
 
-    Z --> A --> B --> C --> D --> E --> F --> G --> H
+    S1 --> S2 --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
+    S2 -.-> S3
+    S2 -.-> S4
+    S3 -.-> S5
+    S4 -.-> S5
 ```
 
-The Step 7 pipeline job is itself a 16-task DAG — see `REPO_LAYOUT.md` for that breakdown.
+The Step 7 pipeline job is itself a 16-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
 
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
@@ -41,7 +50,7 @@ The Step 7 pipeline job is itself a 16-task DAG — see `REPO_LAYOUT.md` for tha
 - Unity Catalog enabled on the target workspace
 - `CREATE CATALOG` privilege (or a pre-existing catalog you own)
 - Model serving enabled on the workspace
-- A Multi-Agent Supervisor (MAS) endpoint deployed (see Step 3 below)
+- (Optional) Pre-created MAS / Genie endpoints — only needed if you want to override the names the Step 7 setup job would otherwise create. See Steps 3 + 4.
 
 ---
 
@@ -52,48 +61,49 @@ The pipeline branches early on the `baseline_source` bundle variable
 in `databricks.yml` dispatches to the right ingest notebook. Both branches
 converge on `diabetes_data` and the downstream modeling spine is shared.
 
-```
-baseline_source dispatch (condition_task on var)
-  ├─ synthetic → 01_synthetic_baseline.py
-  │             (textbook phenotypes + AR(1); writes diabetes_data +
-  │              baseline_timeseries + baseline_windows_metadata)
-  └─ from_* (from_source | from_table)  → 02_ingest_real_baseline.py
-                (HUPA-UCM download OR existing UC table; same three tables)
-                              ↓
-sanity_summary  (asserts diabetes_data non-empty + plausible)
-                              ↓
-04_pseudo_data_forecast_modeling.py
-  → Tables: pseudo_clean_7d, pseudo_incident_*
-  → UC Models: cgm_xgb_15m, cgm_xgb_30m
-                              ↓
-05_incident_inference_bidirectional.py
-  → Tables: pseudo_incident_7d_labeled, fleet_forecast_incident
-  (Active sibling for pipeline dispatch; SingleIncident is the simpler
-   one-direction variant kept alongside as a reference.)
-                              ↓                                  ─────┐
-07_deploy_serving_endpoints.py                             │
-  → Serving Endpoints (15m/30m forecast)                              │
-                                                                      │
-utils/additional_patient_info/ notebooks                              │
-  → UC Volume: pipeline_data/raw_patient_registry/                     │
-  → UC Volume: pipeline_data/raw_device_telemetry_stream/              │
-                                                                      │
-DLT Pipeline (transformations.sql)  ◄─────────────────────────────────┘
-  → LIVE: silver_patient_registry
-  → LIVE: silver_device_telemetry_stream
-  → LIVE: silver_patient_readings
-  → LIVE: gold_patient_device_readings  ──→ App SQL queries
+```mermaid
+flowchart LR
+    classDef nb fill:#fff,stroke:#333,stroke-width:1px,color:#000
+    classDef branch fill:#f5f5f5,stroke:#666,stroke-width:1px,color:#000
+    classDef data fill:#fafafa,stroke:#888,stroke-width:1px,color:#333
+    classDef endpoint fill:#fff,stroke:#2d7a2d,stroke-width:1px,color:#000
+    classDef app fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
 
-08_genie_ka_mas.py
-  → Genie space (gold_patient_device_readings)    ──→ App /api/genie/query
-  → KA endpoint (RAG over assets/who_docs/WHO_NCD_NCS_99.2.pdf, copied to UC Volume pipeline_data/who_docs/)
-                                                ┐
-  → MAS endpoint (Multi-Agent Supervisor)       │ routes clinical-guidance Qs → KA,
-                                                │ structured-data Qs → Genie
-                                                  ──→ App /api/agent/query
+    V{{condition_task on<br/>baseline_source}}:::branch
+    NB01[01_synthetic_baseline.py<br/><i>textbook phenotypes + AR(1)</i>]:::nb
+    NB02[02_ingest_real_baseline.py<br/><i>HUPA-UCM download OR existing UC table</i>]:::nb
+    T1[(diabetes_data<br/>baseline_timeseries<br/>baseline_windows_metadata)]:::data
+    S[sanity_summary<br/><i>asserts non-empty + plausible</i>]:::nb
+    NB04[04_pseudo_data_forecast_modeling.py<br/><i>writes pseudo_clean_7d, pseudo_incident_*<br/>+ UC Models cgm_xgb_15m / cgm_xgb_30m</i>]:::nb
+    NB05[05_incident_inference_bidirectional.py<br/><i>writes pseudo_incident_7d_labeled, fleet_forecast_incident;<br/>SingleIncident sibling kept as reference</i>]:::nb
+    NB07[07_deploy_serving_endpoints.py]:::nb
+    EP1[/Serving Endpoints<br/>15m + 30m forecast/]:::endpoint
+    UTILS[utils/additional_patient_info/<br/>notebooks]:::nb
+    VOL[(UC Volume pipeline_data/<br/>raw_patient_registry/<br/>raw_device_telemetry_stream/)]:::data
+    DLT[DLT Pipeline<br/><i>transformations.sql</i>]:::nb
+    GOLD[(LIVE silver_*<br/>LIVE gold_patient_device_readings)]:::data
+    NB08[08_genie_ka_mas.py]:::nb
+    GENIE[/Genie space<br/><i>over gold_patient_device_readings</i>/]:::endpoint
+    KA[/KA endpoint<br/><i>RAG over WHO_NCD_NCS_99.2.pdf<br/>copied to UC Volume pipeline_data/who_docs/</i>/]:::endpoint
+    MAS[/MAS endpoint<br/><i>routes clinical → KA,<br/>structured → Genie</i>/]:::endpoint
+    APP{{Databricks App}}:::app
+    NB09[09_grant_app_permissions.py<br/><i>App SP grants on UC + endpoints + warehouse + Genie + KA</i>]:::nb
 
-09_grant_app_permissions.py
-  → App SP grants on UC + endpoints + warehouse + Genie + KA
+    V -- synthetic --> NB01
+    V -- "from_source / from_table" --> NB02
+    NB01 --> T1
+    NB02 --> T1
+    T1 --> S --> NB04 --> NB05
+    NB04 --> NB07 --> EP1
+    UTILS --> VOL --> DLT --> GOLD
+    GOLD -- App SQL queries --> APP
+    NB08 --> GENIE
+    NB08 --> KA
+    NB08 --> MAS
+    GENIE -- /api/genie/query --> APP
+    MAS -- /api/agent/query --> APP
+    KA -.routed-by.-> MAS
+    NB09 -.SP grants.-> APP
 ```
 
 ---
@@ -149,24 +159,26 @@ name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 
 ---
 
-## Step 3: Create the Multi-Agent Supervisor Endpoint
+## Step 3: (Optional) Pre-create the Multi-Agent Supervisor Endpoint
 
-The MAS endpoint is a Databricks Model Serving endpoint running a multi-agent supervisor that orchestrates diabetes-coach queries. It is **not** created by this bundle — it must be set up separately.
+> **Skip unless you have a reason to override the default.** The Step 7 setup job (`08_genie_ka_mas.py`) creates the MAS endpoint if it doesn't already exist, and reuses it by name if it does. Pre-create only if you want to control the endpoint name, point at a pre-built MAS configuration, or stage the endpoint ahead of running the long setup job.
 
 1. In your target workspace, open **Serving → Create serving endpoint**
 2. Deploy the MAS configuration from your agent framework
 3. Note the endpoint name (e.g. `glucosphere-mas-endpoint`)
-4. Set it in your deployment: `--var endpoint_name=glucosphere-mas-endpoint`
+4. Reference it during Step 8 re-render: `--mas-endpoint <name>`
 
 ---
 
-## Step 4: Create the Genie Room
+## Step 4: (Optional) Pre-create the Genie Room
+
+> **Skip unless you have a reason to override the default.** The Step 7 setup job (`08_genie_ka_mas.py`) provisions a Genie space over `gold_patient_device_readings` if one isn't already wired up. Pre-create only if you want to author CGM-specific instructions yourself or reuse an existing room.
 
 1. In your target workspace, open **Genie → New room**
 2. Add `{catalog}.{schema}.gold_patient_device_readings` as a data source
-3. Configure the room with CGM-specific instructions (refer to the existing room at the buildathon workspace for reference)
+3. Configure the room with CGM-specific instructions
 4. From the room URL, copy the room ID (the hex string after `/genie/rooms/`)
-5. Set it: `--var genie_space_id=<room-id>`
+5. Reference it during Step 8 re-render: `--genie-space-id <room-id>`
 
 ---
 
@@ -213,38 +225,44 @@ This runs the end-to-end pipeline below.
 
 ### Job DAG
 
-```
-validate_baseline_source       (enum check on baseline_source; print run banner)
-         ↓
-check_pre_baseline_grants      (verify catalog/schema/table/volume/function perms)
-         ↓
-dispatch_baseline_source       (condition_task: baseline_source == "synthetic"?)
-         ↓                ↓
-  true  ↙               ↘  false
-generate_synthetic_   ingest_real_baseline
-  baseline            (HUPA-UCM download OR existing UC table copy;
-  (textbook +          writes diabetes_data + baseline_timeseries
-   AR(1); writes       + baseline_windows_metadata)
-   same three tables)
-         ↘                ↙
-sanity_summary           (run_if AT_LEAST_ONE_SUCCESS;
-                          asserts diabetes_data non-empty + plausible)
-         ↓
-datagen_modeling         (04_*: pseudo CGM data + XGBoost training)
-         ↓
-incident_inference       (05_*: device calibration bug simulation + inference)
-         ↓                            ↓
-deploy_model_endpoints       generate_patient_device_data
-         ↓                       ↓                ↓
-         ↘            create_patient_registry  create_device_telemetry
-          ↘                      ↓
-           ↘             run_dlt_pipeline      (silver/gold from pipeline_data)
-            ↘                    ↓
-             ↘          create_genie_ka_mas    (KA + Genie + MAS endpoints)
-              ↘                  ↓
-               ↘ check_post_endpoint_grants    (verify KA/MAS/Genie exist before grant)
-                ↘                ↓
-                 ↘    grant_app_permissions    (app SP access on UC + endpoints + warehouse)
+```mermaid
+flowchart LR
+    classDef plain fill:#fff,stroke:#333,stroke-width:1px,color:#000
+
+    A[validate_baseline_source<br/><i>enum check + run banner</i>]
+    B[check_pre_baseline_grants<br/><i>verify catalog/schema/table/volume/function perms</i>]
+    C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
+    D1[generate_synthetic_baseline<br/><i>01_synthetic_baseline.py;<br/>textbook + AR(1); writes 3 tables</i>]
+    D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py;<br/>HUPA-UCM OR UC table; writes same 3 tables</i>]
+    E[sanity_summary<br/><i>run_if AT_LEAST_ONE_SUCCESS;<br/>asserts diabetes_data non-empty + plausible</i>]
+    F[datagen_modeling<br/><i>04_*: pseudo CGM data + XGBoost training</i>]
+    G1[incident_inference<br/><i>05_*: device calibration bug simulation + inference</i>]
+    G2[deploy_model_endpoints<br/><i>07_*: serving endpoints</i>]
+    H[generate_patient_device_data<br/><i>utils/additional_patient_info/</i>]
+    I1[create_patient_registry]
+    I2[create_device_telemetry]
+    J[run_dlt_pipeline<br/><i>silver/gold from pipeline_data</i>]
+    K[create_genie_ka_mas<br/><i>08_*: KA + Genie + MAS endpoints</i>]
+    L[check_post_endpoint_grants<br/><i>verify KA/MAS/Genie exist before grant</i>]
+    M[grant_app_permissions<br/><i>09_*: app SP access on UC + endpoints + warehouse</i>]
+
+    A --> B --> C
+    C -- "synthetic" --> D1
+    C -- "from_source / from_table" --> D2
+    D1 --> E
+    D2 --> E
+    E --> F
+    F --> G1
+    F --> G2
+    G1 --> H
+    H --> I1
+    H --> I2
+    I1 --> J
+    I2 --> J
+    G2 --> J
+    J --> K --> L --> M
+
+    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
 ```
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
@@ -406,7 +424,7 @@ This removes the job, DLT pipeline, and app resource from the workspace. It does
 | `ENDPOINT_NAME not set` | Set `ENDPOINT_NAME` env var in `app.yaml` or App settings |
 | `GENIE_SPACE_ID not set` | Set `GENIE_SPACE_ID` env var in `app.yaml` or App settings |
 | `DATABRICKS_TOKEN not set` | Ensure the App is deployed (token is auto-injected by runtime) |
-| `CATALOG_NOT_FOUND` during job task | Pre-flight catalog/schema/volume creation was skipped — create them before `bundle run` (see Step 0 framing below) |
+| `CATALOG_NOT_FOUND` during job task | Pre-flight catalog/schema/volume creation was skipped — create them before `bundle run` (see [Pre-flight section below](#pre-flight-catalog--schema--volume-creation)) |
 | `deploy_model_endpoints` task fails | Ensure model serving is enabled on the workspace |
 | `create_genie_ka_mas` task fails | Check Agent Bricks / Genie are available on this workspace tier; KA endpoint must reach `ONLINE` status before MAS is created (10 min timeout) |
 | App shows "Not Found" | Frontend build wasn't run (`npm run build` in `App/`) before deploy |
@@ -552,7 +570,7 @@ The override applies only to that single run — subsequent runs without `notebo
 
 ## Key file locations
 
-```
+```text
 glucosphere/
 ├── databricks.yml                          ← Bundle manifest (jobs, pipelines, app)
 ├── DEPLOY.md                               ← This file (canonical deployment guide)
