@@ -49,10 +49,17 @@ import urllib.error
 import urllib.request
 
 
+# Databricks CLI v1.x rejects the old auth-cache format with
+# "stored credentials from older CLI versions are no longer used".
+# Setting DATABRICKS_AUTH_STORAGE=plaintext in the subprocess env opts into
+# the v1.x-compatible storage path. Harmless on older CLI versions.
+_DATABRICKS_ENV = {**os.environ, "DATABRICKS_AUTH_STORAGE": "plaintext"}
+
+
 def _databricks(cmd_args: list[str], profile: str) -> dict | list:
     """Run a `databricks` CLI command and return parsed JSON output."""
     cmd = ["databricks", *cmd_args, "--profile", profile, "-o", "json"]
-    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, env=_DATABRICKS_ENV)
     return json.loads(out)
 
 
@@ -60,7 +67,7 @@ def _databricks_api(method: str, path: str, profile: str, body: dict | None = No
     cmd = ["databricks", "api", method.lower(), path, "--profile", profile]
     if body is not None:
         cmd.extend(["--json", json.dumps(body)])
-    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, env=_DATABRICKS_ENV)
     return json.loads(out)
 
 
@@ -192,8 +199,8 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     host_cmd = ["databricks", "auth", "describe", "--profile", profile, "-o", "json"]
     token_cmd = ["databricks", "auth", "token", "--profile", profile, "-o", "json"]
     try:
-        host = json.loads(subprocess.check_output(host_cmd, text=True))["details"]["host"]
-        token = json.loads(subprocess.check_output(token_cmd, text=True))["access_token"]
+        host = json.loads(subprocess.check_output(host_cmd, text=True, env=_DATABRICKS_ENV))["details"]["host"]
+        token = json.loads(subprocess.check_output(token_cmd, text=True, env=_DATABRICKS_ENV))["access_token"]
     except Exception as e:
         return False, f"could not resolve host+token from profile {profile!r}: {e}"
     url = f"{host}/api/2.0/fs/files{full_path}"
@@ -216,7 +223,7 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
 def _resolved_vars(target: str, profile: str) -> tuple[str, str]:
     out = subprocess.check_output(
         ["databricks", "bundle", "validate", "-t", target, "--profile", profile, "-o", "json"],
-        text=True,
+        text=True, env=_DATABRICKS_ENV,
     )
     d = json.loads(out)
     v = d.get("variables", {})
