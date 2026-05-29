@@ -27,9 +27,10 @@ targets:
   # auto-prefixes jobs/pipelines with `[dev <username>]`, pauses
   # schedules/triggers, and isolates resource state from the live target.
   #
-  # Apps + database_instances cannot use the auto-prefix (DNS-compliance
-  # constraint) so explicit `name:` overrides keep them from colliding
-  # with the live `glucosphere-app` + `glucosphere-oltp-*` resources.
+  # Apps cannot use the auto-prefix (DNS-compliance constraint) so an
+  # explicit `name:` override keeps the harness App from colliding with
+  # the live `glucosphere-app` resource. (database_instances Lakebase is
+  # currently commented out in databricks.yml — see issue #3.)
   #
   # your_target_name_synth_e2e:
   #   mode: development
@@ -39,10 +40,9 @@ targets:
   #     catalog: your_catalog
   #     schema: glucosphere_synth_e2e
   #     baseline_source: synthetic
+  #     # app_name must mirror resources.apps.glucosphere_app.name below.
+  #     app_name: ${var.app_basename}-synth-e2e-${var.dev_initials}
   #   resources:
   #     apps:
   #       glucosphere_app:
   #         name: ${var.app_basename}-synth-e2e-${var.dev_initials}
-  #     database_instances:
-  #       glucosphere_oltp:
-  #         name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}

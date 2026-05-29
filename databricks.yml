@@ -78,7 +78,8 @@ targets:
   #
   # `apps` and `database_instances` resource types do not accept brackets in
   # their names; per-target `name:` overrides below keep them from colliding
-  # with the live `glucosphere-app` + `glucosphere-oltp-*` resources.
+  # with the live `glucosphere-app` resource. (database_instances Lakebase
+  # is currently commented out at the resources block below — see issue #3.)
   #
   # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
   #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t mmt_aws_usw2_synth_e2e ...
@@ -111,9 +112,11 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_basename}-synth-e2e-${var.dev_initials}
-      database_instances:
-        glucosphere_oltp:
-          name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}
+      # database_instances Lakebase override deferred — see resources.database_instances
+      # block below (commented out until app code wires Lakebase in, issue #3).
+      # database_instances:
+      #   glucosphere_oltp:
+      #     name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}
 
   # Validates the from_table mode by CTAS-copying from the synth_e2e harness
   # output into an isolated schema:
@@ -142,9 +145,10 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_basename}-table-e2e-${var.dev_initials}
-      database_instances:
-        glucosphere_oltp:
-          name: ${var.app_basename}-oltp-table-e2e-${var.dev_initials}
+      # database_instances Lakebase override deferred — see issue #3.
+      # database_instances:
+      #   glucosphere_oltp:
+      #     name: ${var.app_basename}-oltp-table-e2e-${var.dev_initials}
 
   # Validates the from_source mode end-to-end: exercises the Mendeley
   # download + parse path + source-adaptive sampler against real HUPA-UCM
@@ -165,9 +169,10 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_basename}-source-e2e-${var.dev_initials}
-      database_instances:
-        glucosphere_oltp:
-          name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
+      # database_instances Lakebase override deferred — see issue #3.
+      # database_instances:
+      #   glucosphere_oltp:
+      #     name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
 
 resources:
 
@@ -543,29 +548,27 @@ resources:
           environment_key: default
 
   # ---------------------------------------------------------------------------
-  # Lakebase: OLTP alert state cache (planned follow-up — implementation TBD)
+  # Lakebase: OLTP alert state cache — DEFERRED (planned follow-up, issue #3)
   # ---------------------------------------------------------------------------
-  # Postgres-managed instance hosting the live alert lifecycle tables (alerts +
-  # alert_transitions). Consumed by the Flask app for sub-100ms reads/writes
-  # against mutable row state — Delta's lakehouse semantics are awkward for
-  # OLTP-style alert acknowledge / resolve workflows.
+  # Re-enable when the Lakebase path is actually wired into
+  # App/databricks/app.py (no app code reads from this instance today).
+  # Note: CU_1 instances bill continuously while deployed, so keeping this
+  # commented avoids paying for unused infra. Also: the hardcoded
+  # `glucosphere-oltp-mmt-aws-usw2` name would need to become per-target
+  # before this can deploy outside the live mmt_aws_usw2 target.
   #
-  # Capacity CU_1 (smallest) — autoscale can be enabled later if read latency
-  # demands. node_count defaults to 1 (primary only, no read replicas).
-  # retention_window_in_days defaults to 7 (sufficient for demo / development).
+  # Original block (re-enable + parameterize name before reactivating):
   #
-  # Sizing rule: start small, escalate only on demonstrated workload need.
-  database_instances:
-    glucosphere_oltp:
-      # Lakebase requires DNS-compliant names (alphanumeric + hyphens only).
-      # Cannot use `${bundle.target}` directly because targets use underscores
-      # (e.g. `mmt_aws_usw2`). Hardcoded hyphenated form per target.
-      # When adding new targets, override this in the target's variables block.
-      name: glucosphere-oltp-mmt-aws-usw2
-      capacity: CU_1
-      # enable_pg_native_login defaults to false — connection uses Databricks
-      # OAuth credentials (app SP). Flip to true if a password-based Postgres
-      # client is needed for debug / migrations.
+  # database_instances:
+  #   glucosphere_oltp:
+  #     # Lakebase requires DNS-compliant names (alphanumeric + hyphens only).
+  #     # Cannot use `${bundle.target}` directly because targets use underscores.
+  #     # When adding new targets, override this in the target's variables block.
+  #     name: glucosphere-oltp-mmt-aws-usw2
+  #     capacity: CU_1
+  #     # enable_pg_native_login defaults to false — connection uses Databricks
+  #     # OAuth credentials (app SP). Flip to true if a password-based Postgres
+  #     # client is needed for debug / migrations.
 
   # ---------------------------------------------------------------------------
   # SQL Warehouse: bundle-managed (powers App's /api/sql/query + comparison job)

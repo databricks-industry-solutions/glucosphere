@@ -171,7 +171,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ### App resources
 
 - All of `App/` (React + Flask backend + config + committed Vite build output)
-- `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` + `database_instances.glucosphere_oltp`
+- `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` (the `database_instances.glucosphere_oltp` Lakebase block is currently commented out — re-enabled when the Lakebase path lands per issue #3)
 
 ### Configuration & assets
 
