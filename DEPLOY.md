@@ -327,7 +327,9 @@ If all 5 functional checks pass, the deployment is verified end-to-end. Any fail
 
 Two bundle targets are actively used. Pick the one that matches your workspace; commands below show both.
 
-### Target `mmt_aws_usw2` (workspace `fevm-mmt-aws-usw2`, AWS us-west-2) — current active demo target
+### Target `mmt_aws_usw2` (maintainer's active demo target — Databricks-internal `fevm-mmt-aws-usw2` workspace, AWS us-west-2)
+
+> **External deployers:** this section documents the maintainer's deploy target. To deploy to your own workspace, add a target stanza per [`databricks.yml.example`](databricks.yml.example) and substitute `-t mmt_aws_usw2 --profile fevm-mmt-aws-usw2` with your own target name + profile in the commands below.
 
 ```bash
 # 1. Render app.yaml for mmt_aws_usw2 (rewrites catalog/schema/warehouse in place)
@@ -461,7 +463,7 @@ If you're using Claude Code (or another AI agent) to help drive this deployment,
 
 ### Skills to activate at session start
 
-(Available via the Skill tool; install via plugin marketplaces if missing — see Glucosphere plugin personas memory for canonical install sets.)
+(Available via the Skill tool; install via plugin marketplaces if any are missing.)
 
 - `databricks-config` — authenticate the CLI and set the profile
 - `databricks-asset-bundles` — DAB schema reference, common commands, troubleshooting
@@ -469,17 +471,6 @@ If you're using Claude Code (or another AI agent) to help drive this deployment,
 - `databricks-model-serving` — when reaching Step 3 (MAS endpoint setup)
 - `databricks-app-python` / `databricks-app-apx` — Flask/React app patterns
 - `salesforce-asq` — if you want to post a milestone update to an ASQ after deploy
-
-### Memory + ref_notes to pre-load for Glucosphere context
-
-If working on the Glucosphere repo specifically, invoke the `glucosphere-resume` skill at session start, or read these manually:
-
-- `~/.claude/projects/-Users-…-glucosphere/memory/MEMORY.md` — index
-- Latest `project_glucosphere_session_state_*.md` — current branch state
-- `reference_glucosphere_deploy_commands.md` — verified CLI patterns
-- ⚠️ `feedback_var_placement_at_deploy_time.md` — `--var` MUST go on `bundle deploy`, NOT `bundle run` (see gotcha section above)
-- ⚠️ `feedback_always_verify.md` — never cite current-state defaults (like `baseline_source`) from memory; always grep `databricks.yml` first
-- `ref_notes/<latest-date>_end-of-day-snapshot.md` — most recent handoff state
 
 ### Long-running operations
 

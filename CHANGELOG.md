@@ -109,8 +109,34 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   `acme-aws-usw2` (fake-org style) to `your-workspace-profile` to match
   the `your_workspace_*` placeholder convention used elsewhere in the
   same reference example block (line 67: `your_workspace_catalog`).
+- **Internal-reference comment cleanup** across `databricks.yml` +
+  `DEPLOY.md`: stripped `(Plan's Commit F — #42)` from the Lakebase
+  resource block; removed two `feedback_smallest_nonnegotiable_compute`
+  Claude-memory-file references from warehouse + Lakebase sizing
+  comments; dropped the `DEPLOY.md` "Memory + ref_notes to pre-load for
+  Glucosphere context" subsection (entire block referenced
+  `~/.claude/projects/...` paths, Claude memory file names, and
+  gitignored `ref_notes/<latest-date>_end-of-day-snapshot.md` — all
+  internal-only).
+- **`databricks.yml` warehouse comment clarified**: explicit "Serverless
+  SQL Warehouse" framing — `warehouse_type: PRO` +
+  `enable_serverless_compute: true` is the canonical serverless
+  combination (PRO = modern tier; CLASSIC = legacy non-serverless). The
+  `PRO` value name historically reads as a paid-tier rather than
+  serverless, so the comment now disambiguates.
+- **`DEPLOY.md` "current active demo target" section** reframed:
+  `mmt_aws_usw2` now labeled as the maintainer's deploy target with
+  explicit external-deployer note pointing at
+  `databricks.yml.example` for adding their own target stanza.
 
 ### Added
+
+- **`databricks.yml.example`** (NEW, repo root) — target stanza pattern
+  for external deployers, mirroring the `.env.bundle.example` template
+  convention. Documents the live + harness target shapes and how to add
+  your own without touching the maintainer's `hls_amer` / `mmt_aws_usw2`
+  stanzas. Cross-referenced from `CONTRIBUTING.md` (new "Adapting for
+  your own workspace" section) and `DEPLOY.md`.
 
 - **`CONTRIBUTING.md`** (NEW, repo root) — invites external contributors
   with CLA scaffold prepended from `origin/main`'s

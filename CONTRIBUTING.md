@@ -25,6 +25,10 @@ If you are contributing on behalf of an organization, you confirm that you have 
 
 > **Internal Databricks contributors** (using a `fevm-*` workspace): see [`docs/internal-setup.md`](docs/internal-setup.md) for the catalog naming convention — the `*_catalog`-suffixed catalog is workspace-default ("dev"), and the standalone non-suffixed catalog is the portable "prod" / live-demo target. Don't mix them.
 
+## Adapting for your own workspace
+
+The committed `databricks.yml` includes target stanzas pointed at maintainer workspaces (Databricks-internal `fevm-*` hosts). External deployers should add their own target stanza before deploying — see [`databricks.yml.example`](databricks.yml.example) for the pattern. Also copy [`.env.bundle.example`](.env.bundle.example) → `.env.bundle` and fill in your catalog / schema / `~/.databrickscfg` profile. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
+
 ## Where to contribute
 
 - **Open issues** — pick anything tagged `good-first-issue` or `help-wanted` if those labels are available

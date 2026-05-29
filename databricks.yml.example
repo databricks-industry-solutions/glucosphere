@@ -1,0 +1,48 @@
+# databricks.yml.example — target stanza pattern for external deployers
+#
+# The committed `databricks.yml` carries maintainer-specific target stanzas
+# (`hls_amer`, `mmt_aws_usw2`) pointed at Databricks-internal `fevm-*`
+# workspace hosts. External deployers should add their own target stanza
+# with their own workspace host before running `bundle deploy`.
+#
+# Workflow:
+#   1. Open `databricks.yml`, locate the `targets:` block
+#   2. Append a new target stanza using the pattern below
+#   3. Copy `.env.bundle.example` -> `.env.bundle` and fill in
+#      BUNDLE_VAR_catalog / BUNDLE_VAR_schema / DATABRICKS_CONFIG_PROFILE
+#   4. `source .env.bundle && databricks bundle deploy -t <your-target-name>`
+#
+# See `DEPLOY.md` for the full step-by-step deploy sequence.
+# See `.env.bundle.example` for the operator-config token contract.
+
+targets:
+
+  # ─── Live deploy target (your own workspace) ──────────────────────────
+  your_target_name:                # e.g. acme_aws_useast1 (snake_case)
+    workspace:
+      host: https://your-workspace.cloud.databricks.com   # your workspace URL
+
+  # ─── Optional: sandbox harness target with isolated dev schema ────────
+  # Mirrors the live target above but uses `mode: development` so DABs
+  # auto-prefixes jobs/pipelines with `[dev <username>]`, pauses
+  # schedules/triggers, and isolates resource state from the live target.
+  #
+  # Apps + database_instances cannot use the auto-prefix (DNS-compliance
+  # constraint) so explicit `name:` overrides keep them from colliding
+  # with the live `glucosphere-app` + `glucosphere-oltp-*` resources.
+  #
+  # your_target_name_synth_e2e:
+  #   mode: development
+  #   workspace:
+  #     host: https://your-workspace.cloud.databricks.com
+  #   variables:
+  #     catalog: your_catalog
+  #     schema: glucosphere_synth_e2e
+  #     baseline_source: synthetic
+  #   resources:
+  #     apps:
+  #       glucosphere_app:
+  #         name: ${var.app_basename}-synth-e2e-${var.dev_initials}
+  #     database_instances:
+  #       glucosphere_oltp:
+  #         name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}

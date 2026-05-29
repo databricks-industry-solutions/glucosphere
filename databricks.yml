@@ -514,7 +514,7 @@ resources:
           environment_key: default
 
   # ---------------------------------------------------------------------------
-  # Lakebase: OLTP alert state cache (Plan's Commit F — #42)
+  # Lakebase: OLTP alert state cache (planned follow-up — implementation TBD)
   # ---------------------------------------------------------------------------
   # Postgres-managed instance hosting the live alert lifecycle tables (alerts +
   # alert_transitions). Consumed by the Flask app for sub-100ms reads/writes
@@ -525,8 +525,7 @@ resources:
   # demands. node_count defaults to 1 (primary only, no read replicas).
   # retention_window_in_days defaults to 7 (sufficient for demo / development).
   #
-  # Sizing rule: feedback_smallest_nonnegotiable_compute applies — start small,
-  # escalate only on demonstrated workload need.
+  # Sizing rule: start small, escalate only on demonstrated workload need.
   database_instances:
     glucosphere_oltp:
       # Lakebase requires DNS-compliant names (alphanumeric + hyphens only).
@@ -544,8 +543,13 @@ resources:
   # ---------------------------------------------------------------------------
   # Bundle creates this warehouse on first deploy. Name pattern is
   # `glucosphere-warehouse-${bundle.target}` (with `[dev USER]` prefix when a
-  # target uses `mode: development`). Smallest viable serverless size per
-  # feedback_smallest_nonnegotiable_compute.
+  # target uses `mode: development`).
+  #
+  # Configured as a Serverless SQL Warehouse: `warehouse_type: PRO` +
+  # `enable_serverless_compute: true` is the canonical serverless combination
+  # (PRO is the modern warehouse tier; CLASSIC is the legacy non-serverless
+  # tier). `cluster_size: "2X-Small"` is the smallest serverless size —
+  # escalate only on demonstrated workload need.
   #
   # Discovery flow:
   #   - `09_grant_app_permissions.py` discovers this warehouse by name suffix
