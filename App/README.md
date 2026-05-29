@@ -49,6 +49,9 @@ flowchart LR
     R2 --> K
     G --> DB
     K --> PDF
+
+    classDef routing fill:#e8e8e8,stroke:#666,stroke-width:1.5px;
+    class R1,R2 routing;
 ```
 
 Examples of the routing in practice:
@@ -184,8 +187,6 @@ Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 | [**tailwindcss**](https://github.com/tailwindlabs/tailwindcss) | `tailwind.config.js` + all components | Utility-first CSS | MIT |
 | [**postcss**](https://github.com/postcss/postcss) | `postcss.config.js` | CSS transform pipeline (Tailwind processor) | MIT |
 | [**autoprefixer**](https://github.com/postcss/autoprefixer) | `postcss.config.js` | Vendor-prefix automation | MIT |
-
-**Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.
 
 ### Backend (`App/databricks/requirements.txt`)
 
