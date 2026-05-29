@@ -9,6 +9,7 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 The full first-deploy sequence (operator-driven; each box is a single CLI command run locally). Total wall clock ~51 min on a fresh workspace; subsequent redeploys reuse KA/MAS/Genie + model endpoints and run ~48 min. Steps 3 + 4 (MAS / Genie pre-create) are **optional** — the Step 7 setup job creates them if absent.
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 30, 'rankSpacing': 35}, 'themeVariables': {'fontSize': '13px'}}}%%
 flowchart TD
     classDef cmd fill:#fff,stroke:#333,stroke-width:1px,color:#000
     classDef wait fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
@@ -226,6 +227,7 @@ This runs the end-to-end pipeline below.
 ### Job DAG
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 30, 'rankSpacing': 35}, 'themeVariables': {'fontSize': '13px'}}}%%
 flowchart TD
     classDef plain fill:#fff,stroke:#333,stroke-width:1px,color:#000
 
