@@ -50,7 +50,7 @@ flowchart LR
     G --> DB
     K --> PDF
 
-    classDef routing fill:#e8e8e8,stroke:#666,stroke-width:1.5px;
+    classDef routing fill:#ffffff,stroke:#666,stroke-width:1.5px;
     class R1,R2 routing;
 ```
 
