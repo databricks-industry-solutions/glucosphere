@@ -509,6 +509,13 @@ def get_config():
     raw_host = os.getenv('DATABRICKS_HOST', '')
     if raw_host and not raw_host.startswith(('http://', 'https://')):
         raw_host = f'https://{raw_host}'
+    # setup_job_url: deep-link to the bundle's setup job page. job_id is
+    # discovered at deploy time by scripts/render_app_yaml.py (same pattern
+    # as WAREHOUSE_ID) and baked into SETUP_JOB_ID env via app.yaml. Runtime
+    # is a pure env-var read — no Jobs API call, no App-SP permission needed.
+    # JSX falls back to {workspace_host}/jobs listing when this is empty.
+    setup_job_id = os.getenv('SETUP_JOB_ID', '')
+    setup_job_url = f"{raw_host}/jobs/{setup_job_id}" if raw_host and setup_job_id else ''
     return jsonify({
         'catalog': CATALOG_NAME,
         'schema': SCHEMA_NAME,
@@ -516,6 +523,7 @@ def get_config():
         'baseline_source': provenance['baseline_source'],
         'baseline_source_detail': provenance['source_detail'],
         'workspace_host': raw_host,
+        'setup_job_url': setup_job_url,
     })
 
 @app.route('/health')

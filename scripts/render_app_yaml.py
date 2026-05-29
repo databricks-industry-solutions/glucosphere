@@ -105,6 +105,41 @@ def discover_bundle_warehouse_id(target: str, profile: str | None) -> str:
     sys.exit(1)
 
 
+def discover_setup_job_id(target: str, profile: str | None) -> str:
+    """Query the workspace for the bundle-managed `glucosphere_full_setup`
+    job by deterministic name pattern `glucosphere-full-setup-<target>`.
+
+    Pattern matches the `name:` field of `resources.jobs.glucosphere_full_setup`
+    in databricks.yml. Uses `endswith` to handle `mode: development` targets
+    which auto-prefix the name with `[dev USER]`.
+
+    Returns the job_id (string) used to build the App's Metrics-Explained
+    deep-link at runtime. Same profile-resolution rules as
+    `discover_bundle_warehouse_id`.
+
+    Returns empty string (not sys.exit) if no matching job is found — the
+    setup-job-link is optional UX; the App's JSX falls back to the workspace
+    `/jobs` listing when SETUP_JOB_ID is empty. This makes render safe to
+    run before the first `bundle deploy` (e.g. between deploy passes).
+    """
+    cmd = ["databricks", "jobs", "list", "-o", "json"]
+    effective_profile = profile or os.environ.get("DATABRICKS_CONFIG_PROFILE")
+    if effective_profile:
+        cmd += ["-p", effective_profile]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=REPO_ROOT)
+    if result.returncode != 0:
+        print(f"[warn]  `databricks jobs list` failed; SETUP_JOB_ID will be empty (link falls back to /jobs listing):\n{result.stderr}", file=sys.stderr)
+        return ""
+    jobs = json.loads(result.stdout)
+    expected_suffix = f"glucosphere-full-setup-{target}"
+    for j in jobs:
+        name = j.get("settings", {}).get("name", "")
+        if name.endswith(expected_suffix):
+            return str(j.get("job_id", ""))
+    print(f"[warn]  No job found with name ending in `{expected_suffix}` — SETUP_JOB_ID will be empty (link falls back to /jobs listing). This is expected on first-pass render before bundle deploy.", file=sys.stderr)
+    return ""
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", required=True, help="DABs target name (e.g. hls_amer)")
@@ -121,11 +156,13 @@ def main() -> int:
     # bundle-managed sql_warehouses resource (discovered by deterministic name).
     # This requires the bundle to have been deployed at least once.
     warehouse_id = discover_bundle_warehouse_id(args.target, args.profile)
+    setup_job_id = discover_setup_job_id(args.target, args.profile)
 
     print(f"Rendering {APP_YAML.relative_to(REPO_ROOT)} for target={args.target}:")
     print(f"  catalog        = {catalog}")
     print(f"  schema         = {schema}")
     print(f"  warehouse_id   = {warehouse_id}")
+    print(f"  setup_job_id   = {setup_job_id or '(not found — link will fall back to /jobs listing)'}")
     print(f"  mas-endpoint   = {args.mas_endpoint or '(unchanged)'}")
     print(f"  ka-endpoint    = {args.ka_endpoint or '(unchanged)'}")
     print(f"  genie-space-id = {args.genie_space_id or '(unchanged)'}")
@@ -144,6 +181,11 @@ def main() -> int:
         content = patch(content,
             r'(- name: SCHEMA_NAME\s+value: ")[^"]*(")',
             rf'\g<1>{schema}\g<2>', "env SCHEMA_NAME")
+    # SETUP_JOB_ID — discovered above via Jobs API by name match. Empty
+    # string is valid (and written) — JSX falls back to /jobs listing.
+    content = patch(content,
+        r'(- name: SETUP_JOB_ID\s+value: ")[^"]*(")',
+        rf'\g<1>{setup_job_id}\g<2>', "env SETUP_JOB_ID")
     if warehouse_id:
         # Update BOTH the WAREHOUSE_ID env var (consumed by app.py's
         # /api/sql/query Statement Execution API call) AND the resource

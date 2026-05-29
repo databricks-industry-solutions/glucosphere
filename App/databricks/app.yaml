@@ -14,6 +14,14 @@ env:
     value: "mmt_aws_usw2"
   - name: SCHEMA_NAME
     value: "glucosphere"
+  # SETUP_JOB_ID lets /api/config build a deep-link to the bundle's setup
+  # job page (Metrics Explained "glucosphere-full-setup-*" link). Discovered
+  # at deploy time by scripts/render_app_yaml.py (same pattern as WAREHOUSE_ID:
+  # look up by name `glucosphere-full-setup-<target>` via Jobs API). Empty
+  # value here pre-render is intentional — operator runs render before the
+  # second deploy, which populates this.
+  - name: SETUP_JOB_ID
+    value: "30294337012072"
   # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
   # bundle-managed sql_warehouses.glucosphere_warehouse resource (discovered
   # by deterministic name). Empty value here pre-render is intentional —
