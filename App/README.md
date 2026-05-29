@@ -13,10 +13,10 @@ This application provides:
 
 ## Architecture
 
-**Frontend**: React + Vite + Tailwind CSS
-**Backend**: Flask (proxy server for Databricks APIs)
-**Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
-**AI Agent**: Databricks Multi-Agent Supervisor
+- **Frontend**: React + Vite + Tailwind CSS
+- **Backend**: Flask (proxy server for Databricks APIs)
+- **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
+- **AI Agent**: Databricks Multi-Agent Supervisor
 
 ## Project Structure
 
