@@ -15,19 +15,19 @@ flowchart LR
     classDef gate fill:#e6f7e6,stroke:#2d7a2d,stroke-width:1px,color:#000
     classDef opt fill:#fafafa,stroke:#999,stroke-width:1px,stroke-dasharray:3 3,color:#555
 
-    S1[Step 1 — auth]:::cmd
-    S2[Step 2 — .env.bundle]:::cmd
-    S3[Step 3 — MAS pre-create]:::opt
-    S4[Step 4 — Genie pre-create]:::opt
-    S5[Step 5 — npm build]:::cmd
-    A[Step 6 — deploy pass 1]:::cmd
-    B[Step 6 — render app.yaml]:::cmd
-    C[Step 6 — deploy pass 2]:::cmd
-    D[Step 7 — run setup job]:::wait
-    E[Step 8 — render w/ live IDs]:::cmd
-    F[Step 8 — deploy final]:::cmd
-    G[Step 9 — run App]:::cmd
-    H[Step 10 — smoke test]:::gate
+    S1[Step 1 — databricks auth login]:::cmd
+    S2[Step 2 — cp .env.bundle.example<br/><i>fill in catalog / schema / profile</i>]:::cmd
+    S3[Step 3 — optional MAS pre-create<br/><i>else Step 7 job creates it</i>]:::opt
+    S4[Step 4 — optional Genie pre-create<br/><i>else Step 7 job creates it</i>]:::opt
+    S5[Step 5 — npm install + npm run build<br/><i>skip if App/databricks/static/ is fresh</i>]:::cmd
+    A[Step 6 — bundle deploy pass 1<br/><i>creates warehouse + jobs + pipelines + app stub</i>]:::cmd
+    B[Step 6 — scripts/render_app_yaml.py<br/><i>writes WAREHOUSE_ID into App/databricks/app.yaml</i>]:::cmd
+    C[Step 6 — bundle deploy pass 2<br/><i>picks up rendered app.yaml</i>]:::cmd
+    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see Job DAG below</i>]:::wait
+    E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
+    F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
+    G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
+    H[Step 10 — scripts/smoke_test.py<br/><i>8-check automated gate; non-zero exit on any failure</i>]:::gate
 
     S1 --> S2 --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
     S2 -.-> S3
@@ -35,22 +35,6 @@ flowchart LR
     S3 -.-> S5
     S4 -.-> S5
 ```
-
-| Step | Command | What it does |
-|---|---|---|
-| 1 — auth | `databricks auth login --host <workspace>` | OAuth or PAT login |
-| 2 — .env.bundle | `cp .env.bundle.example .env.bundle` + edit | sets catalog / schema / profile |
-| 3 — MAS pre-create | (optional) UI: Serving → Create endpoint | skip unless overriding default name; else Step 7 creates it |
-| 4 — Genie pre-create | (optional) UI: Genie → New room | skip unless overriding default; else Step 7 creates it |
-| 5 — npm build | `cd App && npm install && npm run build` | skip if `App/databricks/static/` is fresh |
-| 6 — deploy pass 1 | `databricks bundle deploy -t <target>` | creates warehouse + jobs + pipelines + app stub |
-| 6 — render app.yaml | `uv run python scripts/render_app_yaml.py --target <target>` | writes `WAREHOUSE_ID` into `App/databricks/app.yaml` |
-| 6 — deploy pass 2 | `databricks bundle deploy -t <target>` | picks up rendered `app.yaml` |
-| 7 — run setup job | `databricks bundle run glucosphere_full_setup -t <target>` | 16-task pipeline (see Job DAG below) |
-| 8 — render w/ live IDs | `render_app_yaml.py … --mas-endpoint … --ka-endpoint … --genie-space-id …` | bakes IDs from Step 7 logs into `app.yaml` |
-| 8 — deploy final | `databricks bundle deploy -t <target>` | publishes `app.yaml` with all live IDs |
-| 9 — run App | `databricks bundle run glucosphere_app -t <target>` | `apps deploy` + `apps start`, atomic |
-| 10 — smoke test | `uv run python scripts/smoke_test.py --target <target> --profile <profile>` | 8-check automated gate |
 
 The Step 7 pipeline job is itself a 16-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
 
