@@ -148,6 +148,36 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   notebooks run on Databricks Runtime's Python (`spark_version` set in
   `databricks.yml`) and only repo-root `scripts/` use the local Python
   3.11 (per `.python-version`).
+- **Repo-root `README.md` restructure** — 309 lines → ~110 lines. The
+  README is now a "lobby" / orientation doc; substantive detail lives
+  next to the code that produces it.
+  - **Data fidelity & baseline modes** (61 lines: baseline-mode table,
+    clean-vs-incident model performance, column-level provenance,
+    synthetic-vs-real distribution comparison) moved to new sibling
+    [`Data_DataGen_ModelForecast/README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
+    The repo-root README keeps a 4-line teaser + link; the existing
+    `Data_DataGen_ModelForecast/README.md` adds a header cross-link to
+    the new sibling.
+  - **Architecture / Agent endpoints — Genie / KA / MAS deep-dive**
+    (35 lines: endpoint table, MAS routing mermaid, routing examples)
+    moved into [`App/README.md`](App/README.md)'s existing Architecture
+    section as a new `### Agent endpoints — Genie / KA / MAS` subsection.
+    The repo-root README keeps a 1-sentence summary + link.
+  - **Repository structure** trimmed from a 53-line file-by-file tree
+    to a 10-line top-level skeleton + link to the existing
+    [`REPO_LAYOUT.md`](REPO_LAYOUT.md) (which already carries the full
+    "I want to…" task index + workflow DAG + by-category file inventory).
+  - **Getting started** trimmed from 85 lines (prereqs + 5 deploy
+    subsections including variants, demo-week pin, verify-which-mode,
+    distribution comparison) to a ~15-line canonical deploy snippet +
+    prereqs paragraph + link to [`DEPLOY.md`](DEPLOY.md) for the full
+    8-step walkthrough + variants + troubleshooting.
+  - **See also** section consolidated and expanded — now includes
+    pointers to `REPO_LAYOUT.md`, `DEPLOY.md`, both
+    `Data_DataGen_ModelForecast` READMEs (the existing one + the new
+    sibling), `App/README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
+  - **Plugins + Contributors** sections kept verbatim — they're
+    orientation-level content that belongs in the repo-root README.
 - **`CONTRIBUTING.md`**: new "Keeping dependency tables current" section
   between "Branch + commit conventions" and "Updating the CHANGELOG".
   Documents the verify-license-then-update-table workflow + when to use

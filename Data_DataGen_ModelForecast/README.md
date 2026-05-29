@@ -1,5 +1,7 @@
 # Data + DataGen + ModelForecast (Databricks / Unity Catalog)
 
+> **Looking for data fidelity + baseline-mode detail?** Model performance numbers (clean vs incident MAE), column-level provenance ("which columns are real vs synthetic"), and synthetic-vs-real distribution comparison all live in the sibling [`README_data_fidelity_baseline.md`](README_data_fidelity_baseline.md).
+
 This folder contains a Databricks-first pipeline for:
 
 - **Ingesting** the HUPA-UCM T1DM dataset into **Unity Catalog**

@@ -18,6 +18,41 @@ This application provides:
 - **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
 - **AI Agent**: Databricks Multi-Agent Supervisor
 
+### Agent endpoints — Genie / KA / MAS (often confused)
+
+The App's natural-language query experience is powered by **three native Databricks Agent Bricks endpoints** that work together. They are NOT interchangeable — each has a distinct data source and purpose:
+
+| Endpoint | Data source | Purpose |
+|---|---|---|
+| **Genie** | Gold table `<catalog>.<schema>.gold_patient_device_readings` | Natural-language → SQL over **structured CGM data** (patient readings, device incidents, fleet stats, trends) |
+| **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
+| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type | The endpoint the App's chat UI actually calls — operator never invokes Genie or KA directly. Branded as "GlucoScope" in `08_genie_ka_mas.py` |
+
+The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
+
+```mermaid
+flowchart LR
+    U[User asks question<br/>via App chat UI]
+    M[MAS endpoint<br/>'GlucoScope' supervisor]
+    G[Genie space<br/>NL → SQL]
+    K[Knowledge Assistant<br/>RAG over WHO PDF]
+    DB[(gold_patient_device_readings<br/>structured CGM data)]
+    PDF[(WHO diabetes PDF<br/>clinical guidelines)]
+
+    U --> M
+    M -- "SQL / data questions:<br/>patient glucose, device incidents,<br/>fleet stats, trends" --> G
+    M -- "Clinical guideline questions:<br/>WHO diagnostic criteria,<br/>diabetes classification" --> K
+    G --> DB
+    K --> PDF
+```
+
+Examples of the routing in practice:
+
+- *"How many patients had hypoglycemia events last week?"* → MAS routes to **Genie** → SQL over gold table
+- *"What's the WHO diagnostic threshold for type-2 diabetes?"* → MAS routes to **KA** → RAG over WHO PDF
+- *"Which device firmware has the highest out-of-range rate?"* → MAS routes to **Genie** → SQL aggregation
+- *"What does the WHO say about gestational diabetes screening?"* → MAS routes to **KA** → RAG over PDF
+
 ## Project Structure
 
 ```
