@@ -48,6 +48,16 @@ variables:
       DB instance names allow up to 63 chars (DNS-compliant), so the
       constraint is App-side only.
     default: glucosphere
+  compute_accelerator:
+    description: |
+      Serverless compute accelerator for the `datagen_modeling` task
+      (04_pseudo_data_forecast_modeling.py). Default `GPU_1xA10` (GA;
+      ~2.7x faster than CPU per CHANGELOG). Workspaces without Serverless
+      GPU enabled (some HIPAA CSP / external partner workspaces) should
+      set this to empty string and ALSO comment out the `compute:` block
+      in the task definition for CPU fallback. `GPU_8xH100` is Beta and
+      only meaningfully outperforms A10 with RUN_OPTUNA_TUNING=true.
+    default: GPU_1xA10
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
@@ -337,8 +347,9 @@ resources:
           depends_on:
             - task_key: sanity_summary
           # Serverless GPU compute — enables MLflow GPUMonitor (system/gpu_* metrics)
-          # + XGBoost CUDA training on a single A10. To revert to serverless CPU:
-          # comment out the 2-line `compute` block below.
+          # + XGBoost CUDA training on a single A10. Accelerator value comes
+          # from `${var.compute_accelerator}` — see top of file for description
+          # + CPU-fallback instructions for workspaces without Serverless GPU.
           # Alternative accelerator: GPU_8xH100 (Beta; 8x H100 distributed; needs
           # workspace admin to enable "AI Runtime Beta Feature preview"). A10 is GA
           # and sufficient for this workload (XGBoost on ~1000 pseudo-patients,
@@ -349,7 +360,7 @@ resources:
           # serializes on 1 GPU but can fan out across 4 of 8 H100s. See
           # CHANGELOG for empirical GPU-vs-CPU timing comparison.
           compute:
-            hardware_accelerator: GPU_1xA10
+            hardware_accelerator: ${var.compute_accelerator}
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/04_pseudo_data_forecast_modeling.py
             base_parameters:
