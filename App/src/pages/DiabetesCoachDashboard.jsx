@@ -158,7 +158,7 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 rounded-lg p-5 hover:border-emerald-500/50 transition-colors">
               <p className="text-xs text-emerald-400 font-mono mb-2">TIME IN RANGE</p>
               <p className="text-3xl font-mono font-bold text-emerald-400">
-                {metricsLoading ? '...' : (populationMetrics?.timeInRange !== null ? `${populationMetrics.timeInRange}%` : 'N/A')}
+                {metricsLoading ? '...' : (populationMetrics?.timeInRange != null ? `${populationMetrics.timeInRange}%` : 'N/A')}
               </p>
               <p className="text-xs text-slate-500 mt-2">70-180 mg/dL</p>
               <div className="mt-3 h-1.5 bg-slate-900 rounded-full overflow-hidden">
@@ -173,7 +173,7 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-5 hover:border-slate-700 transition-colors">
               <p className="text-xs text-slate-500 font-mono mb-2">AVG GLUCOSE</p>
               <p className="text-3xl font-mono font-bold text-slate-200">
-                {metricsLoading ? '...' : (populationMetrics?.avgGlucose !== null ? populationMetrics.avgGlucose : 'N/A')}
+                {metricsLoading ? '...' : (populationMetrics?.avgGlucose != null ? populationMetrics.avgGlucose : 'N/A')}
               </p>
               <p className="text-xs text-slate-500 mt-2">mg/dL</p>
               {populationMetrics?.stddevGlucose && (
@@ -185,7 +185,7 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-5 hover:border-rose-500/50 transition-colors">
               <p className="text-xs text-rose-400 font-mono mb-2">HYPOGLYCEMIA</p>
               <p className="text-3xl font-mono font-bold text-rose-400">
-                {metricsLoading ? '...' : (populationMetrics?.pctTimeBelowRange !== null ? `${populationMetrics.pctTimeBelowRange}%` : 'N/A')}
+                {metricsLoading ? '...' : (populationMetrics?.pctTimeBelowRange != null ? `${populationMetrics.pctTimeBelowRange}%` : 'N/A')}
               </p>
               <p className="text-xs text-slate-500 mt-2">&lt;70 mg/dL</p>
               {populationMetrics?.patientsWithHypo && (
@@ -197,7 +197,7 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-5 hover:border-amber-500/50 transition-colors">
               <p className="text-xs text-amber-400 font-mono mb-2">HYPERGLYCEMIA</p>
               <p className="text-3xl font-mono font-bold text-amber-400">
-                {metricsLoading ? '...' : (populationMetrics?.pctTimeAboveRange !== null ? `${populationMetrics.pctTimeAboveRange}%` : 'N/A')}
+                {metricsLoading ? '...' : (populationMetrics?.pctTimeAboveRange != null ? `${populationMetrics.pctTimeAboveRange}%` : 'N/A')}
               </p>
               <p className="text-xs text-slate-500 mt-2">&gt;180 mg/dL</p>
               {populationMetrics?.patientsWithHyper && (
@@ -209,7 +209,7 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-5 hover:border-slate-700 transition-colors">
               <p className="text-xs text-slate-500 font-mono mb-2">PATIENTS</p>
               <p className="text-3xl font-mono font-bold text-cyan-400">
-                {metricsLoading ? '...' : (populationMetrics?.totalPatientsMonitored !== null ? populationMetrics.totalPatientsMonitored : 'N/A')}
+                {metricsLoading ? '...' : (populationMetrics?.totalPatientsMonitored != null ? populationMetrics.totalPatientsMonitored : 'N/A')}
               </p>
               <p className="text-xs text-slate-500 mt-2">Monitored</p>
               <div className="mt-3 flex items-center gap-1">
@@ -223,11 +223,11 @@ export default function DiabetesCoachDashboard() {
               <p className="text-xs text-slate-500 font-mono mb-2">GLUCOSE RANGE</p>
               <div className="flex items-baseline gap-1">
                 <p className="text-2xl font-mono font-bold text-slate-200">
-                  {metricsLoading ? '...' : (populationMetrics?.minGlucose !== null ? Math.round(populationMetrics.minGlucose) : 'N/A')}
+                  {metricsLoading ? '...' : (populationMetrics?.minGlucose != null ? Math.round(populationMetrics.minGlucose) : 'N/A')}
                 </p>
                 <span className="text-slate-600">-</span>
                 <p className="text-2xl font-mono font-bold text-slate-200">
-                  {metricsLoading ? '...' : (populationMetrics?.maxGlucose !== null ? Math.round(populationMetrics.maxGlucose) : 'N/A')}
+                  {metricsLoading ? '...' : (populationMetrics?.maxGlucose != null ? Math.round(populationMetrics.maxGlucose) : 'N/A')}
                 </p>
               </div>
               <p className="text-xs text-slate-500 mt-2">mg/dL</p>
@@ -281,10 +281,11 @@ export default function DiabetesCoachDashboard() {
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              <input 
+              <input
                 type="text"
-                placeholder="Search patient by name or ID..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                placeholder="Patient search — coming soon (demo cohort fixed); see GitHub issue #5"
+                disabled
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors cursor-not-allowed opacity-60"
               />
             </div>
           </div>
@@ -298,9 +299,12 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h2 className="text-2xl font-semibold mb-2" style={{ fontFamily: 'Georgia, serif' }}>
-                    {selectedPatient}
-                  </h2>
+                  <div className="flex items-center gap-3 mb-2">
+                    <h2 className="text-2xl font-semibold" style={{ fontFamily: 'Georgia, serif' }}>
+                      {selectedPatient}
+                    </h2>
+                    <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-400 font-mono" title="Patient demographics, KPIs, and 24h chart are demo data — see GitHub issue #5 to wire to real per-patient data.">Demo data</span>
+                  </div>
                   <div className="flex items-center gap-4 text-sm text-slate-400 font-mono">
                     <span>Age: 34</span>
                     <span>•</span>
