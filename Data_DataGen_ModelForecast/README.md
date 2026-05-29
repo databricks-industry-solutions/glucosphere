@@ -79,7 +79,7 @@ Notebooks `04_*` (forecast modeling), `05_*` (bidirectional incident inference),
   </a>
 </p>
 
-<p align="center"><em>Teaser — Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline (Day 2 over-read cohort, Day 5 under-read cohort).<br>Click through to <a href="README_data_fidelity_baseline.md#figures-assets">the full set + descriptions</a>.</em></p>
+<p align="center"><em>Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline (Day 2 over-read cohort, Day 5 under-read cohort).<br>Click through to <a href="README_data_fidelity_baseline.md#figures-assets">the full set + descriptions</a>.</em></p>
 
 ---
 
