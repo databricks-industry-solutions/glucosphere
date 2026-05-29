@@ -506,6 +506,10 @@ def get_config():
         'genie_space_id': GENIE_SPACE_ID,
         'baseline_source': provenance['baseline_source'],
         'baseline_source_detail': provenance['source_detail'],
+        # workspace_host lets the React UI build runtime links into the
+        # deploying workspace (e.g. the Jobs UI from MetricsExplained) without
+        # hardcoding a specific tenant in JSX or the committed static bundle.
+        'workspace_host': os.getenv('DATABRICKS_HOST', ''),
     })
 
 @app.route('/health')
