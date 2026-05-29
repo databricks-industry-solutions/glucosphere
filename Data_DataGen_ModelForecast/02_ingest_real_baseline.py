@@ -12,8 +12,6 @@
 # MAGIC
 # MAGIC   - `from_source` — download HUPA-UCM zip from Mendeley → unpack into
 # MAGIC     a UC volume → parse per-patient CSVs → write `diabetes_data`.
-# MAGIC     Ported from `01_download_data.py` + `02_parseNcombine_processed_data.py`
-# MAGIC     on `origin/hls-buildathon-main`.
 # MAGIC   - `from_table` — copy from an existing UC table. Source resolved in this
 # MAGIC     priority order (per the auto-detect logic, implemented in this notebook + the
 # MAGIC     validate task):

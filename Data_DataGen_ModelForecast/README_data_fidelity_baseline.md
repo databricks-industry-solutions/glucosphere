@@ -75,7 +75,7 @@ The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) is trained 
 
 A well-tuned model performs at published-research-quality on clean data (~5 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — by over 6× — when device calibration is compromised**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
 
-Real-trained vs synthetic-trained models produce nearly identical numbers (the synthetic-trained baseline in `origin/hls-buildathon-main` was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See [`05_incident_inference_bidirectional.py`](05_incident_inference_bidirectional.py) for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler [`06_incident_inference_single.py`](06_incident_inference_single.py) sibling retains the unidirectional single-incident variant for reference.
+Real-trained vs synthetic-trained models produce nearly identical numbers (the published synthetic-trained baseline was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See [`05_incident_inference_bidirectional.py`](05_incident_inference_bidirectional.py) for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler [`06_incident_inference_single.py`](06_incident_inference_single.py) sibling retains the unidirectional single-incident variant for reference.
 
 ### Clean-data forecast accuracy
 

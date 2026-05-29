@@ -28,9 +28,9 @@
 # MAGIC `pseudo_incident_7d_labeled` is what populates the `bias_direction` field on the alerts table.
 # MAGIC
 # MAGIC **Sibling notebook:** `06_incident_inference_single.py` retains the unidirectional
-# MAGIC single-incident variant for simpler demos / reference comparisons. Revert to that simpler variant by changing
-# MAGIC `databricks.yml` `incident_inference` task's `notebook_path` back to `06_incident_inference_single.py`.
-# MAGIC Original Ward-branch pristine version preserved (gitignored) at `previous/Data_DataGen_ModelForecast/05_CGM_Incident_Inference_DeviceCalibrationBug.py`.
+# MAGIC single-incident variant for simpler demos / reference comparisons. Switch to that
+# MAGIC simpler variant by changing the `databricks.yml` `incident_inference` task's
+# MAGIC `notebook_path` to `06_incident_inference_single.py`.
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -50,7 +50,7 @@
 # MAGIC
 # MAGIC > **Note on the `~5.8 mg/dL` baseline anchor:** the `5.8 / 10.4 mg/dL` clean-baseline numbers referenced
 # MAGIC > throughout this notebook (intro, print statements, chart `axhline` reference lines) are the
-# MAGIC > published synthetic-trained baseline from `origin/hls-buildathon-main`. The CURRENT run's actual
+# MAGIC > published synthetic-trained baseline. The CURRENT run's actual
 # MAGIC > clean-period MAE is computed dynamically in the MAE analysis cells below and may differ slightly
 # MAGIC > depending on `baseline_source` mode (synthetic / from_source / from_table), data seed, and any
 # MAGIC > recent ingest fixes. See `README.md` for the published reference numbers.
