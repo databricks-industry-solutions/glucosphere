@@ -101,6 +101,10 @@ targets:
       catalog: mmt_aws_usw2_catalog
       schema: glucosphere_synth_e2e
       baseline_source: synthetic
+      # Mirrors resources.apps.glucosphere_app.name below — kept in sync so
+      # `APP_NAME: ${var.app_name}` passed to notebook 09 resolves to the
+      # harness App name, not the default `glucosphere-app` (which 404s here).
+      app_name: ${var.app_basename}-synth-e2e-${var.dev_initials}
     resources:
       # App names must be 2-30 chars. Suffix `-synth-e2e` distinguishes
       # the harness App from the live `glucosphere-app`.
@@ -130,6 +134,9 @@ targets:
       source_catalog: mmt_aws_usw2_catalog
       source_schema: glucosphere_synth_e2e
       source_table: diabetes_data
+      # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
+      # target above for rationale.
+      app_name: ${var.app_basename}-table-e2e-${var.dev_initials}
     resources:
       # Parallel naming with synth_e2e harness; kept under the 30-char App limit.
       apps:
@@ -151,6 +158,9 @@ targets:
       catalog: mmt_aws_usw2_catalog
       schema: glucosphere_from_source_e2e
       baseline_source: from_source
+      # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
+      # target above for rationale.
+      app_name: ${var.app_basename}-source-e2e-${var.dev_initials}
     resources:
       apps:
         glucosphere_app:
