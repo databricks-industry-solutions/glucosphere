@@ -19,6 +19,76 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-05-29]
+
+Serverless GPU validation for `datagen_modeling` task + stratification
+verification fix (Fix A*) + Optuna/GPU scaling notes.
+
+**Note for reviewers**: today's changes affect ONLY the `datagen_modeling`
+task (compute config + verification print logic + comment clarifications).
+Downstream tasks (`incident_inference`, `deploy_model_endpoints`,
+`run_dlt_pipeline`, `create_genie_ka_mas`, `check_post_endpoint_grants`,
+`grant_app_permissions`, and the patient-device data tasks) are unchanged
+and do not need to be re-run for this PR. The MLflow models produced by
+GPU training are functionally equivalent to the CPU-trained ones (same
+architecture, same hyperparams, same data).
+
+### Added
+
+- **Serverless GPU compute on `datagen_modeling` task** — added
+  `compute.hardware_accelerator: GPU_1xA10` (GA option) to the task in
+  `databricks.yml`, plus a new `gpu_default` environment with `client: "5"`
+  (CPU `default` env keeps `client: "1"` for the other 15 tasks).
+- **GPU/Optuna scaling notes** in `04_pseudo_data_forecast_modeling.py` (above
+  the Optuna `Parallel(n_jobs=4)` block) and in `databricks.yml` (under the
+  `compute` block comment) — explain that single-GPU GPU_1xA10 serializes the
+  4-way parallel Optuna trials, and that GPU_8xH100 (Beta) would fan out 4 of
+  the 8 H100s if `RUN_OPTUNA_TUNING="true"`.
+
+### Fixed
+
+- **Stratification verification compared wrong statistics ("Fix A\*")**:
+  `04_pseudo_data_forecast_modeling.py` was comparing pseudo per-reading
+  time-in-range (e.g. 6.5% hypo) against source per-patient-strata
+  classification ratios (e.g. 18.2% hypo-prone patients). These are different
+  statistics by construction — produced spurious FAIL warnings on runs whose
+  underlying data was actually sound. Fix queries `baseline_val_tbl`
+  (`baseline_for_validation_7d`) which is built from the EXACT sampled
+  segments — strict apples-to-apples per-reading comparison, recomputed each
+  run so it tracks dynamic source / demo_week_start / sampler state.
+- **Print-statement clarity sweep** (lines 415, 495, 617, 696, 833, 842 of
+  `04_*.py`): disambiguated all "match baseline distribution" / "source-derived
+  ratios" framings to explicitly distinguish per-patient-strata classification
+  (sampler intent) from per-reading time-in-range (verification metric). This
+  removes the conceptual ambiguity that motivated the FAIL warnings.
+
+### Verified
+
+- **GPU compute validation on `mmt_aws_usw2` workspace**: empirical job runs
+  confirm the GPU path works end-to-end —
+  - CPU baseline (pre-GPU work): run `674492992118957`, `datagen_modeling`
+    task duration **808.4 s (13.47 min)** on serverless CPU (client "1")
+  - GPU run 1 (first GPU validation): run `291178450563756`, task duration
+    **290.0 s (4.83 min)** on `GPU_1xA10` (client "5")
+  - GPU run 2 (post-Fix-A\* rerun): run `283150645379656`, task duration
+    **317.6 s (5.29 min)** on `GPU_1xA10` (client "5")
+  - Empirical speedup vs serverless CPU: **~2.7x** (13.5 min → ~5 min)
+- **MLflow `system/gpu_0_*` metrics logging** — verified via
+  `/api/2.0/mlflow/runs/search` for both GPU runs. 5 GPU metric series:
+  `gpu_0_utilization_percentage` (peak 75%), `gpu_0_memory_usage_megabytes`
+  (peak 914.9 MB of A10's 24 GB = 3.8% used), `gpu_0_power_usage_watts`
+  (peak 135.7 W), `gpu_0_power_usage_percentage`, `gpu_0_memory_usage_percentage`.
+  Pre-fix runs had 0 GPU metric series — silent skip per MLflow's
+  `_initialize_gpu_monitor` fallthrough (missing `nvidia-ml-py`).
+- **Fix A\* verification produces PASS/PASS/PASS** for default `from_source`
+  baseline mode — pre-deploy SQL probe against
+  `mmt_aws_usw2.glucosphere.baseline_for_validation_7d` (via warehouse
+  `glucosphere-warehouse-mmt_aws_usw2`) returned hypo 6.40% / normal 66.09% /
+  hyper 27.51%; pseudo data was 6.5% / 65.9% / 27.6% — Δ 0.10% / 0.19% / 0.09%,
+  all within tolerance bands (2% / 5% / 4%).
+
+---
+
 ## [2026-05-28]
 
 PR-to-main polish: cycle-2 regression fix + standardization sweep + UC Volume
@@ -44,6 +114,16 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   fresh-schema deploys that the silent except had been masking.
 - **`Create Raw Device Data.ipynb` missing `pyyaml`** added to the `%pip
   install` line (required by the Config-class loader).
+- **GPU metrics in `04_pseudo_data_forecast_modeling.py`** — added
+  `nvidia-ml-py` to the `%pip install` line. MLflow's `GPUMonitor` was
+  silently failing to initialize because the NVML binding wasn't installed
+  (CPU/memory still logged via `psutil`, but GPU stats never collected; per
+  MLflow's `system_metrics_monitor._initialize_gpu_monitor()` the missing
+  NVML is caught and skipped with a DEBUG-level log, hence the silent miss).
+  The earlier print statement referenced the deprecated `nvidia-ml-py3`
+  which was never actually in the install line. Replaced with current
+  `nvidia-ml-py` per MLflow system-metrics docs; print statements
+  corrected; dep table entry restored under the corrected package name.
 
 ### Changed
 
@@ -192,6 +272,39 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   Documents the verify-license-then-update-table workflow + when to use
   prose-near-the-table for platform-provided deps (vs padding the table
   with non-declared items).
+- **Dep table format — drop separate `Source / URL` column, embed source
+  link on dependency name** (`App/README.md` frontend + backend tables,
+  `Data_DataGen_ModelForecast/README.md` table). 4-col layout: Dependency
+  | Where used | Why it's used | License. GitHub source repo linked on
+  the bolded dep name where one exists; `nvidia-ml-py` links to PyPI
+  because NVIDIA distributes only via PyPI (no public NVIDIA GitHub repo
+  for these bindings).
+- **Added "Note on package URLs and network reachability"** below the
+  `Data_DataGen_ModelForecast` dep table, with one-line pointer notes
+  under each `App/README.md` dep table. Context: some Databricks
+  workspaces / corporate networks block direct egress to `pypi.org` /
+  `files.pythonhosted.org` / `registry.npmjs.org`; this tightening
+  accelerated after the LiteLLM PyPI supply-chain compromise of
+  2026-03-24 (malicious versions 1.82.7/1.82.8 published via stolen
+  publishing tokens via Trivy CI compromise). Note references PyPI's
+  incident report + Databricks serverless egress-control docs +
+  Databricks MLR-vs-DBR `nvidia-ml-py` preinstall difference.
+- **Mermaid diagram in `App/README.md`** (MAS routing logic) — added
+  `%%{init: {'theme': 'neutral'}}%%` directive for monochrome
+  (grey/white) rendering instead of the default colored theme.
+- **`Data_DataGen_ModelForecast/README.md` References section** —
+  softened the citation for Nature Digital Medicine `s41746-021-00480-x`
+  (Deng et al. 2021). Previous wording (added 2026-05-27) overclaimed:
+  "informs the CGM-forecast modeling + MAE-based incident-evaluation
+  methodology used". Corrected: the paper does **patient-specific deep
+  learning via transfer learning** (CNN/GRU/SAN architectures
+  fine-tuned per patient on ~83 hours of CGM data, 40 outpatients,
+  MAE 13.53 mg/dL @ 30-min). Glucosphere takes a different path —
+  fleet-level XGBoost on 1,000 pseudo-patients sampled from HUPA-UCM,
+  15/30-min horizons, MAE 5.3/9.2 mg/dL clean — for demonstration
+  simplicity. The paper is now framed as offering "alternative
+  approaches for CGM monitoring and forecasting" + "guidance on
+  relevant metrics of interest", not the methodology we implemented.
 
 ### Added
 

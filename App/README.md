@@ -31,6 +31,7 @@ The App's natural-language query experience is powered by **three native Databri
 The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
 
 ```mermaid
+%%{init: {'theme': 'neutral'}}%%
 flowchart LR
     U[User asks question<br/>via App chat UI]
     M[MAS endpoint<br/>'GlucoScope' supervisor]
@@ -167,25 +168,29 @@ Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
 ### Frontend (`package.json`)
 
-| Dependency | Where used | Why it's used | Source / URL | License |
-| --- | --- | --- | --- | --- |
-| **react** | `App/src/*.jsx` | UI framework | [npm](https://www.npmjs.com/package/react) / [Source](https://github.com/facebook/react) | MIT |
-| **react-dom** | `App/src/main.jsx` | React renderer for browser DOM | [npm](https://www.npmjs.com/package/react-dom) / [Source](https://github.com/facebook/react) | MIT |
-| **react-router-dom** | `App/src/App.jsx`, `App/src/pages/*` | Client-side routing | [npm](https://www.npmjs.com/package/react-router-dom) / [Source](https://github.com/remix-run/react-router) | MIT |
-| **lucide-react** | Icons across pages | Icon set | [npm](https://www.npmjs.com/package/lucide-react) / [Source](https://github.com/lucide-icons/lucide) | ISC |
-| **react-markdown** | MetricsExplained + MAS reply rendering | Markdown → React component | [npm](https://www.npmjs.com/package/react-markdown) / [Source](https://github.com/remarkjs/react-markdown) | MIT |
-| **vite** | Build tool (`npm run build`) | Frontend bundler | [npm](https://www.npmjs.com/package/vite) / [Source](https://github.com/vitejs/vite) | MIT |
-| **@vitejs/plugin-react** | `vite.config.js` | React fast-refresh + JSX support | [npm](https://www.npmjs.com/package/@vitejs/plugin-react) / [Source](https://github.com/vitejs/vite-plugin-react) | MIT |
-| **tailwindcss** | `tailwind.config.js` + all components | Utility-first CSS | [npm](https://www.npmjs.com/package/tailwindcss) / [Source](https://github.com/tailwindlabs/tailwindcss) | MIT |
-| **postcss** | `postcss.config.js` | CSS transform pipeline (Tailwind processor) | [npm](https://www.npmjs.com/package/postcss) / [Source](https://github.com/postcss/postcss) | MIT |
-| **autoprefixer** | `postcss.config.js` | Vendor-prefix automation | [npm](https://www.npmjs.com/package/autoprefixer) / [Source](https://github.com/postcss/autoprefixer) | MIT |
+| Dependency | Where used | Why it's used | License |
+| --- | --- | --- | --- |
+| [**react**](https://github.com/facebook/react) | `App/src/*.jsx` | UI framework | MIT |
+| [**react-dom**](https://github.com/facebook/react) | `App/src/main.jsx` | React renderer for browser DOM | MIT |
+| [**react-router-dom**](https://github.com/remix-run/react-router) | `App/src/App.jsx`, `App/src/pages/*` | Client-side routing | MIT |
+| [**lucide-react**](https://github.com/lucide-icons/lucide) | Icons across pages | Icon set | ISC |
+| [**react-markdown**](https://github.com/remarkjs/react-markdown) | MetricsExplained + MAS reply rendering | Markdown → React component | MIT |
+| [**vite**](https://github.com/vitejs/vite) | Build tool (`npm run build`) | Frontend bundler | MIT |
+| [**@vitejs/plugin-react**](https://github.com/vitejs/vite-plugin-react) | `vite.config.js` | React fast-refresh + JSX support | MIT |
+| [**tailwindcss**](https://github.com/tailwindlabs/tailwindcss) | `tailwind.config.js` + all components | Utility-first CSS | MIT |
+| [**postcss**](https://github.com/postcss/postcss) | `postcss.config.js` | CSS transform pipeline (Tailwind processor) | MIT |
+| [**autoprefixer**](https://github.com/postcss/autoprefixer) | `postcss.config.js` | Vendor-prefix automation | MIT |
+
+**Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.
 
 ### Backend (`App/databricks/requirements.txt`)
 
-| Dependency | Where used | Why it's used | Source / URL | License |
-| --- | --- | --- | --- | --- |
-| **flask** | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/uc-assets/`, `/api/clinician-summary`) | [PyPI](https://pypi.org/project/flask/) / [Source](https://github.com/pallets/flask) | BSD-3-Clause |
-| **requests** | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | [PyPI](https://pypi.org/project/requests/) / [Source](https://github.com/psf/requests) | Apache-2.0 |
+| Dependency | Where used | Why it's used | License |
+| --- | --- | --- | --- |
+| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/uc-assets/`, `/api/clinician-summary`) | BSD-3-Clause |
+| [**requests**](https://github.com/psf/requests) | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | Apache-2.0 |
+
+**Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.
 
 Python runtime is provided by the Databricks Apps platform — no local Python pin in `App/`. (Repo-root `scripts/` use Python 3.11 via `uv`; see [`DEPLOY.md`](../DEPLOY.md).)
 

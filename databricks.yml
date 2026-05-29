@@ -227,6 +227,11 @@ resources:
         - environment_key: default
           spec:
             client: "1"
+        # GPU environment for Serverless GPU tasks (client "4"/"5" required;
+        # client "1" is not GPU-compatible). Used by `datagen_modeling` task below.
+        - environment_key: gpu_default
+          spec:
+            client: "5"
       tasks:
         # ── Preflight: validate baseline_source + print run banner ─────────
         - task_key: validate_baseline_source
@@ -316,6 +321,20 @@ resources:
           max_retries: 0
           depends_on:
             - task_key: sanity_summary
+          # Serverless GPU compute — enables MLflow GPUMonitor (system/gpu_* metrics)
+          # + XGBoost CUDA training on a single A10. To revert to serverless CPU:
+          # comment out the 2-line `compute` block below.
+          # Alternative accelerator: GPU_8xH100 (Beta; 8x H100 distributed; needs
+          # workspace admin to enable "AI Runtime Beta Feature preview"). A10 is GA
+          # and sufficient for this workload (XGBoost on ~1000 pseudo-patients,
+          # RUN_OPTUNA_TUNING=false).
+          # NOTE: GPU_8xH100 would only meaningfully outperform GPU_1xA10 if
+          # RUN_OPTUNA_TUNING is flipped to "true" — the 4-way parallel Optuna
+          # block in 04_*.py (joblib Parallel n_jobs=4, "one per GPU")
+          # serializes on 1 GPU but can fan out across 4 of 8 H100s. See
+          # CHANGELOG for empirical GPU-vs-CPU timing comparison.
+          compute:
+            hardware_accelerator: GPU_1xA10
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/04_pseudo_data_forecast_modeling.py
             base_parameters:
@@ -323,7 +342,7 @@ resources:
               SCHEMA_NAME:  ${var.schema}
               ENV: dev
               RUN_OPTUNA_TUNING: "false"
-          environment_key: default
+          environment_key: gpu_default
 
         - task_key: incident_inference
           description: >

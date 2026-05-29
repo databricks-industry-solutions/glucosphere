@@ -4,11 +4,13 @@
 # Required for log_system_metrics=True in mlflow.start_run() and Optuna SQLite storage
 
 print("Installing dependencies...")
-print("   • psutil: CPU and memory metrics")
-print("   • nvidia-ml-py3: GPU metrics (g5.12xlarge with A10G GPUs)")
+print("   • psutil: CPU and memory metrics (required by MLflow log_system_metrics)")
+print("   • nvidia-ml-py: NVML bindings (provides `pynvml` import) — required by MLflow's")
+print("     GPUMonitor on GPU clusters (e.g. g5.12xlarge with A10G GPUs); silently skipped")
+print("     if absent. Supersedes deprecated nvidia-ml-py3.")
 print("   • alembic: Optuna SQLite storage support\n")
 
-%pip install psutil alembic pyyaml xgboost "optuna-integration[xgboost]" optuna scipy matplotlib seaborn scikit-learn "mlflow[databricks]" databricks-sdk --quiet
+%pip install psutil nvidia-ml-py alembic pyyaml xgboost "optuna-integration[xgboost]" optuna scipy matplotlib seaborn scikit-learn "mlflow[databricks]" databricks-sdk --quiet
 
 print("\n✓ Dependencies installed. Restarting Python...")
 
@@ -410,7 +412,7 @@ print(f"All physiological constraints satisfied!")
 # DBTITLE 1,Classify baseline patients into glucose strata
 # ------------------------
 # Classify baseline patients by glucose profile for stratified sampling
-# Goal: Match baseline distribution (ratios derived from source per stratum)
+# Goal: Match source patient-strata distribution (per-stratum patient classification — not reading time-in-range)
 # ------------------------
 
 print("Classifying baseline patients by glucose profile...")
@@ -490,7 +492,7 @@ print("segments:", seg.count())
 # of mode (synthetic / from_source / from_table). The `mixed` stratum is
 # classified but not sampled — see target computation below.
 
-print("Stratified sampling to match baseline distribution...")
+print("Stratified sampling to match source patient-strata distribution...")
 
 seg = spark.table(seg_tbl)
 patient_strata = spark.table(patient_strata_tbl)
@@ -612,7 +614,7 @@ plan.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(plan_
 
 actual_plan_size = plan.count()
 print(f"\nStratified sampling plan created: {actual_plan_size} pseudo patients")
-print("   Distribution will match baseline after generation")
+print("   Patient-strata distribution will match source after generation (reading time-in-range is verified separately below)")
 
 # Assert plan size matches NUM_PSEUDO. The cycling sampler above produces
 # exact counts per stratum, so this holds by construction. Guards against
@@ -691,7 +693,7 @@ print("Saved:", baseline_val_tbl)
 # - Apply ONLY time shift (±2h) for diversity
 # - Optional: tiny Gaussian noise (σ=2 mg/dL) for variation
 # - NO gain scaling, NO coupling, NO offset
-# - Preserves baseline distribution exactly
+# - Preserves baseline reading distribution (time-in-range) via stratified sampling
 # ------------------------
 
 def _circular_shift_df(pdf: pd.DataFrame, k_steps: int) -> pd.DataFrame:
@@ -828,7 +830,7 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 # MAGIC * Stratification target: derived from source distribution
 # MAGIC   — HUPA-UCM source → ~6.4/71.7/21.8%; synthetic source → its own ratios
 # MAGIC
-# MAGIC **Goal:** Preserve baseline distribution while creating diverse pseudo patients
+# MAGIC **Goal:** Preserve baseline reading distribution (time-in-range) while creating diverse pseudo patients
 
 # COMMAND ----------
 
@@ -837,7 +839,7 @@ print("Simplified pseudo generation: time shift + tiny noise only")
 
 print("Generating pseudo_clean_7d with stratified sampling...")
 print(f"  - {NUM_PSEUDO} pseudo patients")
-print(f"  - Stratified to match baseline (source-derived ratios): {src_hypo_ratio*100:.1f}% hypo, {(1-src_hypo_ratio-src_hyper_ratio)*100:.1f}% normal, {src_hyper_ratio*100:.1f}% hyper")
+print(f"  - Stratified to source patient strata: {src_hypo_ratio*100:.1f}% hypo-prone, {(1-src_hypo_ratio-src_hyper_ratio)*100:.1f}% normal-stable, {src_hyper_ratio*100:.1f}% hyper-prone patients (NOT reading time-in-range — see verification block below for that)")
 print(f"  - Transformations: Time shift ±{cfg.shift_jitter_min/60:.1f}h + noise (σ=2 mg/dL)")
 print(f"  - NO gain scaling, NO coupling, NO offset")
 print("\nThis will take a few minutes...\n")
@@ -877,14 +879,30 @@ hypo_pct = glucose_dist['hypo_points'] / glucose_dist['total_points'] * 100
 normal_pct = glucose_dist['normal_points'] / glucose_dist['total_points'] * 100
 hyper_pct = glucose_dist['hyper_points'] / glucose_dist['total_points'] * 100
 
-# Source-derived expected ratios — each baseline mode's pseudo cohort is checked
-# against the source's own stratum distribution (see the source-adaptive
-# sampler comment block above for the full rationale). Tolerance bands: 2%
-# absolute for hypo/hyper, 5% for normal — chosen to allow AR(1) + meal-spike
-# + sampling variance while still catching gross drift.
-exp_hypo_pct   = src_hypo_ratio * 100
-exp_hyper_pct  = src_hyper_ratio * 100
-exp_normal_pct = (1 - src_hypo_ratio - src_hyper_ratio) * 100
+# Source SAMPLED-SEGMENTS fleet-wide time-in-range — strict apples-to-apples
+# with the pseudo time-in-range above. `baseline_val_tbl` is built from the
+# EXACT source slices the sampler picked (see "Build baseline validation
+# dataset" cell above — same segments, same patients), so this captures both
+# the dynamic source-table state AND the sampler's stratum-weighted segment
+# selection per run. Recomputed every notebook execution — no stale snapshot.
+#
+# IMPORTANT: this is distinct from the patient-level stratum ratios
+# (`src_hypo_ratio` etc.) used in the sampler. The sampler classifies patients
+# (>15% time in hypo → hypo_prone) — that's a per-patient categorical label.
+# Comparing per-patient classification % against per-reading time-in-range %
+# is apples-to-oranges and produced spurious FAIL warnings prior to this fix.
+#
+# Tolerance bands: 2% absolute for hypo/hyper, 5% for normal — chosen to
+# allow AR(1) + meal-spike + sampling variance while still catching gross drift.
+src_reading_dist = spark.table(baseline_val_tbl).agg(
+    F.count("*").alias("total"),
+    F.sum((F.col("glucose") < 70).cast("int")).alias("hypo"),
+    F.sum(((F.col("glucose") >= 70) & (F.col("glucose") <= 180)).cast("int")).alias("normal"),
+    F.sum((F.col("glucose") > 180).cast("int")).alias("hyper"),
+).collect()[0]
+exp_hypo_pct   = src_reading_dist['hypo']   / src_reading_dist['total'] * 100
+exp_normal_pct = src_reading_dist['normal'] / src_reading_dist['total'] * 100
+exp_hyper_pct  = src_reading_dist['hyper']  / src_reading_dist['total'] * 100
 print(f"\n                    Pseudo      Source-Target   Match")
 print("-" * 80)
 print(f"Hypo (<70):         {hypo_pct:5.1f}%      {exp_hypo_pct:5.1f}%          {'PASS' if abs(hypo_pct - exp_hypo_pct) < 3 else 'FAIL'}")
@@ -1577,6 +1595,14 @@ else:
 
     # Try parallel execution first (works on classic GPU compute)
     try:
+        # NOTE: This block scaffolds 4-way parallel Optuna trials, one per GPU.
+        # Gated off by default (RUN_OPTUNA_TUNING="false" in databricks.yml).
+        # Single-GPU compute (current default: GPU_1xA10) cannot run 4 trials
+        # in parallel — they'd serialize on the 1 GPU. To unlock real 4-way
+        # parallelism, switch the task to GPU_8xH100 (Beta; 8 H100s single-node)
+        # AND set RUN_OPTUNA_TUNING="true". A10 is GA and sufficient for the
+        # default non-Optuna training path — see CHANGELOG for empirical
+        # GPU-vs-CPU timing comparison.
         from joblib import Parallel, delayed
         print(f"\nAttempting parallel execution (4 GPUs)...")
         
