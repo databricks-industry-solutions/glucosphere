@@ -117,6 +117,8 @@ Shows how the incident shifts glucose distribution (density + range breakdown + 
 
 ### Dependencies used and their corresponding license information
 
+**Python runtime:** notebooks run on Databricks Runtime (`spark_version` per the pipeline / job definition in `databricks.yml`) — the DBR provides the Python interpreter. Repo-root `scripts/` (e.g. `render_app_yaml.py`, `smoke_test.py`) run locally on Python 3.11 via `uv` (per `pyproject.toml requires-python>=3.10` + `.python-version`).
+
 | Dependency | Where used | Why it’s used | Source / URL | License |
 | --- | --- | --- | --- | --- |
 | **pyspark** | `01_*`, `02_*`, `03_*`, `04_*`, `05_*`, `06_*`, `utils/*` | Spark reads/writes, windowing, UC Delta tables | [PyPI](https://pypi.org/project/pyspark/) / [Source](https://github.com/apache/spark) | Apache-2.0 |

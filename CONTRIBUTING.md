@@ -43,6 +43,16 @@ The committed `databricks.yml` includes target stanzas pointed at maintainer wor
 - **Commits**: Conventional-Commits-ish — `feat(scope): ...`, `fix(scope): ...`, `docs: ...`, `chore: ...`, `refactor: ...`, `test: ...`. Subject lines ≤72 chars; body explains WHY when the change isn't self-evident.
 - **Co-author trailer**: add `Co-authored-by: <Name> <email>` if pair-programmed or AI-assisted.
 
+## Keeping dependency tables current
+
+Component READMEs (`App/README.md`, `Data_DataGen_ModelForecast/README.md`) carry a **"Dependencies used and their corresponding license information"** table — one row per direct dependency with: name, where it's used, why, source URL, and license. When you add, remove, or upgrade a direct dependency (anything in `package.json`, `requirements.txt`, or a notebook-level `%pip install`), update the table in the same PR:
+
+- **Verify the license** from an authoritative source: `node_modules/<pkg>/package.json` `license` field for frontend; PyPI `info.license` / `info.license_expression` or `dist-info/METADATA` `License:` for backend; the upstream repo's `LICENSE` / `pyproject.toml` for edge cases.
+- **Keep the "Where used" specific** — file paths, not vague subsystems. Future grepability matters when assessing impact.
+- **Drop rows for removed dependencies** — leftover rows for uninstalled packages are stale by definition.
+
+If a dependency is platform-provided (e.g. Databricks Runtime ships pyspark, the App platform provides the Python interpreter) rather than declared in a manifest, surface that in prose near the table rather than padding the table with non-declared items.
+
 ## Updating the CHANGELOG
 
 We follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format,

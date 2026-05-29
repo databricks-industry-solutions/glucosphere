@@ -124,27 +124,46 @@ Key columns:
 
 Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
-## Configuration Files
+## Configuration
 
-- **config/databricks_config_buildathon.json**: Buildathon workspace config
-- **config/databricks_config_field-eng.json**: Field Engineering workspace config
-- **databricks/app.yaml**: Databricks App deployment config
+- **`databricks/app.yaml`** — Databricks App deployment config (env vars + resource bindings; regenerated per-target via `scripts/render_app_yaml.py`).
 
-## Documentation
+## Dependencies used and their corresponding license information
 
-See `docs/` folder for detailed documentation:
-- Deployment guides
-- Agent integration
-- Data migration notes
-- Troubleshooting
+### Frontend (`package.json`)
 
-## Tech Stack
+| Dependency | Where used | Why it's used | Source / URL | License |
+| --- | --- | --- | --- | --- |
+| **react** | `App/src/*.jsx` | UI framework | [npm](https://www.npmjs.com/package/react) / [Source](https://github.com/facebook/react) | MIT |
+| **react-dom** | `App/src/main.jsx` | React renderer for browser DOM | [npm](https://www.npmjs.com/package/react-dom) / [Source](https://github.com/facebook/react) | MIT |
+| **react-router-dom** | `App/src/App.jsx`, `App/src/pages/*` | Client-side routing | [npm](https://www.npmjs.com/package/react-router-dom) / [Source](https://github.com/remix-run/react-router) | MIT |
+| **lucide-react** | Icons across pages | Icon set | [npm](https://www.npmjs.com/package/lucide-react) / [Source](https://github.com/lucide-icons/lucide) | ISC |
+| **react-markdown** | MetricsExplained + MAS reply rendering | Markdown → React component | [npm](https://www.npmjs.com/package/react-markdown) / [Source](https://github.com/remarkjs/react-markdown) | MIT |
+| **vite** | Build tool (`npm run build`) | Frontend bundler | [npm](https://www.npmjs.com/package/vite) / [Source](https://github.com/vitejs/vite) | MIT |
+| **@vitejs/plugin-react** | `vite.config.js` | React fast-refresh + JSX support | [npm](https://www.npmjs.com/package/@vitejs/plugin-react) / [Source](https://github.com/vitejs/vite-plugin-react) | MIT |
+| **tailwindcss** | `tailwind.config.js` + all components | Utility-first CSS | [npm](https://www.npmjs.com/package/tailwindcss) / [Source](https://github.com/tailwindlabs/tailwindcss) | MIT |
+| **postcss** | `postcss.config.js` | CSS transform pipeline (Tailwind processor) | [npm](https://www.npmjs.com/package/postcss) / [Source](https://github.com/postcss/postcss) | MIT |
+| **autoprefixer** | `postcss.config.js` | Vendor-prefix automation | [npm](https://www.npmjs.com/package/autoprefixer) / [Source](https://github.com/postcss/autoprefixer) | MIT |
 
-- **Frontend**: React 18, Vite, Tailwind CSS, Lucide Icons
-- **Backend**: Flask, Requests
-- **APIs**: Databricks SQL MCP Server, Multi-Agent Supervisor
-- **Deployment**: Databricks Apps Platform
+### Backend (`App/databricks/requirements.txt`)
 
-## Support
+| Dependency | Where used | Why it's used | Source / URL | License |
+| --- | --- | --- | --- | --- |
+| **flask** | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/uc-assets/`, `/api/clinician-summary`) | [PyPI](https://pypi.org/project/flask/) / [Source](https://github.com/pallets/flask) | BSD-3-Clause |
+| **requests** | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | [PyPI](https://pypi.org/project/requests/) / [Source](https://github.com/psf/requests) | Apache-2.0 |
 
-For issues or questions, contact the HLS Glucosphere team.
+Python runtime is provided by the Databricks Apps platform — no local Python pin in `App/`. (Repo-root `scripts/` use Python 3.11 via `uv`; see [`DEPLOY.md`](../DEPLOY.md).)
+
+### Platform services (consumed at runtime, not bundled deps)
+
+| Service | Where used | Why it's used |
+| --- | --- | --- |
+| **Databricks Statement Execution API** | `App/databricks/app.py` `/api/sql/query` | Routes SQL queries to the bundle-managed serverless warehouse |
+| **Multi-Agent Supervisor (MAS) serving endpoint** | `App/databricks/app.py` `/api/clinician-summary` | Clinical reasoning queries |
+| **Knowledge Assistant (KA) serving endpoint** | Routed through MAS | RAG over WHO clinical-guidelines PDF |
+| **Genie space** | Routed through MAS | NL-to-SQL over gold device tables |
+| **Databricks Apps Platform** | Deployment target | Hosts Flask + React static build |
+
+## License + support
+
+This project is provided AS-IS under the included [`LICENSE.md`](../LICENSE.md) at the repo root, with no warranty or support obligation. For bug reports or feature suggestions, file a [GitHub Issue](https://github.com/databricks-industry-solutions/glucosphere/issues) on the repo.

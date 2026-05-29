@@ -128,6 +128,31 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
   `mmt_aws_usw2` now labeled as the maintainer's deploy target with
   explicit external-deployer note pointing at
   `databricks.yml.example` for adding their own target stanza.
+- **`App/README.md` cleanup**: stripped stale "Configuration Files"
+  subsection (referenced non-existent `App/config/databricks_config_*.json`
+  files); stripped stale "Documentation" subsection (referenced
+  non-existent `App/docs/` folder with deployment guides /
+  agent-integration / migration-notes / troubleshooting); replaced "Tech
+  Stack" 4-line bullet block with a full **Dependencies used and their
+  corresponding license information** table (matches the
+  `Data_DataGen_ModelForecast/README.md` pattern) — frontend deps
+  verified against local `node_modules/<pkg>/package.json` `license`
+  fields; backend deps verified via local `dist-info/METADATA` (requests
+  Apache-2.0) + upstream `pyproject.toml` (Flask BSD-3-Clause). Replaced
+  the "For issues or questions, contact the HLS Glucosphere team"
+  Support line with an AS-IS / no-warranty framing matching the
+  repo-root `LICENSE.md`, pointing at GitHub Issues as the
+  bug/feature-suggestion channel.
+- **`Data_DataGen_ModelForecast/README.md`**: added a Python-runtime
+  prose paragraph above the dependencies table — clarifies that
+  notebooks run on Databricks Runtime's Python (`spark_version` set in
+  `databricks.yml`) and only repo-root `scripts/` use the local Python
+  3.11 (per `.python-version`).
+- **`CONTRIBUTING.md`**: new "Keeping dependency tables current" section
+  between "Branch + commit conventions" and "Updating the CHANGELOG".
+  Documents the verify-license-then-update-table workflow + when to use
+  prose-near-the-table for platform-provided deps (vs padding the table
+  with non-declared items).
 
 ### Added
 
