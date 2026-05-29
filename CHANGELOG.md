@@ -178,6 +178,15 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
     sibling), `App/README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
   - **Plugins + Contributors** sections kept verbatim — they're
     orientation-level content that belongs in the repo-root README.
+- **`Data_DataGen_ModelForecast/README.md` "Figures (assets)" section
+  moved** to the new sibling
+  [`README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md#figures-assets).
+  All 6 figures (baseline-vs-pseudo distribution, 15m/30m forecast
+  accuracy, incident impact summary, fleet-wide MAE-breakdown,
+  true-vs-observed glucose, 4-class distribution shift) are about
+  data fidelity + model performance + distribution analysis, so
+  they belong next to that content. The original location keeps a
+  3-line pointer to the sibling section anchor.
 - **`CONTRIBUTING.md`**: new "Keeping dependency tables current" section
   between "Branch + commit conventions" and "Updating the CHANGELOG".
   Documents the verify-license-then-update-table workflow + when to use
