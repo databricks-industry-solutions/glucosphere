@@ -23,7 +23,7 @@ This repo contains two main parts that work together:
 
 The App's natural-language query experience is powered by three native Databricks Agent Bricks endpoints — **Genie** (NL→SQL over gold CGM tables), **Knowledge Assistant** (RAG over WHO clinical guidelines PDF), and a **Multi-Agent Supervisor (MAS)** that routes between them. Full routing detail + examples in [`App/README.md`](App/README.md).
 
-## Data fidelity & baseline modes
+## Data fidelity & forecast model performance
 
 Three baseline source modes selectable at deploy time via `baseline_source`: **`from_source`** (real HUPA-UCM CGM, default), **`synthetic`** (in-cluster generator, for CI / restricted-egress), **`from_table`** (CTAS from an existing UC table). Real-mode pairs real CGM signal dynamics with synthetic patient identities — pseudo-patients with real clinical waveforms.
 

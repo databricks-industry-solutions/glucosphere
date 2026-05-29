@@ -71,15 +71,15 @@ Standalone job (NOT in `glucosphere_full_setup`): `glucosphere_distribution_comp
 
 ## Figures (assets)
 
-Notebooks `04_*` (forecast modeling), `05_*` (bidirectional incident inference), and `06_*` (single-incident inference reference sibling) generate the figures saved under [`assets/`](assets/). Full set + descriptions of each — pseudo-patient vs baseline distribution, 15m/30m forecast accuracy, incident impact summary, fleet-wide-dilution MAE breakdown, true-vs-observed glucose during incident, 4-class distribution shift — lives in the sibling [`README_data_fidelity_baseline.md`](README_data_fidelity_baseline.md#figures-assets).
+Notebooks `04_*` (forecast modeling), `05_*` (bidirectional incident inference), and `06_*` (single-incident inference reference sibling) generate the figures saved under [`assets/`](assets/). Full set + descriptions of each — pseudo-patient vs baseline distribution, 15m/30m forecast accuracy, incident impact summary, fleet-wide-dilution MAE breakdown, true-vs-observed glucose during incident, 4-class distribution shift — lives in the sibling [`README_data_fidelity_baseline.md`](README_data_fidelity_baseline.md#forecast-model-performance).
 
 <p align="center">
-  <a href="README_data_fidelity_baseline.md#figures-assets">
+  <a href="README_data_fidelity_baseline.md#forecast-model-performance">
     <img src="assets/incident_impact_2panel.png" alt="Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline showing Day 2 over-read cohort and Day 5 under-read cohort" width="700">
   </a>
 </p>
 
-<p align="center"><em>Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline (Day 2 over-read cohort, Day 5 under-read cohort).<br>Click through to <a href="README_data_fidelity_baseline.md#figures-assets">the full set + descriptions</a>.</em></p>
+<p align="center"><em>Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline (Day 2 over-read cohort, Day 5 under-read cohort).<br>Click through to <a href="README_data_fidelity_baseline.md#forecast-model-performance">the full set + descriptions</a>.</em></p>
 
 ---
 

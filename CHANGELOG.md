@@ -260,7 +260,7 @@ pass + legal/CI scaffold from `origin/main`. 34 commits on
     orientation-level content that belongs in the repo-root README.
 - **`Data_DataGen_ModelForecast/README.md` "Figures (assets)" section
   moved** to the new sibling
-  [`README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md#figures-assets).
+  [`README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
   All 6 figures (baseline-vs-pseudo distribution, 15m/30m forecast
   accuracy, incident impact summary, fleet-wide MAE-breakdown,
   true-vs-observed glucose, 4-class distribution shift) are about
