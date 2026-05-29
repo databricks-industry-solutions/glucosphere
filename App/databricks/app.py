@@ -500,16 +500,22 @@ def get_config():
     queried from the data layer (not env), so prose on the Metrics Explained page
     accurately reflects what was last ingested by the pipeline."""
     provenance = _get_baseline_provenance()
+    # workspace_host lets the React UI build runtime links into the deploying
+    # workspace (e.g. the Jobs UI from MetricsExplained) without hardcoding a
+    # specific tenant in JSX or the committed static bundle. The Databricks
+    # Apps runtime may inject DATABRICKS_HOST without the `https://` scheme
+    # (verified empirically 2026-05-29 — link rendered as a relative path
+    # off the App host), so normalize defensively.
+    raw_host = os.getenv('DATABRICKS_HOST', '')
+    if raw_host and not raw_host.startswith(('http://', 'https://')):
+        raw_host = f'https://{raw_host}'
     return jsonify({
         'catalog': CATALOG_NAME,
         'schema': SCHEMA_NAME,
         'genie_space_id': GENIE_SPACE_ID,
         'baseline_source': provenance['baseline_source'],
         'baseline_source_detail': provenance['source_detail'],
-        # workspace_host lets the React UI build runtime links into the
-        # deploying workspace (e.g. the Jobs UI from MetricsExplained) without
-        # hardcoding a specific tenant in JSX or the committed static bundle.
-        'workspace_host': os.getenv('DATABRICKS_HOST', ''),
+        'workspace_host': raw_host,
     })
 
 @app.route('/health')
