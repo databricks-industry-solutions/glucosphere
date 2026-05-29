@@ -35,14 +35,18 @@ The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-33
 flowchart LR
     U[User asks question<br/>via App chat UI]
     M[MAS endpoint<br/>'GlucoScope' supervisor]
+    R1[SQL / data questions:<br/>patient glucose, device incidents,<br/>fleet stats, trends]
+    R2[Clinical guideline questions:<br/>WHO diagnostic criteria,<br/>diabetes classification]
     G[Genie space<br/>NL → SQL]
     K[Knowledge Assistant<br/>RAG over WHO PDF]
     DB[(gold_patient_device_readings<br/>structured CGM data)]
     PDF[(WHO diabetes PDF<br/>clinical guidelines)]
 
     U --> M
-    M -- "SQL / data questions:<br/>patient glucose, device incidents,<br/>fleet stats, trends" --> G
-    M -- "Clinical guideline questions:<br/>WHO diagnostic criteria,<br/>diabetes classification" --> K
+    M --> R1
+    M --> R2
+    R1 --> G
+    R2 --> K
     G --> DB
     K --> PDF
 ```
