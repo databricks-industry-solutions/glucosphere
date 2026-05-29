@@ -9,7 +9,7 @@ This guide walks through deploying the full Glucosphere stack — data pipelines
 The full first-deploy sequence (operator-driven; each box is a single CLI command run locally). Total wall clock ~51 min on a fresh workspace; subsequent redeploys reuse KA/MAS/Genie + model endpoints and run ~48 min. Steps 3 + 4 (MAS / Genie pre-create) are **optional** — the Step 7 setup job creates them if absent.
 
 ```mermaid
-flowchart LR
+flowchart TD
     classDef cmd fill:#fff,stroke:#333,stroke-width:1px,color:#000
     classDef wait fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
     classDef gate fill:#e6f7e6,stroke:#2d7a2d,stroke-width:1px,color:#000
@@ -62,32 +62,32 @@ in `databricks.yml` dispatches to the right ingest notebook. Both branches
 converge on `diabetes_data` and the downstream modeling spine is shared.
 
 ```mermaid
-flowchart LR
+flowchart TD
     classDef nb fill:#fff,stroke:#333,stroke-width:1px,color:#000
     classDef branch fill:#f5f5f5,stroke:#666,stroke-width:1px,color:#000
     classDef data fill:#fafafa,stroke:#888,stroke-width:1px,color:#333
     classDef endpoint fill:#fff,stroke:#2d7a2d,stroke-width:1px,color:#000
     classDef app fill:#fff7e6,stroke:#d4a017,stroke-width:1px,color:#000
 
-    V{{dispatch}}:::branch
-    NB01[01_synthetic_baseline]:::nb
-    NB02[02_ingest_real_baseline]:::nb
-    T1[(baseline tables)]:::data
-    S[sanity_summary]:::nb
-    NB04[04_pseudo_data_forecast_modeling]:::nb
-    NB05[05_incident_inference_bidirectional]:::nb
-    NB07[07_deploy_serving_endpoints]:::nb
-    EP1[/Serving Endpoints/]:::endpoint
-    UTILS[utils/additional_patient_info/]:::nb
-    VOL[(pipeline_data UC Volume)]:::data
-    DLT[DLT Pipeline]:::nb
-    GOLD[(silver / gold tables)]:::data
-    NB08[08_genie_ka_mas]:::nb
-    GENIE[/Genie space/]:::endpoint
-    KA[/KA endpoint/]:::endpoint
-    MAS[/MAS endpoint/]:::endpoint
+    V{{condition_task on<br/>baseline_source}}:::branch
+    NB01["01_synthetic_baseline.py<br/><i>textbook phenotypes + AR(1)</i>"]:::nb
+    NB02[02_ingest_real_baseline.py<br/><i>HUPA-UCM download OR existing UC table</i>]:::nb
+    T1[(diabetes_data<br/>baseline_timeseries<br/>baseline_windows_metadata)]:::data
+    S[sanity_summary<br/><i>asserts non-empty + plausible</i>]:::nb
+    NB04[04_pseudo_data_forecast_modeling.py<br/><i>writes pseudo_clean_7d, pseudo_incident_*<br/>+ UC Models cgm_xgb_15m / cgm_xgb_30m</i>]:::nb
+    NB05[05_incident_inference_bidirectional.py<br/><i>writes pseudo_incident_7d_labeled, fleet_forecast_incident;<br/>SingleIncident sibling kept as reference</i>]:::nb
+    NB07[07_deploy_serving_endpoints.py]:::nb
+    EP1[/Serving Endpoints<br/>15m + 30m forecast/]:::endpoint
+    UTILS[utils/additional_patient_info/<br/>notebooks]:::nb
+    VOL[(UC Volume pipeline_data/<br/>raw_patient_registry/<br/>raw_device_telemetry_stream/)]:::data
+    DLT[DLT Pipeline<br/><i>transformations.sql</i>]:::nb
+    GOLD[(LIVE silver_*<br/>LIVE gold_patient_device_readings)]:::data
+    NB08[08_genie_ka_mas.py]:::nb
+    GENIE[/Genie space<br/><i>over gold_patient_device_readings</i>/]:::endpoint
+    KA[/KA endpoint<br/><i>RAG over WHO_NCD_NCS_99.2.pdf<br/>copied to UC Volume pipeline_data/who_docs/</i>/]:::endpoint
+    MAS[/MAS endpoint<br/><i>routes clinical → KA,<br/>structured → Genie</i>/]:::endpoint
     APP{{Databricks App}}:::app
-    NB09[09_grant_app_permissions]:::nb
+    NB09[09_grant_app_permissions.py<br/><i>App SP grants on UC + endpoints + warehouse + Genie + KA</i>]:::nb
 
     V -- synthetic --> NB01
     V -- "from_source / from_table" --> NB02
@@ -96,7 +96,7 @@ flowchart LR
     T1 --> S --> NB04 --> NB05
     NB04 --> NB07 --> EP1
     UTILS --> VOL --> DLT --> GOLD
-    GOLD -- App SQL --> APP
+    GOLD -- App SQL queries --> APP
     NB08 --> GENIE
     NB08 --> KA
     NB08 --> MAS
@@ -105,25 +105,6 @@ flowchart LR
     KA -.routed-by.-> MAS
     NB09 -.SP grants.-> APP
 ```
-
-| Node | File / resource | Role |
-|---|---|---|
-| `dispatch` | `condition_task` on `baseline_source` | branches `synthetic` vs `from_source / from_table` |
-| `01_synthetic_baseline` | `Data_DataGen_ModelForecast/01_synthetic_baseline.py` | textbook phenotypes + AR(1) generator |
-| `02_ingest_real_baseline` | `Data_DataGen_ModelForecast/02_ingest_real_baseline.py` | HUPA-UCM download OR existing UC table |
-| `baseline tables` | `diabetes_data`, `baseline_timeseries`, `baseline_windows_metadata` | shared schema; both branches converge here |
-| `sanity_summary` | `Data_DataGen_ModelForecast/utils/sanity_summary.py` | asserts `diabetes_data` non-empty + plausible |
-| `04_pseudo_data_forecast_modeling` | `04_pseudo_data_forecast_modeling.py` | writes `pseudo_clean_7d`, `pseudo_incident_*`; UC Models `cgm_xgb_15m` / `cgm_xgb_30m` |
-| `05_incident_inference_bidirectional` | `05_incident_inference_bidirectional.py` | writes `pseudo_incident_7d_labeled`, `fleet_forecast_incident` (SingleIncident sibling kept as reference) |
-| `07_deploy_serving_endpoints` | `07_deploy_serving_endpoints.py` | promotes UC Models → Serving Endpoints (15m + 30m forecast) |
-| `utils/additional_patient_info/` | 3 raw-data setup notebooks | patient-registry, raw device data, patient-device link |
-| `pipeline_data UC Volume` | `pipeline_data/raw_patient_registry/`, `pipeline_data/raw_device_telemetry_stream/` | landing zone for DLT |
-| `DLT Pipeline` | `utils/additional_patient_info/transformations.sql` (SDP) | bronze → silver → gold |
-| `silver / gold tables` | `silver_*` + `gold_patient_device_readings` | App SQL queries land here |
-| `08_genie_ka_mas` | `08_genie_ka_mas.py` | provisions Genie + KA + MAS; KA RAG over `WHO_NCD_NCS_99.2.pdf` (copied to `pipeline_data/who_docs/`) |
-| `MAS endpoint` | Multi-Agent Supervisor serving endpoint | routes clinical-guidance Qs → KA, structured-data Qs → Genie |
-| `Databricks App` | `App/databricks/app.py` (Flask + React) | consumes gold + `/api/genie/query` + `/api/agent/query` |
-| `09_grant_app_permissions` | `09_grant_app_permissions.py` | App SP grants on UC + endpoints + warehouse + Genie + KA |
 
 ---
 
@@ -245,25 +226,25 @@ This runs the end-to-end pipeline below.
 ### Job DAG
 
 ```mermaid
-flowchart LR
+flowchart TD
     classDef plain fill:#fff,stroke:#333,stroke-width:1px,color:#000
 
-    A[validate_baseline_source]
-    B[check_pre_baseline_grants]
-    C{dispatch_baseline_source}
-    D1[generate_synthetic_baseline]
-    D2[ingest_real_baseline]
-    E[sanity_summary]
-    F[datagen_modeling]
-    G1[incident_inference]
-    G2[deploy_model_endpoints]
-    H[generate_patient_device_data]
+    A[validate_baseline_source<br/><i>enum check + run banner</i>]
+    B[check_pre_baseline_grants<br/><i>verify catalog/schema/table/volume/function perms</i>]
+    C{dispatch_baseline_source<br/><i>condition_task on baseline_source</i>}
+    D1["generate_synthetic_baseline<br/><i>01_synthetic_baseline.py;<br/>textbook + AR(1); writes 3 tables</i>"]
+    D2[ingest_real_baseline<br/><i>02_ingest_real_baseline.py;<br/>HUPA-UCM OR UC table; writes same 3 tables</i>]
+    E[sanity_summary<br/><i>run_if AT_LEAST_ONE_SUCCESS;<br/>asserts diabetes_data non-empty + plausible</i>]
+    F[datagen_modeling<br/><i>04_*: pseudo CGM data + XGBoost training</i>]
+    G1[incident_inference<br/><i>05_*: device calibration bug simulation + inference</i>]
+    G2[deploy_model_endpoints<br/><i>07_*: serving endpoints</i>]
+    H[generate_patient_device_data<br/><i>utils/additional_patient_info/</i>]
     I1[create_patient_registry]
     I2[create_device_telemetry]
-    J[run_dlt_pipeline]
-    K[create_genie_ka_mas]
-    L[check_post_endpoint_grants]
-    M[grant_app_permissions]
+    J[run_dlt_pipeline<br/><i>silver/gold from pipeline_data</i>]
+    K[create_genie_ka_mas<br/><i>08_*: KA + Genie + MAS endpoints</i>]
+    L[check_post_endpoint_grants<br/><i>verify KA/MAS/Genie exist before grant</i>]
+    M[grant_app_permissions<br/><i>09_*: app SP access on UC + endpoints + warehouse</i>]
 
     A --> B --> C
     C -- "synthetic" --> D1
@@ -283,26 +264,6 @@ flowchart LR
 
     class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
 ```
-
-Per-task detail (in DAG order):
-
-| Task | Notebook / source | What it does |
-|---|---|---|
-| `validate_baseline_source` | `utils/validate_baseline_source.py` | enum check on `baseline_source`; prints run banner |
-| `check_pre_baseline_grants` | `utils/check_pre_baseline_grants.py` | verifies catalog / schema / table / volume / function perms |
-| `dispatch_baseline_source` | condition_task on `baseline_source` | branches `synthetic` vs `from_source / from_table` |
-| `generate_synthetic_baseline` | `01_synthetic_baseline.py` | textbook phenotypes + AR(1); writes the 3 baseline tables |
-| `ingest_real_baseline` | `02_ingest_real_baseline.py` | HUPA-UCM download OR existing UC table; writes same 3 tables |
-| `sanity_summary` | `utils/sanity_summary.py` | `run_if AT_LEAST_ONE_SUCCESS`; asserts `diabetes_data` non-empty + plausible |
-| `datagen_modeling` | `04_pseudo_data_forecast_modeling.py` | pseudo CGM data + XGBoost training (15m / 30m horizons) |
-| `incident_inference` | `05_incident_inference_bidirectional.py` | device calibration-bug simulation + inference |
-| `deploy_model_endpoints` | `07_deploy_serving_endpoints.py` | promotes UC Models to serving endpoints |
-| `generate_patient_device_data` | `utils/additional_patient_info/` | raw patient-registry + device-telemetry generators |
-| `create_patient_registry` / `create_device_telemetry` | same dir, two notebooks | write raw inputs into `pipeline_data/` UC Volume |
-| `run_dlt_pipeline` | `transformations.sql` | silver / gold from `pipeline_data` |
-| `create_genie_ka_mas` | `08_genie_ka_mas.py` | provisions KA + Genie + MAS endpoints |
-| `check_post_endpoint_grants` | `utils/check_post_endpoint_grants.py` | verifies KA / MAS / Genie exist before granting |
-| `grant_app_permissions` | `09_grant_app_permissions.py` | App SP access on UC + endpoints + warehouse |
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
 operator typos and silent baseline-write failures before they cost ~45 min
