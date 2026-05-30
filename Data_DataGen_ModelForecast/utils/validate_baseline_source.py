@@ -136,8 +136,22 @@ spark.sql(f"""
         last_run_at     TIMESTAMP
     )
 """)
-spark.sql(f"""
+# Identifiers (catalog/schema/table) interpolated via f-string because SQL
+# parameter binding is for value literals only — both CATALOG_NAME and
+# SCHEMA_NAME come from bundle-controlled widgets (databricks.yml
+# base_parameters), so no untrusted-string interpolation here.
+# Value literals (baseline_source, source_detail) bound via :name parameters
+# — source_detail in from_table mode contains the operator-supplied
+# SOURCE_TABLE widget value, so parameterized binding sets the right
+# precedent for customers adapting the demo.
+spark.sql(
+    f"""
     INSERT OVERWRITE {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance VALUES
-        ('{BASELINE_SOURCE}', '{source_detail}', current_timestamp())
-""")
+        (:baseline_source, :source_detail, current_timestamp())
+    """,
+    args={
+        "baseline_source": BASELINE_SOURCE,
+        "source_detail":   source_detail,
+    },
+)
 print(f"[PROVENANCE] Wrote baseline_provenance row: baseline_source={BASELINE_SOURCE!r}, source_detail={source_detail!r}")
