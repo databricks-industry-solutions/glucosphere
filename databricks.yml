@@ -58,6 +58,16 @@ variables:
       in the task definition for CPU fallback. `GPU_8xH100` is Beta and
       only meaningfully outperforms A10 with RUN_OPTUNA_TUNING=true.
     default: GPU_1xA10
+  harness_suffix:
+    description: |
+      Suffix appended to workspace-global resource names (KA/MAS tile,
+      Genie space title, forecast serving endpoints) to isolate harness
+      deploys from the live deploy. Default `""` for live; the
+      HARNESS_TYPE conditional in `.env.bundle` sets it to `_synth_e2e` /
+      `_from_table_e2e` / `_from_source_e2e` for the corresponding harness
+      targets. Interpolated in `base_parameters` of the tasks that pass
+      KA_NAME/MAS_NAME/GENIE_NAME/ENDPOINT_15M/ENDPOINT_30M downstream.
+    default: ""
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
@@ -416,8 +426,12 @@ resources:
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/07_deploy_serving_endpoints.py
             base_parameters:
-              CATALOG_NAME: ${var.catalog}
-              SCHEMA_NAME:  ${var.schema}
+              CATALOG_NAME:   ${var.catalog}
+              SCHEMA_NAME:    ${var.schema}
+              # Workspace-global endpoint names — harness_suffix isolates
+              # harness deploys from the live forecast endpoints.
+              ENDPOINT_15M:   "Glucosphere_Forecast_15min${var.harness_suffix}"
+              ENDPOINT_30M:   "Glucosphere_Forecast_30min${var.harness_suffix}"
           environment_key: default
 
         # ── Landing Zone Population ────────────────────────────────────────
@@ -483,9 +497,9 @@ resources:
             base_parameters:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
-              KA_NAME:           "Glucosphere-Knowledge-Assistant"
-              GENIE_NAME:        "Glucosphere CGM Intelligence"
-              MAS_NAME:          "Glucosphere-Supervisor"
+              KA_NAME:           "Glucosphere_KA${var.harness_suffix}"
+              GENIE_NAME:        "Glucosphere_Intelligence${var.harness_suffix}"
+              MAS_NAME:           "Glucosphere_Supervisor${var.harness_suffix}"
               BUNDLE_TARGET:     ${bundle.target}
           environment_key: default
 
@@ -500,9 +514,9 @@ resources:
             base_parameters:
               CATALOG_NAME: ${var.catalog}
               SCHEMA_NAME:  ${var.schema}
-              KA_NAME:      "Glucosphere-Knowledge-Assistant"
-              MAS_NAME:     "Glucosphere-Supervisor"
-              GENIE_NAME:   "Glucosphere CGM Intelligence"
+              KA_NAME:      "Glucosphere_KA${var.harness_suffix}"
+              MAS_NAME:     "Glucosphere_Supervisor${var.harness_suffix}"
+              GENIE_NAME:   "Glucosphere_Intelligence${var.harness_suffix}"
           environment_key: default
 
         # ── Permissions ───────────────────────────────────────────────────
@@ -535,9 +549,9 @@ resources:
               MAS_ENDPOINT_NAME: ""
               KA_ENDPOINT_NAME:  ""
               GENIE_SPACE_ID:    ""
-              KA_NAME:           "Glucosphere-Knowledge-Assistant"
-              MAS_NAME:          "Glucosphere-Supervisor"
-              GENIE_NAME:        "Glucosphere CGM Intelligence"
+              KA_NAME:           "Glucosphere_KA${var.harness_suffix}"
+              MAS_NAME:          "Glucosphere_Supervisor${var.harness_suffix}"
+              GENIE_NAME:        "Glucosphere_Intelligence${var.harness_suffix}"
           environment_key: default
 
     # -------------------------------------------------------------------------

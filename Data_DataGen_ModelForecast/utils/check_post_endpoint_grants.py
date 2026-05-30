@@ -16,7 +16,7 @@
 # MAGIC grants regardless):
 # MAGIC
 # MAGIC 1. KA tile exists in `/api/2.0/tiles` with `tile_type=KA` named
-# MAGIC    `Glucosphere-Knowledge-Assistant`
+# MAGIC    `Glucosphere_KA` (or `Glucosphere_KA_<harness>` for harness deploys)
 # MAGIC 2. KA tile has a non-empty `serving_endpoint_name` (the actual
 # MAGIC    `ka-<hash>-endpoint` provisioned by Agent Bricks)
 # MAGIC 3. MAS tile exists similarly, with non-empty `serving_endpoint_name`
@@ -26,9 +26,9 @@
 
 dbutils.widgets.text("CATALOG_NAME", "your_workspace_catalog", "Target catalog (unused; here for parity)")
 dbutils.widgets.text("SCHEMA_NAME",  "glucosphere",  "Target schema (unused; here for parity)")
-dbutils.widgets.text("KA_NAME",      "Glucosphere-Knowledge-Assistant", "KA tile name")
-dbutils.widgets.text("MAS_NAME",     "Glucosphere-Supervisor",          "MAS tile name")
-dbutils.widgets.text("GENIE_NAME",   "Glucosphere CGM Intelligence",    "Genie space title")
+dbutils.widgets.text("KA_NAME",      "Glucosphere_KA",            "KA tile name")
+dbutils.widgets.text("MAS_NAME",     "Glucosphere_Supervisor",    "MAS tile name")
+dbutils.widgets.text("GENIE_NAME",   "Glucosphere_Intelligence",  "Genie space title")
 
 KA_NAME    = dbutils.widgets.get("KA_NAME")
 MAS_NAME   = dbutils.widgets.get("MAS_NAME")

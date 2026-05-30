@@ -27,9 +27,9 @@ dbutils.widgets.text("BUNDLE_TARGET",      "",                           "Bundle
 # against the tile catalog / Genie space list, avoiding the substring-match
 # brittleness where unrelated workspace endpoints (e.g. another team's
 # `ka-*-endpoint`) could be picked up by accident.
-dbutils.widgets.text("KA_NAME",            "Glucosphere-Knowledge-Assistant", "KA tile name (anchors auto-discovery)")
-dbutils.widgets.text("MAS_NAME",           "Glucosphere-Supervisor",          "MAS tile name (anchors auto-discovery)")
-dbutils.widgets.text("GENIE_NAME",         "Glucosphere CGM Intelligence",    "Genie space display name (anchors auto-discovery)")
+dbutils.widgets.text("KA_NAME",            "Glucosphere_KA",            "KA tile name (anchors auto-discovery)")
+dbutils.widgets.text("MAS_NAME",           "Glucosphere_Supervisor",    "MAS tile name (anchors auto-discovery)")
+dbutils.widgets.text("GENIE_NAME",         "Glucosphere_Intelligence",  "Genie space display name (anchors auto-discovery)")
 
 CATALOG_NAME      = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME       = dbutils.widgets.get("SCHEMA_NAME")

@@ -64,6 +64,11 @@ dbutils.widgets.dropdown("INCLUDE_INCIDENT", "false", ["false", "true"], "Includ
 dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File")
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
 dbutils.widgets.text("DEMO_WEEK_START", "", "Demo Week Start override (empty = use YAML 'auto'/specific date)")
+# Endpoint names — workspace-global. databricks.yml injects the harness_suffix
+# from .env.bundle's HARNESS_TYPE conditional so harness deploys don't collide
+# with the live forecast endpoints.
+dbutils.widgets.text("ENDPOINT_15M", "Glucosphere_Forecast_15min", "15-min forecast endpoint name")
+dbutils.widgets.text("ENDPOINT_30M", "Glucosphere_Forecast_30min", "30-min forecast endpoint name")
 
 print("✓ Essential widgets created (7 total)")
 print("\nWidget values:")
@@ -298,9 +303,11 @@ SCHEMA = cfg.SCHEMA_NAME
 MODEL_15M = uc_model_fqn_15m  # ${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_15m
 MODEL_30M = uc_model_fqn_30m  # ${CATALOG_NAME}.${SCHEMA_NAME}.cgm_xgb_30m
 
-# Endpoint names
-ENDPOINT_15M = "cgm-glucose-forecast-15min"
-ENDPOINT_30M = "cgm-glucose-forecast-30min"
+# Endpoint names — read from widgets (set by databricks.yml task base_parameters
+# with ${var.harness_suffix} interpolation so harness deploys get their own
+# workspace-global endpoint names instead of colliding with the live deploy).
+ENDPOINT_15M = dbutils.widgets.get("ENDPOINT_15M")
+ENDPOINT_30M = dbutils.widgets.get("ENDPOINT_30M")
 
 # Inference table name PREFIX (not full path - auto_capture_config adds catalog.schema automatically)
 INFERENCE_TABLE_PREFIX_15M = "inference_log_15m"

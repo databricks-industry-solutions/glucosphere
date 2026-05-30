@@ -14,9 +14,9 @@
 # DBTITLE 1, Parameters
 dbutils.widgets.text("CATALOG_NAME",     "",                              "Catalog (required — set by the bundle job)")
 dbutils.widgets.text("SCHEMA_NAME",      "glucosphere",           "Schema")
-dbutils.widgets.text("KA_NAME",          "Glucosphere-Knowledge-Assistant", "KA Name")
-dbutils.widgets.text("GENIE_NAME",       "Glucosphere CGM Intelligence",   "Genie Space Name")
-dbutils.widgets.text("MAS_NAME",         "Glucosphere-Supervisor",          "MAS Name")
+dbutils.widgets.text("KA_NAME",          "Glucosphere_KA",            "KA Name")
+dbutils.widgets.text("GENIE_NAME",       "Glucosphere_Intelligence",  "Genie Space Name")
+dbutils.widgets.text("MAS_NAME",         "Glucosphere_Supervisor",    "MAS Name")
 dbutils.widgets.text("BUNDLE_TARGET",    "",                              "Bundle target name (used to discover bundle-managed warehouse by deterministic name)")
 
 CATALOG_NAME  = dbutils.widgets.get("CATALOG_NAME")
