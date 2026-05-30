@@ -7,9 +7,9 @@ env:
   # Genie Natural-Language Query panels. Hardcoded IDs work reliably.
   # render_app_yaml.py rewrites these per-target.
   - name: ENDPOINT_NAME
-    value: "mas-a96dfbad-endpoint"
+    value: "mas-bae6759d-endpoint"
   - name: GENIE_SPACE_ID
-    value: "01f15acb08d218d285e23e394a3bc2da"
+    value: "01f15c24270e10e98a4c45cd605e6301"
   - name: CATALOG_NAME
     value: "mmt_aws_usw2"
   - name: SCHEMA_NAME
@@ -21,31 +21,31 @@ env:
   # value here pre-render is intentional — operator runs render before the
   # second deploy, which populates this.
   - name: SETUP_JOB_ID
-    value: "30294337012072"
+    value: "649416388005809"
   # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
   # bundle-managed sql_warehouses.glucosphere_warehouse resource (discovered
   # by deterministic name). Empty value here pre-render is intentional —
   # operator runs render before the second deploy, which populates this.
   - name: WAREHOUSE_ID
-    value: "62b4ef1f2e0b2234"
+    value: "6675f79762438c43"
 resources:
   - name: mas-endpoint
     description: "Multi-Agent Supervisor serving endpoint"
     serving_endpoint:
-      name: mas-a96dfbad-endpoint
+      name: mas-bae6759d-endpoint
       permission: CAN_QUERY
   - name: ka-endpoint
     description: "WHO Knowledge Assistant serving endpoint"
     serving_endpoint:
-      name: ka-c8b7ced6-endpoint
+      name: ka-4cd8c014-endpoint
       permission: CAN_QUERY
   - name: sql-warehouse
     description: "SQL warehouse for CGM data queries"
     sql_warehouse:
-      id: 62b4ef1f2e0b2234
+      id: 6675f79762438c43
       permission: CAN_USE
   - name: genie-space
     description: "Genie space for CGM intelligence queries (ENV GENIE_SPACE_ID resolves from here)"
     genie_space:
-      id: 01f15acb08d218d285e23e394a3bc2da
+      id: 01f15c24270e10e98a4c45cd605e6301
       permission: CAN_RUN

@@ -35,7 +35,7 @@ NOT covered (still needs the manual DEPLOY.md Step 10 checklist):
     - End-to-end Genie NL query roundtrip (`/api/genie/query`) — requires App SSO auth
 
 Usage:
-    uv run python scripts/smoke_test.py --target mmt_aws_usw2 --profile fevm-mmt-aws-usw2
+    uv run python scripts/smoke_test.py --target gsphere
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def _resolved_vars(target: str, profile: str) -> tuple[str, str]:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--target", required=True, help="Bundle target (e.g. mmt_aws_usw2)")
+    p.add_argument("--target", required=True, help="Bundle target (e.g. gsphere)")
     p.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE"),
                    help="Databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE)")
     p.add_argument("--app-name", default="glucosphere-app", help="App resource name")

@@ -17,18 +17,18 @@ Run sequence:
     databricks bundle deploy -t <target>
 
 Usage:
-    # Render for mmt_aws_usw2 with auto-discovered warehouse_id
-    uv run python scripts/render_app_yaml.py --target mmt_aws_usw2
+    # Render for gsphere with auto-discovered warehouse_id
+    uv run python scripts/render_app_yaml.py --target gsphere
 
     # Full render after setup job created the endpoints + genie space
     uv run python scripts/render_app_yaml.py \\
-        --target mmt_aws_usw2 \\
+        --target gsphere \\
         --mas-endpoint   glucosphere-mas-endpoint \\
         --ka-endpoint    glucosphere-ka-endpoint \\
         --genie-space-id 01a2b3c4d5e6...
 
     # Override profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)
-    uv run python scripts/render_app_yaml.py --target mmt_aws_usw2 --profile fevm-mmt-aws-usw2
+    uv run python scripts/render_app_yaml.py --target gsphere
 """
 
 from __future__ import annotations
@@ -142,7 +142,7 @@ def discover_setup_job_id(target: str, profile: str | None) -> str:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--target", required=True, help="DABs target name (e.g. hls_amer)")
+    p.add_argument("--target", required=True, help="DABs target name (e.g. gsphere)")
     p.add_argument("--profile", default=None, help="databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)")
     p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (overrides env + resource block)")
     p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (overrides resource block)")

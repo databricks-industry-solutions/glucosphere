@@ -19,6 +19,41 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-05-30]
+
+DABs target generalization: live target renamed `mmt_aws_usw2` → `gsphere` (workspace-agnostic logical name) with `mode: development` for visual parity with harness deploys. Workspace housekeeping: orphaned harness deploys + pre-cutover catalog schemas + the historical `hls_amer` target stanza all cleaned up. New explicit linkage diagram (`.env.bundle` → `~/.databrickscfg` profile → workspace selection) added to `databricks.yml` and `DEPLOY.md`. New full `databricks.yml.example` template mirror.
+
+### Changed
+
+- **Live target renamed** `mmt_aws_usw2` → `gsphere` (and harness variants `gsphere_synth_e2e` / `gsphere_from_table_e2e` / `gsphere_from_source_e2e`). The target key is a logical deploy label, not a workspace identifier — workspace selection has been profile-driven since `75df678`. The rename clarifies intent for external deployers. Resources auto-suffix on `${bundle.target}` → `glucosphere-X-gsphere` instead of `glucosphere-X-mmt_aws_usw2`. Uses the existing `gsphere` alias already documented in `databricks.yml:47` for `app_basename`.
+- **`mode: development` on live target** — parallel to harness targets. Auto-prefixes jobs/pipelines/warehouse with `[dev <deployer>]` in the Workflows UI. No functional impact: no schedules to pause, batch pipeline (no streaming dev-mode concerns), App/Genie/MAS/endpoints reference by ID (not name). Display name varies by deployer (`[dev may_merkletan]` vs `[dev justin_ward]`); acceptable for shared demo workspace. `mode: production` deferred until CI/CD service-principal + non-user-home workspace `root_path` are provisioned.
+- **Comment block rewrites** in `databricks.yml` targets section: clarified linkage between `.env.bundle` profile and DABs workspace selection, documented `mode: development` choice, removed stale `{}` empty-body references.
+- **`DEPLOY.md` rewrite**: added a "How workspace selection works (linkage diagram)" ASCII block at the top of "Target-specific notes" showing the `.env.bundle` → `~/.databrickscfg` profile → workspace host chain explicitly. Renamed all target references to `gsphere*`. Dropped the historical `hls_amer` section entirely.
+
+### Removed
+
+- **`hls_amer` target stanza** dropped from `databricks.yml` and DEPLOY.md (was historical / blocked per prior CHANGELOG; no longer in use; cross-workspace SP entanglement made the workspace permanently unusable for this project).
+
+### Cleanup (workspace housekeeping)
+
+- **Destroyed 3 harness bundle deploys** (`mmt_aws_usw2_{synth,from_table,from_source}_e2e`) — removed their jobs/pipelines/warehouses/apps from Workflows UI. The harness target stanzas remain in `databricks.yml` (now renamed `gsphere_*_e2e`); future regression runs are 1 command (`HARNESS_TYPE=<mode> source .env.bundle && databricks bundle deploy -t gsphere_<mode>_e2e`).
+- **Dropped 6 orphaned UC schemas** across 2 catalogs:
+  - `mmt_aws_usw2.glucosphere_synth_e2e` (Level B test data from PR-1 closeout)
+  - `mmt_aws_usw2_catalog.{glucosphere_synth_e2e, glucosphere_from_table_e2e, glucosphere_from_source_e2e, glucosphere_dev, glucosphere_dev_compare_synth}` — pre-standalone-catalog-cutover artifacts
+- **Deleted workspace-global harness resources** — `Glucosphere_{KA,Supervisor,Intelligence,Forecast_15min,Forecast_30min}_synth_e2e` tiles/space/endpoints.
+
+### Live redeploy (Level-C-style destroy + redeploy under new gsphere name)
+
+- **Destroyed live `mmt_aws_usw2`** completely (`bundle destroy --auto-approve`), dropped `mmt_aws_usw2.glucosphere` schema, deleted live KA/MAS tiles + Genie space + both forecast endpoints.
+- **Redeployed under new `gsphere` target**: `bundle deploy -t gsphere` pass 1 (created infra stubs), `render_app_yaml.py --target gsphere` (discovered new warehouse_id + setup_job_id), `bundle deploy -t gsphere` pass 2, `bundle run glucosphere_full_setup -t gsphere` (~44 min — created fresh data + KA/MAS/Genie/forecast endpoints with new IDs), `render_app_yaml.py` again with new agent IDs, final `bundle deploy -t gsphere`, `bundle run glucosphere_app -t gsphere`.
+- **End state**: 3 live workflow items in UI now prefixed `[dev <deployer>]`, named `glucosphere-{cgm-silver-gold,full-setup,distribution-comparison}-gsphere`. App `glucosphere-app` RUNNING. All 5 workspace-global resources (KA/MAS/Genie/2 forecast endpoints) fresh under the same canonical names (`Glucosphere_KA`, `Glucosphere_Supervisor`, `Glucosphere_Intelligence`, `Glucosphere_Forecast_15min`, `Glucosphere_Forecast_30min`).
+
+### Added
+
+- **`databricks.yml.example` full mirror template** (~688 lines, was 45). Now a complete adapt-and-rename reference for external deployers. Target keys substituted to `your_workspace_target*`. All bundle resources mirrored verbatim. Operators copy/rename → adapt `.env.bundle` → deploy.
+
+---
+
 ## [2026-05-29]
 
 Serverless GPU validation for `datagen_modeling` task + stratification

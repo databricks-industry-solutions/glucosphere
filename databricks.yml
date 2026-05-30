@@ -80,26 +80,45 @@ targets:
   # `workspace.host` is intentionally NOT hardcoded per target — operators
   # deploy to whichever workspace their sourced `.env.bundle` profile points
   # at. Target names just identify which set of data-variable defaults apply.
+  #
+  # `mode: development` on live targets (parallel to harness targets below):
+  #   - Auto-prefixes jobs/pipelines/warehouse with `[dev <deployer>]` for
+  #     visual consistency in shared workspaces (matches the harness pattern
+  #     so all glucosphere items in Workflows UI share the same naming style).
+  #   - Pauses schedules/triggers — N/A here (no schedules defined).
+  #   - Marks pipeline as development — N/A here (cgm_silver_gold is batch,
+  #     `continuous: false`).
+  #   - Display-name varies by deployer (e.g. `[dev may_merkletan]` vs
+  #     `[dev justin_ward]`); bundle resource IDs stay stable so the App,
+  #     Genie, MAS, and serving endpoints (which reference by ID, not name)
+  #     are unaffected by who deploys.
+  # `mode: production` is the natural future evolution once a CI/CD service
+  # principal + shared workspace root_path are provisioned (production mode
+  # rejects user-home deploy paths). See Databricks docs:
+  # https://docs.databricks.com/dev-tools/bundles/deployment-modes.html
+  #
   # Deploy: `source .env.bundle && databricks bundle deploy -t <target>`.
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
-  hls_amer: {}
-
-  mmt_aws_usw2: {}
+  gsphere:
+    mode: development
 
   # ─── Adding a new live target ─────────────────────────────────────────
-  # Append an empty-body stanza like the two above (`name: {}`). The
-  # operator's `.env.bundle` provides workspace host (via
+  # Append a stanza like the two above (`name:\n    mode: development`).
+  # The operator's `.env.bundle` provides workspace host (via
   # `DATABRICKS_CONFIG_PROFILE` → ~/.databrickscfg profile.host) and data
   # variables (`BUNDLE_VAR_catalog` / `BUNDLE_VAR_schema` / etc.). Adding
   # a `variables:` block here would defeat the SSOT design.
 
   # ─── Sandbox harness targets ─────────────────────────────────────────────
   #
-  # All harness targets use `mode: development`:
-  #   - jobs + pipelines auto-prefixed `[dev <username>]`
-  #   - schedules + triggers paused
-  #   - isolated from live targets
+  # Harness targets share the same `mode: development` as live targets but
+  # add a `_<mode>_e2e` suffix to BUNDLE_VAR_schema for data isolation:
+  #   - jobs + pipelines auto-prefixed `[dev <username>]` (same as live)
+  #   - schedules + triggers paused (N/A — no schedules defined)
+  #   - distinguished from live by the `${bundle.target}` suffix in names
+  #     (e.g. `*_synth_e2e`) AND by the isolated schema
+  #     (`<base>_synth_e2e`)
   #
   # `apps` and `database_instances` resource types do not accept brackets in
   # their names; per-target `name:` overrides below keep them from colliding
@@ -107,7 +126,7 @@ targets:
   # is currently commented out at the resources block below — see issue #3.)
   #
   # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
-  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t mmt_aws_usw2_synth_e2e ...
+  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t gsphere_synth_e2e ...
   #
   # Usage:
   #   databricks bundle deploy  -t <harness-target> --profile <profile>
@@ -123,12 +142,12 @@ targets:
   #
   # Operator runs:
   #   HARNESS_TYPE=synth_e2e source .env.bundle
-  #   databricks bundle deploy -t mmt_aws_usw2_synth_e2e
+  #   databricks bundle deploy -t gsphere_synth_e2e
   #
   # See `.env.bundle.example` for the conditional block. Two operators
   # sharing the workspace can personalize the suffix in their local copies
   # (e.g. `<base>_synth_e2e_<myname>`) to avoid schema collisions.
-  mmt_aws_usw2_synth_e2e:
+  gsphere_synth_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (operator's .env.bundle).
@@ -163,7 +182,7 @@ targets:
   # The from_table mode is source-agnostic by design — synthetic-populated
   # source behaves like any other UC table conforming to the diabetes_data
   # contract.
-  mmt_aws_usw2_from_table_e2e:
+  gsphere_from_table_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
@@ -194,7 +213,7 @@ targets:
   # download + parse path + source-adaptive sampler against real HUPA-UCM
   # source distribution. Isolated sandbox schema — does not affect the
   # live target's data.
-  mmt_aws_usw2_from_source_e2e:
+  gsphere_from_source_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
@@ -605,7 +624,7 @@ resources:
   # Note: CU_1 instances bill continuously while deployed, so keeping this
   # commented avoids paying for unused infra. Also: the hardcoded
   # `glucosphere-oltp-mmt-aws-usw2` name would need to become per-target
-  # before this can deploy outside the live mmt_aws_usw2 target.
+  # before this can deploy outside the live gsphere target.
   #
   # Original block (re-enable + parameterize name before reactivating):
   #
