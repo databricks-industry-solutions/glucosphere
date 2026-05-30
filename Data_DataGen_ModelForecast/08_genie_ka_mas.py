@@ -257,18 +257,37 @@ else:
     GENIE_SPACE_ID = room.get("space_id") or room.get("id")
     print(f"Genie space created: {GENIE_SPACE_ID}")
 
-# Add instructions to the Genie space
-_api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
-    "title": "CGM Data Context",
-    "content": (
-        "This space contains continuous glucose monitoring (CGM) data. "
-        "Key columns: patient_id, device_id, reading_timestamp, glucose_value_mg_dl, "
-        "is_incident (device calibration bug flag), forecast_15m, forecast_30m, "
-        "diabetes_type, bmi, hba1c_baseline, device_model, calibration_status. "
-        "Normal range: 70-180 mg/dL. Hypoglycemia: <70. Hyperglycemia: >180."
-    ),
-    "instruction_type": "TEXT",
-})
+# Add instructions to the Genie space — idempotent dedupe by title.
+# Without dedupe, every setup-job re-run POSTs both instructions again, accumulating
+# duplicates in /api/2.0/data-rooms/{id}/instructions. Querying by title and skipping
+# already-present entries keeps the space clean across re-runs.
+#
+# API surface note: this uses legacy /api/2.0/data-rooms/{id}/instructions because
+# modern /api/2.0/genie/spaces has no instruction-write subresource — POST/GET on
+# /instructions and /example-question-sqls both return "No API found". The two
+# surfaces share backing storage (legacy POSTs appear in the modern view's
+# serialized_space.instructions.example_question_sqls[]), so this is forward-
+# compatible. Revisit when Databricks ships an instruction-write API on /genie/spaces.
+
+def _ensure_genie_instruction(space_id: str, title: str, content: str) -> None:
+    existing = _api("GET", f"/api/2.0/data-rooms/{space_id}/instructions").get("instructions", []) or []
+    if any(i.get("title") == title for i in existing):
+        print(f"  → instruction {title!r} already present; skipping")
+        return
+    _api("POST", f"/api/2.0/data-rooms/{space_id}/instructions", {
+        "title": title,
+        "content": content,
+        "instruction_type": "TEXT",
+    })
+    print(f"  → instruction {title!r} added")
+
+_ensure_genie_instruction(GENIE_SPACE_ID, "CGM Data Context", (
+    "This space contains continuous glucose monitoring (CGM) data. "
+    "Key columns: patient_id, device_id, reading_timestamp, glucose_value_mg_dl, "
+    "is_incident (device calibration bug flag), forecast_15m, forecast_30m, "
+    "diabetes_type, bmi, hba1c_baseline, device_model, calibration_status. "
+    "Normal range: 70-180 mg/dL. Hypoglycemia: <70. Hyperglycemia: >180."
+))
 
 # Time-window interpretation instruction. Demo data is a fixed
 # 7-day window so MAX(time) is NOT today's wall-clock — it's the latest point
@@ -276,21 +295,17 @@ _api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
 # `WHERE time >= NOW() - INTERVAL 24 HOUR` which returns 0 results because
 # the data is backdated. With this instruction Genie should generate
 # `WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`.
-_api("POST", f"/api/2.0/data-rooms/{GENIE_SPACE_ID}/instructions", {
-    "title": "Time Window Interpretation",
-    "content": (
-        "The data in this space is a fixed 7-day demo window. The most recent "
-        "timestamp in the data is NOT today's wall-clock time — it is the LATEST "
-        "point in the demo dataset. When a user asks for queries like "
-        "\"in the last 24 hours\", \"past 7 days\", \"recent\", or any relative "
-        "time window, ALWAYS interpret the window relative to MAX(time) in the "
-        "dataset, NOT relative to NOW(). Example: instead of "
-        "`WHERE time >= NOW() - INTERVAL 24 HOUR`, generate "
-        "`WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`. "
-        "This avoids returning 0 results because the demo data is backdated."
-    ),
-    "instruction_type": "TEXT",
-})
+_ensure_genie_instruction(GENIE_SPACE_ID, "Time Window Interpretation", (
+    "The data in this space is a fixed 7-day demo window. The most recent "
+    "timestamp in the data is NOT today's wall-clock time — it is the LATEST "
+    "point in the demo dataset. When a user asks for queries like "
+    "\"in the last 24 hours\", \"past 7 days\", \"recent\", or any relative "
+    "time window, ALWAYS interpret the window relative to MAX(time) in the "
+    "dataset, NOT relative to NOW(). Example: instead of "
+    "`WHERE time >= NOW() - INTERVAL 24 HOUR`, generate "
+    "`WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`. "
+    "This avoids returning 0 results because the demo data is backdated."
+))
 print(f"Genie Space ID: {GENIE_SPACE_ID}")
 
 # COMMAND ----------
