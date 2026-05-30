@@ -65,16 +65,26 @@ Prerequisites: Databricks CLI configured for your target workspace, a UC catalog
 Canonical deploy sequence (full 8-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
 
 ```bash
-source .env.bundle                                                # load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE
-databricks bundle deploy -t <target> --profile <profile>          # pass 1 — creates the warehouse
+# load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE
+source .env.bundle                                                
+
+# pass 1 — creates the warehouse
+databricks bundle deploy -t <target> --profile <profile>          
 uv run python scripts/render_app_yaml.py --target <target> --profile <profile>
-databricks bundle deploy -t <target> --profile <profile>          # pass 2 — picks up rendered app.yaml
-databricks bundle run glucosphere_full_setup -t <target> --profile <profile>   # ~45 min
+
+# pass 2 — picks up rendered app.yaml
+databricks bundle deploy -t <target> --profile <profile>
+databricks bundle run glucosphere_full_setup -t <target> --profile <profile>    # ~45 min
+
+# first-deploy-only
 uv run python scripts/render_app_yaml.py --target <target> --profile <profile> \
-    --mas-endpoint <name> --ka-endpoint <name> --genie-space-id <id>           # first-deploy-only
+    --mas-endpoint <name> --ka-endpoint <name> --genie-space-id <id>           
+
 databricks bundle deploy -t <target> --profile <profile>
 databricks bundle run glucosphere_app -t <target> --profile <profile>
-uv run python scripts/smoke_test.py --target <target> --profile <profile>      # 8-check gate
+
+# 8-check gate
+uv run python scripts/smoke_test.py --target <target> --profile <profile>      
 ```
 
 End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy variants (`baseline_source=synthetic` for CI / restricted-egress, `DEMO_WEEK_START` override for reproducible runs, distribution-comparison job), see [`DEPLOY.md`](DEPLOY.md).
