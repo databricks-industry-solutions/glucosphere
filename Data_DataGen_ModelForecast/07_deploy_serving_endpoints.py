@@ -333,152 +333,90 @@ print(f"  30-min: {INFERENCE_TABLE_30M}_payload")
 
 # COMMAND ----------
 
-# DBTITLE 1,Create 15-min Endpoint with AI Gateway
+# DBTITLE 1,Endpoint deploy helper (DRY: shared by 15m + 30m)
 # ------------------------
-# Create/Update 15-min Forecast Endpoint with AI Gateway Inference Tables
-# Step 1: Create endpoint, Step 2: Wait for ready, Step 3: Configure AI Gateway
+# Single canonical implementation of create-or-update endpoint + wait-for-ready
+# + AI Gateway inference-table configuration. The two horizon blocks below
+# (15m / 30m) call this once each with parametrized args, replacing what was
+# previously ~160 lines of near-identical copy-paste per horizon.
+#
+# Adding a new horizon (e.g. 60m) is now a single function call rather than
+# a copy-paste of the whole flow.
 # ------------------------
 import requests
 import json
 import time
-
-print(f"Creating endpoint: {ENDPOINT_15M}...")
-
-# Get the version number for Champion alias (or latest version)
 from mlflow.tracking import MlflowClient
 import mlflow
 
 mlflow.set_registry_uri('databricks-uc')
 mlflow_client = MlflowClient()
 
-try:
-    # Try to get Champion version
-    model_versions = mlflow_client.get_model_version_by_alias(MODEL_15M, "Champion")
-    champion_version = model_versions.version
-    print(f"  Using Champion version: {champion_version}")
-except Exception as e:
-    # Fallback: get latest version
+
+def _resolve_champion_version(model_fqn: str) -> str:
+    """Return version of @Champion alias; fall back to latest; fall back to '1'."""
     try:
-        all_versions = mlflow_client.search_model_versions(f"name='{MODEL_15M}'")
-        if all_versions:
-            latest = max(all_versions, key=lambda v: int(v.version))
-            champion_version = latest.version
-            print(f"  Champion alias not found, using latest version: {champion_version}")
-        else:
-            champion_version = "1"
+        return mlflow_client.get_model_version_by_alias(model_fqn, "Champion").version
+    except Exception:
+        try:
+            all_versions = mlflow_client.search_model_versions(f"name='{model_fqn}'")
+            if all_versions:
+                latest = max(all_versions, key=lambda v: int(v.version))
+                print(f"  Champion alias not found, using latest version: {latest.version}")
+                return latest.version
             print(f"  No versions found, using version 1")
-    except Exception as e2:
-        champion_version = "1"
-        print(f"  Could not determine version, using version 1")
+            return "1"
+        except Exception:
+            print(f"  Could not determine version, using version 1")
+            return "1"
 
-# Check if endpoint exists
-try:
-    existing = w.serving_endpoints.get(name=ENDPOINT_15M)
-    endpoint_exists = True
-    print(f"  Endpoint exists, will update...")
-except Exception as e:
-    endpoint_exists = False
-    print(f"  Endpoint doesn't exist, will create...")
 
-# Create or update endpoint
-if endpoint_exists:
-    # Update existing endpoint
-    w.serving_endpoints.update_config(
-        name=ENDPOINT_15M,
-        served_entities=[
-            ServedEntityInput(
-                entity_name=MODEL_15M,
-                entity_version=champion_version,
-                scale_to_zero_enabled=True,
-                workload_size="Small"
-            )
-        ]
-    )
-    print(f"✓ Updated endpoint: {ENDPOINT_15M}")
-else:
-    # Create new endpoint
-    w.serving_endpoints.create(
-        name=ENDPOINT_15M,
-        config=EndpointCoreConfigInput(
-            name=ENDPOINT_15M,
-            served_entities=[
-                ServedEntityInput(
-                    entity_name=MODEL_15M,
-                    entity_version=champion_version,
-                    scale_to_zero_enabled=True,
-                    workload_size="Small"
-                )
-            ]
-        )
-    )
-    print(f"✓ Created endpoint: {ENDPOINT_15M}")
-
-# STEP 2: Wait for endpoint to be fully ready before configuring AI Gateway
-print(f"\nWaiting for endpoint to be ready before configuring AI Gateway...")
-max_wait = 600  # 10 minutes
-wait_interval = 15  # 15 seconds
-elapsed = 0
-
-while elapsed < max_wait:
-    try:
-        endpoint_status = w.serving_endpoints.get(name=ENDPOINT_15M)
-        config_update = str(endpoint_status.state.config_update) if endpoint_status.state and endpoint_status.state.config_update else "UNKNOWN"
-        ready_status = str(endpoint_status.state.ready) if endpoint_status.state and endpoint_status.state.ready else "UNKNOWN"
-        
-        # Check if endpoint is fully ready (NOT_UPDATING and READY)
-        if "NOT_UPDATING" in config_update and "READY" in ready_status:
-            print(f"  ✓ Endpoint is READY (elapsed: {elapsed}s)")
-            break
-        
-        print(f"  Status: {config_update} | Ready: {ready_status} | Elapsed: {elapsed}s")
+def _wait_for_endpoint_ready(endpoint_name: str, max_wait: int = 600, wait_interval: int = 15) -> bool:
+    """Poll the endpoint until config_update=NOT_UPDATING AND ready=READY. Returns True if ready."""
+    elapsed = 0
+    while elapsed < max_wait:
+        try:
+            status = w.serving_endpoints.get(name=endpoint_name)
+            config_update = str(status.state.config_update) if status.state and status.state.config_update else "UNKNOWN"
+            ready_status = str(status.state.ready) if status.state and status.state.ready else "UNKNOWN"
+            if "NOT_UPDATING" in config_update and "READY" in ready_status:
+                print(f"  ✓ Endpoint is READY (elapsed: {elapsed}s)")
+                return True
+            print(f"  Status: {config_update} | Ready: {ready_status} | Elapsed: {elapsed}s")
+        except Exception:
+            print(f"  Waiting... {elapsed}s")
         time.sleep(wait_interval)
         elapsed += wait_interval
-    except Exception as wait_error:
-        print(f"  Waiting... {elapsed}s")
-        time.sleep(wait_interval)
-        elapsed += wait_interval
-
-if elapsed >= max_wait:
     print(f"  ⚠️  Timeout waiting for endpoint - skipping AI Gateway config")
     print(f"  You can configure it manually later in the UI")
-else:
-    # STEP 3: Configure AI Gateway with inference tables using REST API
-    print(f"\nConfiguring AI Gateway inference tables...")
+    return False
 
-    # Get workspace URL and token
+
+def _configure_ai_gateway(endpoint_name: str, inference_table_prefix: str, inference_table_fqn: str) -> None:
+    """PUT /api/2.0/serving-endpoints/{name}/ai-gateway with inference-table config."""
+    print(f"\nConfiguring AI Gateway inference tables...")
     workspace_url = w.config.host
     if not workspace_url.startswith('http'):
         workspace_url = f"https://{workspace_url}"
-
-    # Get token from dbutils (works on serverless)
     try:
         token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-    except:
+    except Exception:
         token = w.config.token
-
-    # AI Gateway configuration payload
     ai_gateway_config = {
         "inference_table_config": {
             "catalog_name": CATALOG,
             "schema_name": SCHEMA,
-            "table_name_prefix": INFERENCE_TABLE_PREFIX_15M,
-            "enabled": True
+            "table_name_prefix": inference_table_prefix,
+            "enabled": True,
         }
     }
-
-    # PUT request to configure AI Gateway
-    api_url = f"{workspace_url}/api/2.0/serving-endpoints/{ENDPOINT_15M}/ai-gateway"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
+    api_url = f"{workspace_url}/api/2.0/serving-endpoints/{endpoint_name}/ai-gateway"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
         response = requests.put(api_url, headers=headers, json=ai_gateway_config)
-        
-        if response.status_code in [200, 201]:
+        if response.status_code in (200, 201):
             print(f"✓ AI Gateway inference tables configured")
-            print(f"  Table: {INFERENCE_TABLE_15M}_payload (auto-created on first request)")
+            print(f"  Table: {inference_table_fqn}_payload (auto-created on first request)")
         else:
             print(f"⚠️  AI Gateway configuration response: {response.status_code}")
             print(f"  Response: {response.text}")
@@ -486,172 +424,71 @@ else:
         print(f"⚠️  Could not configure AI Gateway: {str(e)}")
         print(f"  You can configure it manually in the UI: AI Gateway tab > Enable Inference tables")
 
-# Get endpoint URL
-workspace_url = w.config.host
-if not workspace_url.startswith('http'):
-    workspace_url = f"https://{workspace_url}"
-endpoint_url = f"{workspace_url}/ml/endpoints/{ENDPOINT_15M}"
 
-print(f"\nEndpoint URL: {endpoint_url}")
-print(f"\n✅ Using AI Gateway (modern approach) for inference tables")
+def create_or_update_endpoint(
+    endpoint_name: str,
+    model_fqn: str,
+    workload_size: str,
+    inference_table_prefix: str,
+    inference_table_fqn: str,
+    horizon_label: str,
+) -> None:
+    """Create-or-update a serving endpoint, wait for ready, configure AI Gateway."""
+    print(f"Creating endpoint: {endpoint_name}...")
+    champion_version = _resolve_champion_version(model_fqn)
+    print(f"  Using Champion version: {champion_version}")
+
+    served_entity = ServedEntityInput(
+        entity_name=model_fqn,
+        entity_version=champion_version,
+        scale_to_zero_enabled=True,
+        workload_size=workload_size,
+    )
+    try:
+        w.serving_endpoints.get(name=endpoint_name)
+        print(f"  Endpoint exists, will update...")
+        w.serving_endpoints.update_config(name=endpoint_name, served_entities=[served_entity])
+        print(f"✓ Updated endpoint: {endpoint_name}")
+    except Exception:
+        print(f"  Endpoint doesn't exist, will create...")
+        w.serving_endpoints.create(
+            name=endpoint_name,
+            config=EndpointCoreConfigInput(name=endpoint_name, served_entities=[served_entity]),
+        )
+        print(f"✓ Created endpoint: {endpoint_name}")
+
+    print(f"\nWaiting for endpoint to be ready before configuring AI Gateway...")
+    if _wait_for_endpoint_ready(endpoint_name):
+        _configure_ai_gateway(endpoint_name, inference_table_prefix, inference_table_fqn)
+
+    workspace_url = w.config.host
+    if not workspace_url.startswith('http'):
+        workspace_url = f"https://{workspace_url}"
+    print(f"\n{horizon_label} endpoint URL: {workspace_url}/ml/endpoints/{endpoint_name}")
+    print(f"✅ Using AI Gateway (modern approach) for inference tables")
 
 # COMMAND ----------
 
-# DBTITLE 1,Create 30-min Endpoint with AI Gateway
-# ------------------------
-# Create/Update 30-min Forecast Endpoint with AI Gateway Inference Tables
-# Step 1: Create endpoint, Step 2: Wait for ready, Step 3: Configure AI Gateway
-# ------------------------
-import requests
-import json
-import time
+# DBTITLE 1,Deploy 15-min + 30-min forecast endpoints
+create_or_update_endpoint(
+    endpoint_name=ENDPOINT_15M,
+    model_fqn=MODEL_15M,
+    workload_size="Small",
+    inference_table_prefix=INFERENCE_TABLE_PREFIX_15M,
+    inference_table_fqn=INFERENCE_TABLE_15M,
+    horizon_label="15-min",
+)
 
-print(f"Creating endpoint: {ENDPOINT_30M}...")
+# COMMAND ----------
 
-# Get the version number for Champion alias (or latest version)
-try:
-    # Try to get Champion version
-    model_versions = mlflow_client.get_model_version_by_alias(MODEL_30M, "Champion")
-    champion_version = model_versions.version
-    print(f"  Using Champion version: {champion_version}")
-except Exception as e:
-    # Fallback: get latest version
-    try:
-        all_versions = mlflow_client.search_model_versions(f"name='{MODEL_30M}'")
-        if all_versions:
-            latest = max(all_versions, key=lambda v: int(v.version))
-            champion_version = latest.version
-            print(f"  Champion alias not found, using latest version: {champion_version}")
-        else:
-            champion_version = "1"
-            print(f"  No versions found, using version 1")
-    except Exception as e2:
-        champion_version = "1"
-        print(f"  Could not determine version, using version 1")
-
-# Check if endpoint exists
-try:
-    existing = w.serving_endpoints.get(name=ENDPOINT_30M)
-    endpoint_exists = True
-    print(f"  Endpoint exists, will update...")
-except Exception as e:
-    endpoint_exists = False
-    print(f"  Endpoint doesn't exist, will create...")
-
-# Create or update endpoint
-if endpoint_exists:
-    # Update existing endpoint
-    w.serving_endpoints.update_config(
-        name=ENDPOINT_30M,
-        served_entities=[
-            ServedEntityInput(
-                entity_name=MODEL_30M,
-                entity_version=champion_version,
-                scale_to_zero_enabled=True,
-                workload_size="Medium"
-            )
-        ]
-    )
-    print(f"✓ Updated endpoint: {ENDPOINT_30M}")
-else:
-    # Create new endpoint
-    w.serving_endpoints.create(
-        name=ENDPOINT_30M,
-        config=EndpointCoreConfigInput(
-            name=ENDPOINT_30M,
-            served_entities=[
-                ServedEntityInput(
-                    entity_name=MODEL_30M,
-                    entity_version=champion_version,
-                    scale_to_zero_enabled=True,
-                    workload_size="Medium"
-                )
-            ]
-        )
-    )
-    print(f"✓ Created endpoint: {ENDPOINT_30M}")
-
-# STEP 2: Wait for endpoint to be fully ready before configuring AI Gateway
-print(f"\nWaiting for endpoint to be ready before configuring AI Gateway...")
-max_wait = 600  # 10 minutes
-wait_interval = 15  # 15 seconds
-elapsed = 0
-
-while elapsed < max_wait:
-    try:
-        endpoint_status = w.serving_endpoints.get(name=ENDPOINT_30M)
-        config_update = str(endpoint_status.state.config_update) if endpoint_status.state and endpoint_status.state.config_update else "UNKNOWN"
-        ready_status = str(endpoint_status.state.ready) if endpoint_status.state and endpoint_status.state.ready else "UNKNOWN"
-        
-        # Check if endpoint is fully ready (NOT_UPDATING and READY)
-        if "NOT_UPDATING" in config_update and "READY" in ready_status:
-            print(f"  ✓ Endpoint is READY (elapsed: {elapsed}s)")
-            break
-        
-        print(f"  Status: {config_update} | Ready: {ready_status} | Elapsed: {elapsed}s")
-        time.sleep(wait_interval)
-        elapsed += wait_interval
-    except Exception as wait_error:
-        print(f"  Waiting... {elapsed}s")
-        time.sleep(wait_interval)
-        elapsed += wait_interval
-
-if elapsed >= max_wait:
-    print(f"  ⚠️  Timeout waiting for endpoint - skipping AI Gateway config")
-    print(f"  You can configure it manually later in the UI")
-else:
-    # STEP 3: Configure AI Gateway with inference tables using REST API
-    print(f"\nConfiguring AI Gateway inference tables...")
-
-    # Get workspace URL and token
-    workspace_url = w.config.host
-    if not workspace_url.startswith('http'):
-        workspace_url = f"https://{workspace_url}"
-
-    # Get token from dbutils (works on serverless)
-    try:
-        token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-    except:
-        token = w.config.token
-
-    # AI Gateway configuration payload
-    ai_gateway_config = {
-        "inference_table_config": {
-            "catalog_name": CATALOG,
-            "schema_name": SCHEMA,
-            "table_name_prefix": INFERENCE_TABLE_PREFIX_30M,
-            "enabled": True
-        }
-    }
-
-    # PUT request to configure AI Gateway
-    api_url = f"{workspace_url}/api/2.0/serving-endpoints/{ENDPOINT_30M}/ai-gateway"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        response = requests.put(api_url, headers=headers, json=ai_gateway_config)
-        
-        if response.status_code in [200, 201]:
-            print(f"✓ AI Gateway inference tables configured")
-            print(f"  Table: {INFERENCE_TABLE_30M}_payload (auto-created on first request)")
-        else:
-            print(f"⚠️  AI Gateway configuration response: {response.status_code}")
-            print(f"  Response: {response.text}")
-    except Exception as e:
-        print(f"⚠️  Could not configure AI Gateway: {str(e)}")
-        print(f"  You can configure it manually in the UI: AI Gateway tab > Enable Inference tables")
-
-# Get endpoint URL
-workspace_url = w.config.host
-if not workspace_url.startswith('http'):
-    workspace_url = f"https://{workspace_url}"
-endpoint_url = f"{workspace_url}/ml/endpoints/{ENDPOINT_30M}"
-
-print(f"\nEndpoint URL: {endpoint_url}")
-print(f"\n✅ Using AI Gateway (modern approach) for inference tables")
+create_or_update_endpoint(
+    endpoint_name=ENDPOINT_30M,
+    model_fqn=MODEL_30M,
+    workload_size="Medium",
+    inference_table_prefix=INFERENCE_TABLE_PREFIX_30M,
+    inference_table_fqn=INFERENCE_TABLE_30M,
+    horizon_label="30-min",
+)
 
 # COMMAND ----------
 
@@ -692,7 +529,7 @@ def wait_for_endpoint(endpoint_name, timeout_minutes=20):
     except Exception as e:
         if "does not exist" in str(e).lower():
             print(f"✗ Endpoint '{endpoint_name}' does not exist")
-            print(f"   Please run cells 8-9 to create the endpoints first")
+            print(f"   Please run the 'Deploy 15-min + 30-min forecast endpoints' cell first")
             return False
         else:
             print(f"✗ Error checking endpoint: {str(e)}")
