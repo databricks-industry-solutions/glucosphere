@@ -17,11 +17,19 @@
 dbutils.widgets.text("CATALOG_NAME",       "",                            "Catalog (required — set by the bundle job)")
 dbutils.widgets.text("SCHEMA_NAME",        "glucosphere",         "Schema")
 dbutils.widgets.text("APP_NAME",           "glucosphere-app",            "App Name")
-dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name")
-dbutils.widgets.text("KA_ENDPOINT_NAME",   "",                           "KA Endpoint Name")
-dbutils.widgets.text("GENIE_SPACE_ID",     "",                           "Genie Space ID")
+dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name (empty → looked up by MAS_NAME tile)")
+dbutils.widgets.text("KA_ENDPOINT_NAME",   "",                           "KA Endpoint Name (empty → looked up by KA_NAME tile)")
+dbutils.widgets.text("GENIE_SPACE_ID",     "",                           "Genie Space ID (empty → looked up by GENIE_NAME)")
 dbutils.widgets.text("WAREHOUSE_ID",       "",                           "SQL Warehouse ID (empty → discovered by BUNDLE_TARGET)")
 dbutils.widgets.text("BUNDLE_TARGET",      "",                           "Bundle target name (used to discover warehouse if WAREHOUSE_ID empty)")
+# Canonical KA/MAS/Genie names — match notebook 08's widget defaults exactly.
+# Discovery in this notebook uses these names for *exact-equality* matches
+# against the tile catalog / Genie space list, avoiding the substring-match
+# brittleness where unrelated workspace endpoints (e.g. another team's
+# `ka-*-endpoint`) could be picked up by accident.
+dbutils.widgets.text("KA_NAME",            "Glucosphere-Knowledge-Assistant", "KA tile name (anchors auto-discovery)")
+dbutils.widgets.text("MAS_NAME",           "Glucosphere-Supervisor",          "MAS tile name (anchors auto-discovery)")
+dbutils.widgets.text("GENIE_NAME",         "Glucosphere CGM Intelligence",    "Genie space display name (anchors auto-discovery)")
 
 CATALOG_NAME      = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME       = dbutils.widgets.get("SCHEMA_NAME")
@@ -31,6 +39,9 @@ KA_ENDPOINT_NAME  = dbutils.widgets.get("KA_ENDPOINT_NAME")
 GENIE_SPACE_ID    = dbutils.widgets.get("GENIE_SPACE_ID")
 WAREHOUSE_ID      = dbutils.widgets.get("WAREHOUSE_ID")
 BUNDLE_TARGET     = dbutils.widgets.get("BUNDLE_TARGET")
+KA_NAME           = dbutils.widgets.get("KA_NAME")
+MAS_NAME          = dbutils.widgets.get("MAS_NAME")
+GENIE_NAME        = dbutils.widgets.get("GENIE_NAME")
 
 print(f"Catalog:      {CATALOG_NAME}.{SCHEMA_NAME}")
 print(f"App:          {APP_NAME}")
@@ -89,45 +100,39 @@ assert sp_app_id, "Could not determine service principal applicationId — is th
 
 # COMMAND ----------
 
-# DBTITLE 1, Auto-discover endpoint names from app resources (if not set as parameters)
-def _find_endpoint_by_suffix(suffix):
-    """Scan all serving endpoints for one whose name ends with the given suffix."""
-    status, data = _api("GET", "/api/2.0/serving-endpoints")
+# DBTITLE 1, Auto-discover endpoint names + Genie space (anchored by exact name)
+# Look up the serving_endpoint_name from the tile whose `name` matches the
+# canonical KA/MAS name set in notebook 08. The /api/2.0/tiles response carries
+# `serving_endpoint_name` directly per tile, so this is a single round-trip and
+# guarantees the discovered endpoint is the one we just created — not a
+# substring sibling from another team's work in the same workspace.
+def _find_endpoint_by_tile_name(tile_type: str, tile_name: str) -> str:
+    status, data = _api("GET", "/api/2.0/tiles", params={"tile_type": tile_type})
     if status != 200:
-        return None
-    for ep in data.get("endpoints", []):
-        if ep["name"].endswith(suffix):
-            return ep["name"]
-    return None
+        return ""
+    for t in data.get("tiles", []):
+        if t.get("name") == tile_name:
+            return t.get("serving_endpoint_name", "")
+    return ""
 
 if not MAS_ENDPOINT_NAME:
-    MAS_ENDPOINT_NAME = _find_endpoint_by_suffix("-endpoint") or ""
-    # Narrow to the MAS endpoint specifically (contains "mas" or "supervisor")
-    status, data = _api("GET", "/api/2.0/serving-endpoints")
-    for ep in (data.get("endpoints", []) if status == 200 else []):
-        name = ep["name"].lower()
-        if "mas" in name or "supervisor" in name:
-            MAS_ENDPOINT_NAME = ep["name"]
-            break
-    print(f"Auto-discovered MAS endpoint: {MAS_ENDPOINT_NAME}")
+    MAS_ENDPOINT_NAME = _find_endpoint_by_tile_name("MULTI_AGENT_SUPERVISOR", MAS_NAME)
+    print(f"Auto-discovered MAS endpoint via tile {MAS_NAME!r}: {MAS_ENDPOINT_NAME!r}")
 
 if not KA_ENDPOINT_NAME:
-    status, data = _api("GET", "/api/2.0/serving-endpoints")
-    for ep in (data.get("endpoints", []) if status == 200 else []):
-        name = ep["name"].lower()
-        if "ka" in name or "knowledge" in name:
-            KA_ENDPOINT_NAME = ep["name"]
-            break
-    print(f"Auto-discovered KA endpoint: {KA_ENDPOINT_NAME}")
+    KA_ENDPOINT_NAME = _find_endpoint_by_tile_name("KNOWLEDGE_ASSISTANT", KA_NAME)
+    print(f"Auto-discovered KA endpoint via tile {KA_NAME!r}: {KA_ENDPOINT_NAME!r}")
 
 if not GENIE_SPACE_ID:
-    # Try to find Genie space by name
+    # Exact name match against the Genie space (same bug class as the tile
+    # lookups above — substring/partial match could pick up an unrelated CGM
+    # or glucose-themed space in a workspace with multiple Genie rooms).
+    # API choice (/data-rooms vs /genie/spaces): see notebook 08 comment.
     status, data = _api("GET", "/api/2.0/data-rooms/")
     for room in (data.get("data_rooms", []) if status == 200 else []):
-        display = room.get("display_name", "") or room.get("name", "")
-        if "glucosphere" in display.lower() or "cgm" in display.lower():
+        if room.get("display_name", "") == GENIE_NAME:
             GENIE_SPACE_ID = room.get("space_id") or room.get("id", "")
-            print(f"Auto-discovered Genie space: {display} ({GENIE_SPACE_ID})")
+            print(f"Auto-discovered Genie space {GENIE_NAME!r}: {GENIE_SPACE_ID!r}")
             break
 
 # COMMAND ----------

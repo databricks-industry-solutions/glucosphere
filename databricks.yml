@@ -505,11 +505,17 @@ resources:
               # BUNDLE_TARGET passed in so 09 knows which target's warehouse to find.
               WAREHOUSE_ID:      ""
               BUNDLE_TARGET:     ${bundle.target}
-              # Endpoint names and Genie space ID are auto-discovered from
-              # the workspace if left empty, or can be set explicitly here.
+              # KA/MAS endpoint names and Genie space ID are auto-discovered when
+              # left empty. The *_NAME params anchor the discovery to the exact
+              # tile/space created by 08 (look up serving_endpoint_name from the
+              # tile by exact name match), avoiding substring matches that can
+              # mis-resolve in workspaces with multiple KA/MAS/Genie resources.
               MAS_ENDPOINT_NAME: ""
               KA_ENDPOINT_NAME:  ""
               GENIE_SPACE_ID:    ""
+              KA_NAME:           "Glucosphere-Knowledge-Assistant"
+              MAS_NAME:          "Glucosphere-Supervisor"
+              GENIE_NAME:        "Glucosphere CGM Intelligence"
           environment_key: default
 
     # -------------------------------------------------------------------------
