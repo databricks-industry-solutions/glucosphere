@@ -1,48 +1,45 @@
-# databricks.yml.example — target stanza pattern for external deployers
+# databricks.yml.example — historical reference (kept for context)
 #
-# The committed `databricks.yml` carries maintainer-specific target stanzas
-# (`hls_amer`, `mmt_aws_usw2`) pointed at Databricks-internal `fevm-*`
-# workspace hosts. External deployers should add their own target stanza
-# with their own workspace host before running `bundle deploy`.
+# The committed `databricks.yml` no longer hardcodes `workspace.host` per
+# target. External deployers do NOT need to edit `databricks.yml` or add
+# a target stanza — workspace selection comes from `~/.databrickscfg`
+# via `DATABRICKS_CONFIG_PROFILE` in `.env.bundle`.
 #
-# Workflow:
-#   1. Open `databricks.yml`, locate the `targets:` block
-#   2. Append a new target stanza using the pattern below
-#   3. Copy `.env.bundle.example` -> `.env.bundle` and fill in
-#      BUNDLE_VAR_catalog / BUNDLE_VAR_schema / DATABRICKS_CONFIG_PROFILE
-#   4. `source .env.bundle && databricks bundle deploy -t <your-target-name>`
+# Workflow (no code edits required):
+#   1. `databricks configure --profile <your-name>` — sets up the profile
+#      with your workspace host + auth in `~/.databrickscfg`.
+#   2. `cp .env.bundle.example .env.bundle` and fill in:
+#        BUNDLE_VAR_catalog / BUNDLE_VAR_schema / DATABRICKS_CONFIG_PROFILE
+#   3. `source .env.bundle && databricks bundle deploy -t mmt_aws_usw2`
+#      (target name just identifies which data-variable defaults apply;
+#      workspace comes from your profile, not from the target stanza)
 #
 # See `DEPLOY.md` for the full step-by-step deploy sequence.
 # See `.env.bundle.example` for the operator-config token contract.
+#
+# The example below is preserved for reference only — it shows what a
+# fully-hardcoded target stanza used to look like. You do NOT need to
+# add this; use the existing `mmt_aws_usw2` target with your own
+# `.env.bundle` profile instead.
 
-targets:
-
-  # ─── Live deploy target (your own workspace) ──────────────────────────
-  your_target_name:                # e.g. acme_aws_useast1 (snake_case)
-    workspace:
-      host: https://your-workspace.cloud.databricks.com   # your workspace URL
-
-  # ─── Optional: sandbox harness target with isolated dev schema ────────
-  # Mirrors the live target above but uses `mode: development` so DABs
-  # auto-prefixes jobs/pipelines with `[dev <username>]`, pauses
-  # schedules/triggers, and isolates resource state from the live target.
-  #
-  # Apps cannot use the auto-prefix (DNS-compliance constraint) so an
-  # explicit `name:` override keeps the harness App from colliding with
-  # the live `glucosphere-app` resource. (database_instances Lakebase is
-  # currently commented out in databricks.yml — see issue #3.)
-  #
-  # your_target_name_synth_e2e:
-  #   mode: development
-  #   workspace:
-  #     host: https://your-workspace.cloud.databricks.com
-  #   variables:
-  #     catalog: your_catalog
-  #     schema: glucosphere_synth_e2e
-  #     baseline_source: synthetic
-  #     # app_name must mirror resources.apps.glucosphere_app.name below.
-  #     app_name: ${var.app_basename}-synth-e2e-${var.dev_initials}
-  #   resources:
-  #     apps:
-  #       glucosphere_app:
-  #         name: ${var.app_basename}-synth-e2e-${var.dev_initials}
+# (REFERENCE ONLY — not required)
+#
+# targets:
+#   your_target_name:                # e.g. acme_aws_useast1 (snake_case)
+#     workspace:
+#       host: https://your-workspace.cloud.databricks.com
+#
+#   # Optional: harness target with mode-suffixed schema isolation.
+#   # The committed harness targets (`mmt_aws_usw2_synth_e2e` etc.) already
+#   # derive their schema from `${var.schema}_synth_e2e` — you can reuse
+#   # them directly by overriding `BUNDLE_VAR_schema` in your `.env.bundle`.
+#   your_target_name_synth_e2e:
+#     mode: development
+#     variables:
+#       schema: ${var.schema}_synth_e2e
+#       baseline_source: synthetic
+#       app_name: ${var.app_basename}-synth-e2e-${var.dev_initials}
+#     resources:
+#       apps:
+#         glucosphere_app:
+#           name: ${var.app_basename}-synth-e2e-${var.dev_initials}

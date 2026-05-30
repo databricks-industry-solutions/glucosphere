@@ -61,23 +61,28 @@ variables:
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
-  # Live deploy targets. Workspace selection only — all data variables
-  # (catalog, schema, etc.) come from the operator's `.env.bundle`.
+  # Live deploy targets. ALL operator-specific config (workspace + data
+  # variables) comes from the operator's `.env.bundle`:
+  #   - Workspace selection: `DATABRICKS_CONFIG_PROFILE` selects a profile
+  #     in `~/.databrickscfg`; that profile's `host` becomes the deploy target.
+  #   - Data variables (catalog, schema, etc.): `BUNDLE_VAR_*` env vars
+  #     override the `variables:` defaults above.
+  # `workspace.host` is intentionally NOT hardcoded per target — operators
+  # deploy to whichever workspace their sourced `.env.bundle` profile points
+  # at. Target names just identify which set of data-variable defaults apply.
   # Deploy: `source .env.bundle && databricks bundle deploy -t <target>`.
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
-  hls_amer:
-    workspace:
-      host: https://fe-vm-hls-amer.cloud.databricks.com
+  hls_amer: {}
 
-  mmt_aws_usw2:
-    workspace:
-      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
+  mmt_aws_usw2: {}
 
   # ─── Adding a new live target ─────────────────────────────────────────
-  # Append a stanza like the two above — `workspace.host` only.
-  # The operator's `.env.bundle` provides catalog/schema; adding a
-  # `variables:` block here would defeat the SSOT design.
+  # Append an empty-body stanza like the two above (`name: {}`). The
+  # operator's `.env.bundle` provides workspace host (via
+  # `DATABRICKS_CONFIG_PROFILE` → ~/.databrickscfg profile.host) and data
+  # variables (`BUNDLE_VAR_catalog` / `BUNDLE_VAR_schema` / etc.). Adding
+  # a `variables:` block here would defeat the SSOT design.
 
   # ─── Sandbox harness targets ─────────────────────────────────────────────
   #
@@ -101,16 +106,28 @@ targets:
   #   # bundle destroy does not auto-drop UC schemas — drop manually if needed:
   #   #   DROP SCHEMA <catalog>.<schema> CASCADE
   #
-  # Schema names are shared across deployers using the same harness target.
-  # If running concurrently with another deployer, override BUNDLE_VAR_schema
-  # to a personal value (e.g. `glucosphere_synth_e2e_<myname>`).
+  # Harness schema isolation comes from a `HARNESS_TYPE` env var that the
+  # `.env.bundle` conditional appends as a suffix to BUNDLE_VAR_schema
+  # (NOT from per-target `schema:` overrides — those are beaten by
+  # BUNDLE_VAR_* env vars in DABs precedence).
+  #
+  # Operator runs:
+  #   HARNESS_TYPE=synth_e2e source .env.bundle
+  #   databricks bundle deploy -t mmt_aws_usw2_synth_e2e
+  #
+  # See `.env.bundle.example` for the conditional block. Two operators
+  # sharing the workspace can personalize the suffix in their local copies
+  # (e.g. `<base>_synth_e2e_<myname>`) to avoid schema collisions.
   mmt_aws_usw2_synth_e2e:
     mode: development
-    workspace:
-      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
     variables:
-      catalog: mmt_aws_usw2_catalog
-      schema: glucosphere_synth_e2e
+      # catalog inherits from BUNDLE_VAR_catalog (operator's .env.bundle).
+      # schema isolation: run `HARNESS_TYPE=synth_e2e source .env.bundle`
+      # before deploying — the conditional block in .env.bundle appends
+      # `_synth_e2e` to BUNDLE_VAR_schema so the harness writes to its own
+      # schema. (No per-target `schema:` override here — DABs precedence
+      # puts BUNDLE_VAR_* above per-target variables, so the env-side
+      # override is the authoritative source of truth.)
       baseline_source: synthetic
       # Mirrors resources.apps.glucosphere_app.name below — kept in sync so
       # `APP_NAME: ${var.app_name}` passed to notebook 09 resolves to the
@@ -138,14 +155,17 @@ targets:
   # contract.
   mmt_aws_usw2_from_table_e2e:
     mode: development
-    workspace:
-      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
     variables:
-      catalog: mmt_aws_usw2_catalog
-      schema: glucosphere_from_table_e2e
+      # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
+      # schema + source_schema isolation: run
+      #   HARNESS_TYPE=from_table_e2e source .env.bundle
+      # before deploying — the conditional block in .env.bundle sets
+      # `BUNDLE_VAR_schema=<base>_from_table_e2e` AND
+      # `BUNDLE_VAR_source_schema=<base>_synth_e2e` (CTAS-copies from the
+      # synth_e2e harness output). No per-target schema overrides here
+      # (BUNDLE_VAR_* beats per-target variables in DABs precedence).
       baseline_source: from_table
-      source_catalog: mmt_aws_usw2_catalog
-      source_schema: glucosphere_synth_e2e
+      source_catalog: ${var.catalog}
       source_table: diabetes_data
       # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
       # target above for rationale.
@@ -166,11 +186,13 @@ targets:
   # live target's data.
   mmt_aws_usw2_from_source_e2e:
     mode: development
-    workspace:
-      host: https://fevm-mmt-aws-usw2.cloud.databricks.com
     variables:
-      catalog: mmt_aws_usw2_catalog
-      schema: glucosphere_from_source_e2e
+      # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
+      # schema isolation: run
+      #   HARNESS_TYPE=from_source_e2e source .env.bundle
+      # before deploying — the conditional block in .env.bundle appends
+      # `_from_source_e2e` to BUNDLE_VAR_schema. (No per-target `schema:`
+      # override; BUNDLE_VAR_* beats per-target variables in DABs precedence.)
       baseline_source: from_source
       # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
       # target above for rationale.

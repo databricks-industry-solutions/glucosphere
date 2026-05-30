@@ -154,9 +154,12 @@ Top-level bundle variables (defined in `databricks.yml`):
 on first deploy. `scripts/render_app_yaml.py` discovers it by deterministic
 name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 
-> **Adding a new live target**: append a stanza to `databricks.yml:targets`
-> with `workspace.host` only — no per-target `variables:` block. Operator's
-> `.env.bundle` supplies all data values.
+> **Deploying to a different workspace**: you do NOT need to edit
+> `databricks.yml`. The committed target stanzas have no hardcoded
+> `workspace.host` — DABs uses the host from the profile selected by
+> `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle`. Set up a profile
+> via `databricks configure --profile <name>` for your workspace, point
+> `.env.bundle` at it, and run `bundle deploy -t <existing-target>`.
 
 ---
 
@@ -349,7 +352,7 @@ Two bundle targets are actively used. Pick the one that matches your workspace; 
 
 ### Target `mmt_aws_usw2` (maintainer's active demo target — Databricks-internal `fevm-mmt-aws-usw2` workspace, AWS us-west-2)
 
-> **External deployers:** this section documents the maintainer's deploy target. To deploy to your own workspace, add a target stanza per [`databricks.yml.example`](databricks.yml.example) and substitute `-t mmt_aws_usw2 --profile fevm-mmt-aws-usw2` with your own target name + profile in the commands below.
+> **External deployers:** this section documents the maintainer's deploy target. `databricks.yml` no longer hardcodes `workspace.host`, so you do NOT need to add a target stanza — just point `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle` at your own profile and use `-t mmt_aws_usw2` as-is. The profile's host becomes the deploy target.
 
 ```bash
 # 1. Render app.yaml for mmt_aws_usw2 (rewrites catalog/schema/warehouse in place)
@@ -371,6 +374,38 @@ databricks bundle deploy -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 # 5. Restart the live app so the new bundle + app.yaml take effect
 databricks bundle run glucosphere_app -t mmt_aws_usw2 --profile fevm-mmt-aws-usw2
 ```
+
+### Harness targets (`*_synth_e2e` / `*_from_table_e2e` / `*_from_source_e2e`) — parallel-validation deploys
+
+Use these to validate the 3 baseline modes (synthetic / from_table / from_source) without touching the live target's data. Each harness writes to its OWN schema (`<base>_synth_e2e`, `<base>_from_table_e2e`, `<base>_from_source_e2e`) — isolation is driven by a `HARNESS_TYPE` env var that the `.env.bundle` conditional block appends as a suffix to `BUNDLE_VAR_schema`.
+
+Step-by-step:
+
+```bash
+# 1. Live deploy as usual (no HARNESS_TYPE set)
+source .env.bundle
+databricks bundle deploy -t mmt_aws_usw2
+
+# 2. Harness synth_e2e (writes to <base>_synth_e2e schema)
+HARNESS_TYPE=synth_e2e source .env.bundle
+databricks bundle deploy -t mmt_aws_usw2_synth_e2e
+databricks bundle run    glucosphere_full_setup -t mmt_aws_usw2_synth_e2e
+
+# 3. Harness from_table_e2e (writes to <base>_from_table_e2e,
+#    CTAS-copies from <base>_synth_e2e — run step 2 first)
+HARNESS_TYPE=from_table_e2e source .env.bundle
+databricks bundle deploy -t mmt_aws_usw2_from_table_e2e
+
+# 4. Harness from_source_e2e (writes to <base>_from_source_e2e)
+HARNESS_TYPE=from_source_e2e source .env.bundle
+databricks bundle deploy -t mmt_aws_usw2_from_source_e2e
+```
+
+**Why HARNESS_TYPE in `.env.bundle` rather than per-target `schema:` in `databricks.yml`?** DABs precedence puts `BUNDLE_VAR_*` above per-target `variables:` blocks, so an env-side override is the only mechanism that actually wins for harness schema isolation. Per-target overrides would be silently shadowed.
+
+**Concurrent deployers in the same workspace**: edit your local `.env.bundle` `case` block to append a personal suffix (e.g. `${BUNDLE_VAR_schema}_synth_e2e_<myname>`) to avoid schema collisions with other deployers.
+
+---
 
 ### Target `hls_amer` (workspace `fe-vm-hls-amer`, AWS) — historical / blocked
 
