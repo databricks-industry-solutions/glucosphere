@@ -44,7 +44,7 @@ variables:
     description: |
       Base name for harness target App + DB instance resources. Default
       `glucosphere`. Override in .env.bundle to a shorter alias (e.g.
-      `gsphere`) if long `dev_initials` push App names past the 30-char limit.
+      `your_workspace_target`) if long `dev_initials` push App names past the 30-char limit.
       DB instance names allow up to 63 chars (DNS-compliant), so the
       constraint is App-side only.
     default: glucosphere
@@ -100,7 +100,7 @@ targets:
   # Deploy: `source .env.bundle && databricks bundle deploy -t <target>`.
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
-  gsphere:
+  your_workspace_target:
     mode: development
 
   # ─── Adding a new live target ─────────────────────────────────────────
@@ -126,7 +126,7 @@ targets:
   # is currently commented out at the resources block below — see issue #3.)
   #
   # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
-  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t gsphere_synth_e2e ...
+  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t your_workspace_target_synth_e2e ...
   #
   # Usage:
   #   databricks bundle deploy  -t <harness-target> --profile <profile>
@@ -142,12 +142,12 @@ targets:
   #
   # Operator runs:
   #   HARNESS_TYPE=synth_e2e source .env.bundle
-  #   databricks bundle deploy -t gsphere_synth_e2e
+  #   databricks bundle deploy -t your_workspace_target_synth_e2e
   #
   # See `.env.bundle.example` for the conditional block. Two operators
   # sharing the workspace can personalize the suffix in their local copies
   # (e.g. `<base>_synth_e2e_<myname>`) to avoid schema collisions.
-  gsphere_synth_e2e:
+  your_workspace_target_synth_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (operator's .env.bundle).
@@ -182,7 +182,7 @@ targets:
   # The from_table mode is source-agnostic by design — synthetic-populated
   # source behaves like any other UC table conforming to the diabetes_data
   # contract.
-  gsphere_from_table_e2e:
+  your_workspace_target_from_table_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
@@ -213,7 +213,7 @@ targets:
   # download + parse path + source-adaptive sampler against real HUPA-UCM
   # source distribution. Isolated sandbox schema — does not affect the
   # live target's data.
-  gsphere_from_source_e2e:
+  your_workspace_target_from_source_e2e:
     mode: development
     variables:
       # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
@@ -624,7 +624,7 @@ resources:
   # Note: CU_1 instances bill continuously while deployed, so keeping this
   # commented avoids paying for unused infra. Also: the hardcoded
   # `glucosphere-oltp-mmt-aws-usw2` name would need to become per-target
-  # before this can deploy outside the live gsphere target.
+  # before this can deploy outside the live your_workspace_target target.
   #
   # Original block (re-enable + parameterize name before reactivating):
   #

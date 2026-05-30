@@ -1,0 +1,117 @@
+# Data + DataGen + ModelForecast (Databricks / Unity Catalog)
+
+> **Looking for data fidelity + baseline-mode detail?** Model performance numbers (clean vs incident MAE), column-level provenance ("which columns are real vs synthetic"), and synthetic-vs-real distribution comparison all live in the sibling [`README_data_fidelity_baseline.md`](README_data_fidelity_baseline.md).
+
+This folder contains a Databricks-first pipeline for:
+
+- **Ingesting** the HUPA-UCM T1DM dataset into **Unity Catalog**
+- **Extracting baseline time windows** on a 5-minute grid
+- **Generating pseudo-patients**, training **XGBoost** glucose forecasting models (tracked with **MLflow**)
+- **Simulating an incident** (device calibration bug) and measuring model degradation
+- **Deploying** trained models to a Databricks **Model Serving** endpoint
+
+For dataset details (cohort, modalities, preprocessing by dataset authors), see `README_data.md`.
+
+---
+
+## Folder contents
+
+### Notebooks
+
+These `.py` files start with `# Databricks notebook source` and are intended to run inside Databricks (they use `dbutils`, `spark`, Unity Catalog tables, and MLflow).
+
+| File | Purpose / output |
+| --- | --- |
+| `01_synthetic_baseline.py` | In-cluster synthetic baseline generator. Produces `diabetes_data` + `baseline_timeseries` + `baseline_windows_metadata` directly (no external download). Used when `baseline_source=synthetic`. |
+| `02_ingest_real_baseline.py` | Download HUPA-UCM T1DM dataset from Mendeley + parse semicolon-delimited per-patient CSVs into `diabetes_data` (Delta) + baseline window tables. Used when `baseline_source=from_source`. CTAS variant for `from_table` mode also lives here. |
+| `03_compare_baseline_modes.py` | Side-by-side statistical comparison across `synthetic` / `from_source` / `from_table` baseline modes (n, percentiles, glycemic buckets, Kolmogorov-Smirnov tests, overlaid histograms/boxplot/bucket plots). Runs as the standalone `glucosphere_distribution_comparison` job, NOT in `glucosphere_full_setup`. |
+| `04_pseudo_data_forecast_modeling.py` | Pseudo-patient generation (stratified sampler) + clean-data XGBoost forecasting model training (15-min + 30-min horizons). Config via YAML + widgets; features: lags/rolling windows; MLflow tracking + UC Model registration. |
+| `05_incident_inference_bidirectional.py` | **Active** incident-simulation notebook. Two-incident mirror: Day 2 positive cohort (+40 mg/dL bias, over-reads), Day 5 negative cohort (-40 mg/dL bias, under-reads) — mutually exclusive 30%-of-fleet cohorts. Writes `pseudo_incident_7d_labeled` + `fleet_forecast_incident`; generates the 4 plot PNGs consumed by the App's MetricsExplained page. |
+| `06_incident_inference_single.py` | **Reference-only sibling**. Unidirectional single-incident variant (+40 mg/dL only, no negative cohort) — retained as a reference for the simpler bias model. Not wired into the main DAG; swap `databricks.yml` `incident_inference.notebook_path` back to this file to revert. |
+| `07_deploy_serving_endpoints.py` | Deploy helper: create/update Databricks Model Serving endpoints for both 15m + 30m forecasts (`uses databricks-sdk` + MLflow/UC model refs). |
+| `08_genie_ka_mas.py` | Provisions the three agent endpoints: **Genie space** (SQL natural-language over `gold_patient_device_readings`), **Knowledge Assistant (KA) endpoint** (RAG over `assets/who_docs/WHO_NCD_NCS_99.2.pdf`), **Multi-Agent Supervisor (MAS) endpoint** (routes clinical-guidance Qs to KA, structured-data Qs to Genie). Includes `PATCH` rebind of existing Genie space on re-run so workspace catalog migrations self-heal. |
+| `09_grant_app_permissions.py` | Grants the Databricks App's service principal everything it needs: catalog `USE_CATALOG`, schema `SELECT + USE_SCHEMA`, volume `READ_VOLUME`, warehouse `CAN_USE`, and `CAN_QUERY` on the MAS / KA endpoints + Genie space. Discovers the bundle-managed warehouse by deterministic name (`glucosphere-warehouse-<target>`) when `WAREHOUSE_ID` widget is empty. |
+
+### Configs & utilities
+
+| Path | What it’s for |
+| --- | --- |
+| `configs/baseline_config.yaml` | Environment-specific params (`dev` / `staging` / `prod`) for windowing, pseudo-gen, bidirectional incident settings, XGBoost hyperparams, MLflow experiment path, UC model names. `demo_week_start` accepts `'auto'` (computes today_utc − 6 days at runtime) or a pinned date string for reproducibility. |
+| `utils/validate_baseline_source.py` | First task of the workflow: validates the `baseline_source` widget enum + writes a 1-row `baseline_provenance` UC table consumed by the App's `/api/config` route. |
+| `utils/check_pre_baseline_grants.py` | Pre-ingest grant verification (catalog + schema + volume privileges) before 01 or 02 runs. |
+| `utils/sanity_summary.py` | Post-ingest summary metrics — verifies `diabetes_data` populated correctly regardless of which baseline_source path produced it. |
+| `utils/check_post_endpoint_grants.py` | Post-deploy verification that serving endpoints are queryable + permissions set correctly. |
+| `utils/validate_diabetes_data.py` | Data-quality assertions used by `sanity_summary.py` + as a standalone QC notebook. |
+| `utils/additional_patient_info/transformations.sql` | **SDP / DLT pipeline source** — bronze → silver → gold transforms for the `cgm_silver_gold` Spark Declarative Pipeline. |
+| `utils/additional_patient_info/Create *.ipynb` | 3 setup notebooks: raw patient registry, raw device telemetry, patient-device link table. Wired into `glucosphere_full_setup` between `incident_inference` and `run_dlt_pipeline`. |
+
+---
+
+### Suggested run order (Databricks)
+
+The `glucosphere_full_setup` job orchestrates this DAG automatically — `databricks bundle run glucosphere_full_setup -t <target>` runs the whole flow. The full task DAG (16 tasks) is in [`REPO_LAYOUT.md`](../REPO_LAYOUT.md#workflow-dag--glucosphere_full_setup). Per-notebook ordering:
+
+1. **Validate + grants preflight**: `utils/validate_baseline_source.py` → `utils/check_pre_baseline_grants.py`
+2. **Baseline ingest (one of, via condition_task dispatch on `baseline_source`)**:
+   - `01_synthetic_baseline.py` (in-cluster synth) — when `baseline_source=synthetic`
+   - `02_ingest_real_baseline.py` (HUPA-UCM from Mendeley OR CTAS from a table) — when `from_source` / `from_table`
+3. **Sanity check**: `utils/sanity_summary.py`
+4. **Pseudo-gen + model training**: `04_pseudo_data_forecast_modeling.py` (writes `cgm_xgb_15m` + `cgm_xgb_30m` UC models)
+5. **Incident inference + endpoint deploy** (parallel):
+   - `05_incident_inference_bidirectional.py` (writes incident tables + PNG assets)
+   - `07_deploy_serving_endpoints.py` (creates 15m + 30m serving endpoints)
+6. **Patient/device data setup**: 3 setup notebooks in `utils/additional_patient_info/` (registry → device telemetry → link table)
+7. **SDP pipeline**: `run_dlt_pipeline` task invokes `cgm_silver_gold` pipeline (silver_* + gold_patient_device_readings tables)
+8. **Agent endpoints**: `08_genie_ka_mas.py` (Genie + KA + MAS)
+9. **Grant chain**: `utils/check_post_endpoint_grants.py` → `09_grant_app_permissions.py`
+
+Standalone job (NOT in `glucosphere_full_setup`): `glucosphere_distribution_comparison` runs `03_compare_baseline_modes.py` for side-by-side baseline-mode statistical comparison.
+
+---
+
+## Figures (assets)
+
+Notebooks `04_*` (forecast modeling), `05_*` (bidirectional incident inference), and `06_*` (single-incident inference reference sibling) generate the figures saved under [`assets/`](assets/). Full set + descriptions of each — pseudo-patient vs baseline distribution, 15m/30m forecast accuracy, incident impact summary, fleet-wide-dilution MAE breakdown, true-vs-observed glucose during incident, 4-class distribution shift — lives in the sibling [`README_data_fidelity_baseline.md`](README_data_fidelity_baseline.md#forecast-model-performance).
+
+<p align="center">
+  <a href="README_data_fidelity_baseline.md#forecast-model-performance">
+    <img src="assets/incident_impact_2panel.png" alt="Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline showing Day 2 over-read cohort and Day 5 under-read cohort" width="700">
+  </a>
+</p>
+
+<p align="center"><em>Incident impact summary: MAE spike + bidirectional ±40 mg/dL glucose timeline (Day 2 over-read cohort, Day 5 under-read cohort).<br>Click through to <a href="README_data_fidelity_baseline.md#forecast-model-performance">the full set + descriptions</a>.</em></p>
+
+---
+
+### Dependencies used and their corresponding license information
+
+**Python runtime:** notebooks run on Databricks Runtime (`spark_version` per the pipeline / job definition in `databricks.yml`) — the DBR provides the Python interpreter. Repo-root `scripts/` (e.g. `render_app_yaml.py`, `smoke_test.py`) run locally on Python 3.11 via `uv` (per `pyproject.toml requires-python>=3.10` + `.python-version`).
+
+| Dependency | Where used | Why it’s used | License |
+| --- | --- | --- | --- |
+| [**pyspark**](https://github.com/apache/spark) | `01_*`, `02_*`, `03_*`, `04_*`, `05_*`, `06_*`, `utils/*` | Spark reads/writes, windowing, UC Delta tables | Apache-2.0 |
+| [**pandas**](https://github.com/pandas-dev/pandas) | `02_*`, `03_*`, `04_*`, `05_*`, `06_*` | DataFrames for QC, feature engineering, analysis | BSD-3-Clause |
+| [**numpy**](https://github.com/numpy/numpy) | `01_*`, `02_*`, `03_*`, `04_*`, `05_*`, `06_*` | Numeric ops, feature calculations | BSD-3-Clause |
+| [**requests**](https://github.com/psf/requests) | `02_ingest_real_baseline.py`, `07_deploy_serving_endpoints.py`, `08_genie_ka_mas.py`, `09_grant_app_permissions.py` | Download HUPA-UCM dataset ZIP; call serving endpoints; create/PATCH Genie + KA + MAS endpoints via REST | Apache-2.0 |
+| [**PyYAML**](https://github.com/yaml/pyyaml) (`yaml`) | `04_*`, `05_*`, `06_*`, `07_*` | Load `configs/baseline_config.yaml` | MIT |
+| [**mlflow**](https://github.com/mlflow/mlflow) | `04_*`, `05_*`, `06_*`, `07_*` | Experiment tracking, model registry, inference helpers | Apache-2.0 |
+| [**xgboost**](https://github.com/dmlc/xgboost) | `04_*`, `05_*`, `06_*` (+ `%pip install xgboost`) | Forecasting model training/inference | Apache-2.0 |
+| [**scikit-learn**](https://github.com/scikit-learn/scikit-learn) (`sklearn`) | `04_*`, `05_*`, `06_*` | Metrics (e.g., MAE) and utilities | BSD-3-Clause |
+| [**scipy**](https://github.com/scipy/scipy) | `03_*`, `04_*` | Distribution comparison metrics (KS, Wasserstein), stats | BSD-3-Clause |
+| [**matplotlib**](https://github.com/matplotlib/matplotlib) | `03_*`, `04_*`, `05_*`, `06_*` | Visualization | PSF-based (Matplotlib license) |
+| [**seaborn**](https://github.com/mwaskom/seaborn) | `04_*`, `05_*`, `06_*` | Visualization styling + distributions | BSD-3-Clause |
+| [**optuna**](https://github.com/optuna/optuna) | `04_pseudo_data_forecast_modeling.py` | Optional hyperparameter tuning | MIT |
+| [**databricks-sdk**](https://github.com/databricks/databricks-sdk-py) | `07_deploy_serving_endpoints.py` | Create/update Model Serving endpoints via API | Apache-2.0 |
+| [**psutil**](https://github.com/giampaolo/psutil) | `04_pseudo_data_forecast_modeling.py` (`%pip install`) | MLflow system metrics logging (CPU/memory) | BSD-3-Clause |
+| [**nvidia-ml-py**](https://pypi.org/project/nvidia-ml-py/) | `04_pseudo_data_forecast_modeling.py` (`%pip install`) | NVML bindings (provides `pynvml` import) — required by MLflow's `GPUMonitor` for GPU stats on g5.12xlarge / A10G clusters; silently skipped if absent. Supersedes deprecated `nvidia-ml-py3`. | BSD-3-Clause |
+| [**alembic**](https://github.com/sqlalchemy/alembic) | `04_pseudo_data_forecast_modeling.py` (`%pip install`) | Optuna SQLite storage support (per notebook comments) | MIT |
+
+### Note on package URLs and network reachability
+
+GitHub source repos are linked on dependency names above where one exists. The `nvidia-ml-py` row links to PyPI because NVIDIA distributes the package only via PyPI (no public NVIDIA-hosted GitHub repo for these bindings). If your Databricks workspace or corporate network blocks direct egress to `pypi.org` / `files.pythonhosted.org` / `registry.npmjs.org` — a posture that accelerated after the [LiteLLM PyPI supply-chain compromise on 2026-03-24](https://blog.pypi.org/posts/2026-04-02-incident-report-litellm-telnyx-supply-chain-attack/) — install via your organization's internal pip proxy (Databricks workspaces commonly route through an Artifactory PyPI mirror) or pre-stage wheels in UC Volume. See [Databricks serverless egress-control docs](https://docs.databricks.com/aws/en/security/network/serverless-network-security/manage-network-policies) for allowlist configuration. Note also that Databricks ML Runtime (MLR) GPU images preinstall `nvidia-ml-py` from `18.x` onwards; plain DBR does not.
+
+---
+
+## References
+
+- **Nature Digital Medicine — [`s41746-021-00480-x`](https://www.nature.com/articles/s41746-021-00480-x)** (Deng et al. 2021) — provides alternative approaches for CGM monitoring and forecasting (patient-specific deep-learning via transfer learning) and guidance on relevant metrics of interest (MAE / RMSE across 5-60 min horizons). Glucosphere takes a different path — fleet-level XGBoost on pseudo-patient cohorts — for demonstration simplicity; the paper is a reference for what patient-specific clinical-grade modeling could look like.

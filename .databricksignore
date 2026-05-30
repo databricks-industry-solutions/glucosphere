@@ -1,0 +1,3 @@
+# Override .gitignore: include the built React frontend
+!App/databricks/dist
+!App/databricks/dist/**
