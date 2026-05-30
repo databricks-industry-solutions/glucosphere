@@ -458,31 +458,38 @@ def _get_baseline_provenance():
     at the head of every pipeline run) so /api/config can return mode-accurate data.
     60s TTL cache — fresh enough for runtime tracking, cheap enough to not hammer DBSQL.
     Graceful fallback to 'from_source' (the bundle var default) if the table
-    doesn't exist yet (first deploy before any pipeline run)."""
+    doesn't exist yet (first deploy before any pipeline run).
+
+    Uses the Statement Execution API (`/api/2.0/sql/statements`) — same pattern
+    as `/api/sql/query`. Earlier version used the MCP SQL JSON-RPC endpoint
+    `/api/2.0/mcp/sql`; unifying on Statement Execution removes a second API
+    surface that could drift if MCP routing changes upstream."""
     now = _time.time()
     if _baseline_provenance_cache['value'] and now < _baseline_provenance_cache['fetched_at'] + _baseline_provenance_cache['ttl']:
         return _baseline_provenance_cache['value']
     DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
     if not DATABRICKS_TOKEN:
         return {'baseline_source': 'from_source', 'source_detail': '(provenance unknown — auth unavailable)'}
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not warehouse_id:
+        return {'baseline_source': 'from_source', 'source_detail': '(provenance unknown — WAREHOUSE_ID not set)'}
     try:
         resp = requests.post(
-            f"{DATABRICKS_HOST}/api/2.0/mcp/sql",
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
             headers={'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'},
             json={
-                'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
-                'params': {'name': 'execute_sql_read_only', 'arguments': {
-                    'query': f"SELECT baseline_source, source_detail FROM {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance"
-                }},
+                'warehouse_id': warehouse_id,
+                'statement': f"SELECT baseline_source, source_detail FROM {CATALOG_NAME}.{SCHEMA_NAME}.baseline_provenance",
+                'wait_timeout': '10s',
             },
-            timeout=10,
+            timeout=15,
         )
         if resp.ok:
-            data = resp.json().get('result', {}).get('structuredContent', {}).get('result', {}).get('data_array', [])
-            if data and data[0].get('values') and len(data[0]['values']) >= 2:
+            data = resp.json().get('result', {}).get('data_array', [])
+            if data and len(data[0]) >= 2:
                 value = {
-                    'baseline_source': data[0]['values'][0].get('string_value', 'from_source'),
-                    'source_detail':   data[0]['values'][1].get('string_value', ''),
+                    'baseline_source': data[0][0] or 'from_source',
+                    'source_detail':   data[0][1] or '',
                 }
                 _baseline_provenance_cache['value'] = value
                 _baseline_provenance_cache['fetched_at'] = now
