@@ -88,6 +88,7 @@ export default function GlucoseLandingDashboard() {
                   GlucoStream Intelligence
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">Continuous Glucose Monitoring Platform</p>
+                <p className="text-[11px] text-cyan-400/80 font-mono mt-0.5">Fleet command center — detect · diagnose · act</p>
               </div>
             </div>
           </div>
