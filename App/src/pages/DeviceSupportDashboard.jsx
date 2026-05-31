@@ -350,8 +350,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               </div>
               
               <div className="flex gap-4 items-stretch">
-                {/* Heatmap grid */}
-                <div className="flex-1 min-w-0">
+                {/* Heatmap grid (width-capped so cells aren't over-stretched) */}
+                <div className="flex-1 min-w-0 max-w-xl">
                   {heatmapLoading ? (
                     <div className="flex items-center justify-center h-48 text-slate-500">
                       Loading heatmap data...
