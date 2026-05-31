@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import AgentChatInterface from '../components/AgentChatInterface';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts } from '../api/databricksSQL';
+import RegionMap from '../components/RegionMap';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution } from '../api/databricksSQL';
 import { callMultiAgentSupervisor } from '../api/databricksAgent';
 import ReactMarkdown from 'react-markdown';
 
@@ -20,6 +21,8 @@ export default function DeviceSupportDashboard() {
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const [regions, setRegions] = useState([]);
+  const [regionsLoading, setRegionsLoading] = useState(true);
   const [deviceAnalysis, setDeviceAnalysis] = useState({}); // Store analysis for each device
   const [analysisLoading, setAnalysisLoading] = useState({}); // Track loading state per device
 
@@ -209,6 +212,23 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     }
   };
 
+  // Fetch regional distribution (geo panel)
+  useEffect(() => {
+    const fetchRegions = async () => {
+      try {
+        setRegionsLoading(true);
+        const data = await getDeviceRegionalDistribution();
+        setRegions(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Failed to fetch regional distribution:', error);
+        setRegions([]);
+      } finally {
+        setRegionsLoading(false);
+      }
+    };
+    fetchRegions();
+  }, []);
+
   // Fetch device pattern alerts from database
   useEffect(() => {
     const fetchAlerts = async () => {
@@ -343,15 +363,15 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           
           <div className="grid grid-cols-12 gap-6 items-start">
             {/* Heatmap */}
-            <div className="col-span-7 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Events</h3>
                 <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
               </div>
               
               <div className="flex gap-4 items-stretch">
-                {/* Heatmap grid (width-capped so cells aren't over-stretched) */}
-                <div className="flex-1 min-w-0 max-w-xl">
+                {/* Heatmap grid */}
+                <div className="flex-1 min-w-0">
                   {heatmapLoading ? (
                     <div className="flex items-center justify-center h-48 text-slate-500">
                       Loading heatmap data...
@@ -420,8 +440,21 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               </div>
             </div>
 
+            {/* Regional distribution (geo) */}
+            <div className="col-span-3 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+              <div className="mb-4">
+                <h3 className="text-sm font-medium text-slate-300 mb-1">Regional Distribution</h3>
+                <p className="text-xs text-slate-500 font-mono">Footprint × out-of-range volume</p>
+              </div>
+              {regionsLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-500">Loading regions...</div>
+              ) : (
+                <RegionMap regions={regions} />
+              )}
+            </div>
+
             {/* Device Pattern Alerts */}
-            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Pattern Alerts</h3>
                 <p className="text-xs text-slate-500 font-mono">Detected device performance patterns</p>

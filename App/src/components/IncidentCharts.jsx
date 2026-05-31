@@ -173,8 +173,8 @@ export function IncidentImpactChart() {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
       {/* Chart Title (left column) */}
-      <div className="lg:w-60 lg:shrink-0">
-        <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-48 lg:shrink-0">
+        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Incident Impact: {summary?.incident_description || 'Device Calibration Issue'}
         </h3>
         <p className="text-xs text-slate-500 font-mono">
@@ -552,8 +552,8 @@ export function GlucoseTimelineChart() {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
       {/* Chart Title (left column) */}
-      <div className="lg:w-60 lg:shrink-0">
-        <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-48 lg:shrink-0">
+        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Device Calibration Bias Over Time (±40 mg/dL Bidirectional)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
@@ -886,8 +886,8 @@ export function GlucoseAbsoluteChart() {
 
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
-      <div className="lg:w-60 lg:shrink-0">
-        <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-48 lg:shrink-0">
+        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Glucose Timeline: Actual vs Device Readings (per-cohort)
         </h3>
         <p className="text-xs text-slate-500 font-mono">

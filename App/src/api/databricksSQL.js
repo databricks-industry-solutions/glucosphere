@@ -283,5 +283,45 @@ export async function getDevicePatternAlerts() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts };
+export async function getDeviceRegionalDistribution() {
+  // Out-of-range events + monitored footprint per region (geo blast-radius view).
+  // Verified columns on gold_patient_device_readings: region, glucose_out_of_range, patient_id.
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT
+      region,
+      SUM(glucose_out_of_range) as oor_events,
+      COUNT(DISTINCT patient_id) as patient_count
+    FROM ${catalog}.${schema}.gold_patient_device_readings
+    GROUP BY region
+    ORDER BY oor_events DESC
+  `;
+
+  try {
+    const result = await executeSQLQuery(query);
+    const structuredContent = result?.result?.structuredContent;
+    const rows = structuredContent?.result?.data_array;
+
+    if (rows && rows.length > 0) {
+      const regions = rows.map(row => {
+        const v = row.values || row;
+        return {
+          region: v[0]?.string_value || v[0] || 'Unknown',
+          oorEvents: parseInt(v[1]?.string_value ?? v[1], 10) || 0,
+          patientCount: parseInt(v[2]?.string_value ?? v[2], 10) || 0,
+        };
+      });
+      console.log('✅ Device regional distribution:', regions.length, 'regions');
+      return regions;
+    }
+
+    console.warn('Could not parse device regional distribution from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get device regional distribution:', error);
+    return [];
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution };
 
