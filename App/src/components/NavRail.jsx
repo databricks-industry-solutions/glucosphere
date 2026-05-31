@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wrench, HeartHandshake, BookOpen, Info, Compass } from 'lucide-react';
+import { LayoutDashboard, Wrench, HeartHandshake, BookOpen, Telescope, Info, Compass } from 'lucide-react';
 import BrandMark from './BrandMark';
 
 // Persistent left nav rail — the "control tower" shell. Collapsed 64px icon
@@ -11,6 +11,7 @@ const ITEMS = [
   { to: '/device-support', icon: Wrench, label: 'Device Support', sub: 'Biomedical Eng.' },
   { to: '/diabetes-coach', icon: HeartHandshake, label: 'Diabetes Coach', sub: 'Coaching' },
   { to: '/metrics-explained', icon: BookOpen, label: 'Metrics Explained', sub: 'How metrics compute' },
+  { to: '/roadmap', icon: Telescope, label: 'Roadmap', sub: 'Where this goes' },
   { to: '/about', icon: Info, label: 'About', sub: 'Naming · data · repo' },
 ];
 

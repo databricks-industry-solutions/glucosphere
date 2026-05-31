@@ -4,7 +4,6 @@ import { Wifi, AlertCircle, Clock, Wrench, HeartHandshake, BookOpen, Compass } f
 import BrandMark from '../components/BrandMark';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
-import SplashGallery from '../components/SplashGallery';
 // Clipboard import available if Care Management is restored
 
 export default function GlucoseLandingDashboard() {
@@ -150,7 +149,32 @@ export default function GlucoseLandingDashboard() {
           />
         </div>
 
-        {/* Incident Analysis */}
+        {/* Quick Access by Role — compact buttons near the top (front-door role branching) */}
+        <section className="mb-8">
+          <p className="text-xs text-slate-500 font-mono mb-3">Quick access by role</p>
+          <div className="flex flex-wrap gap-3">
+            {personas.map((persona, idx) => (
+              <button
+                key={idx}
+                onClick={() => navigate(persona.route)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${persona.borderColor} ${persona.bgColor} hover:border-cyan-500/50 transition-colors group`}
+              >
+                <div className={`w-9 h-9 rounded-md bg-gradient-to-br ${persona.color} flex items-center justify-center shrink-0`}>
+                  <persona.icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>{persona.title}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">{persona.subtitle} · {persona.metric}</div>
+                </div>
+                <svg className="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition-all ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Incident Analysis — the Detect detail (fleet/incident overview) */}
         <section data-tour="incident-charts" className="mb-8">
           <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
             Recent Incident Analysis
@@ -159,51 +183,6 @@ export default function GlucoseLandingDashboard() {
             <IncidentImpactChart />
             <GlucoseAbsoluteChart />
             <GlucoseTimelineChart />
-          </div>
-        </section>
-
-        <SplashGallery />
-
-        {/* Quick Access by Role */}
-        <section>
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
-            Quick Access by Role
-          </h2>
-          <div className="grid grid-cols-2 gap-6">
-            {personas.map((persona, idx) => (
-              <button
-                key={idx}
-                onClick={() => navigate(persona.route)}
-                className={`${persona.bgColor} border ${persona.borderColor} rounded-lg p-6 text-left hover:scale-[1.02] transition-all duration-300 group`}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                    <persona.icon className="w-6 h-6 text-white" strokeWidth={2.5} />
-                  </div>
-                  <svg className="w-5 h-5 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-slate-100 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
-                  {persona.title}
-                </h3>
-                <p className="text-xs text-slate-500 mb-4 font-mono">{persona.subtitle}</p>
-                <div className="flex items-center gap-2">
-                  {persona.metric.match(/^\d+/) ? (
-                    <>
-                      <span className="text-2xl font-mono font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
-                        {persona.metric.split(' ')[0]}
-                      </span>
-                      <span className="text-sm text-slate-400">{persona.metric.split(' ').slice(1).join(' ')}</span>
-                    </>
-                  ) : (
-                    <span className="text-base font-medium text-slate-400">
-                      {persona.metric}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
           </div>
         </section>
       </main>

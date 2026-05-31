@@ -221,11 +221,11 @@ export default function DiabetesCoachDashboard() {
             {/* Glucose Range */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-5 hover:border-slate-700 transition-colors">
               <p className="text-xs text-slate-500 font-mono mb-2">GLUCOSE RANGE</p>
-              <div className="flex items-baseline gap-1">
+              <div className="flex items-baseline gap-2">
                 <p className="text-2xl font-mono font-bold text-slate-200">
                   {metricsLoading ? '...' : (populationMetrics?.minGlucose != null ? Math.round(populationMetrics.minGlucose) : 'N/A')}
                 </p>
-                <span className="text-slate-600">-</span>
+                <span className="text-slate-500 px-0.5">–</span>
                 <p className="text-2xl font-mono font-bold text-slate-200">
                   {metricsLoading ? '...' : (populationMetrics?.maxGlucose != null ? Math.round(populationMetrics.maxGlucose) : 'N/A')}
                 </p>
