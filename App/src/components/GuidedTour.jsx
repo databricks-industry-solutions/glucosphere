@@ -69,12 +69,17 @@ export default function GuidedTour() {
     if (!rect || !cardRef.current) { setCardStyle(null); return; }
     const card = cardRef.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
-    const left = Math.max(M, Math.min(rect.left + rect.width / 2 - card.width / 2, vw - card.width - M));
-    let top;
-    if (rect.bottom + GAP + card.height <= vh - M) top = rect.bottom + GAP;        // below
-    else if (rect.top - GAP - card.height >= M) top = rect.top - GAP - card.height; // above
-    else top = Math.max(M, vh - card.height - M);                                   // pinned fallback
-    setCardStyle({ position: 'fixed', top, left, pointerEvents: 'auto' });
+    const clampX = (x) => Math.max(M, Math.min(x, vw - card.width - M));
+    const clampY = (y) => Math.max(M, Math.min(y, vh - card.height - M));
+    const cx = rect.left + rect.width / 2 - card.width / 2;   // horizontally centered on element
+    const cy = rect.top + rect.height / 2 - card.height / 2;  // vertically centered on element
+    let pos;
+    if (rect.bottom + GAP + card.height <= vh - M)        pos = { top: rect.bottom + GAP, left: clampX(cx) };            // below
+    else if (rect.top - GAP - card.height >= M)           pos = { top: rect.top - GAP - card.height, left: clampX(cx) }; // above
+    else if (rect.right + GAP + card.width <= vw - M)     pos = { top: clampY(cy), left: rect.right + GAP };             // right (tall element)
+    else if (rect.left - GAP - card.width >= M)           pos = { top: clampY(cy), left: rect.left - GAP - card.width }; // left
+    else                                                  pos = { top: Math.max(M, vh - card.height - M), left: clampX(cx) }; // pinned fallback
+    setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
 
   const close = useCallback(() => { setActive(false); setRect(null); setCardStyle(null); }, []);
