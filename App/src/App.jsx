@@ -7,6 +7,8 @@ import DeviceSupportDashboard from './pages/DeviceSupportDashboard'
 import MetricsExplained from './pages/MetricsExplained'
 import AboutPage from './pages/AboutPage'
 import RoadmapPage from './pages/RoadmapPage'
+import FirmwareLifecyclePage from './pages/FirmwareLifecyclePage'
+import PopulationRiskPage from './pages/PopulationRiskPage'
 import FirstVisitGate from './components/FirstVisitGate'
 import GuidedTour from './components/GuidedTour'
 import AppShell from './components/AppShell'
@@ -24,6 +26,8 @@ function App() {
         <Route path="/metrics-explained" element={<MetricsExplained />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/roadmap" element={<RoadmapPage />} />
+        <Route path="/firmware-lifecycle" element={<FirmwareLifecyclePage />} />
+        <Route path="/population-risk" element={<PopulationRiskPage />} />
       </Routes>
       </AppShell>
       </FirstVisitGate>

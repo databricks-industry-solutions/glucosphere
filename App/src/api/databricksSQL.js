@@ -323,5 +323,96 @@ export async function getDeviceRegionalDistribution() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution };
+// VIEW ② Diagnose — Firmware Lifecycle: out-of-range rate per firmware version
+// over time (last 7d). The faulty firmware spikes during the incident window
+// while clean versions stay flat. Verified cols on gold_patient_device_readings.
+export async function getFirmwareLifecycle() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT
+      DATE(time) as day,
+      CAST(firmware_version AS STRING) as firmware_version,
+      ROUND(SUM(glucose_out_of_range) / NULLIF(COUNT(*), 0) * 100, 2) as oor_rate_pct,
+      SUM(glucose_out_of_range) as oor_events,
+      COUNT(*) as readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings
+    WHERE firmware_version IS NOT NULL
+    GROUP BY DATE(time), CAST(firmware_version AS STRING)
+    ORDER BY day, firmware_version
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return {
+          day: v[0]?.string_value ?? v[0],
+          firmwareVersion: v[1]?.string_value ?? v[1],
+          oorRatePct: parseFloat(v[2]?.string_value ?? v[2]) || 0,
+          oorEvents: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
+          readings: parseInt(v[4]?.string_value ?? v[4], 10) || 0,
+        };
+      });
+    }
+    console.warn('Could not parse firmware lifecycle from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get firmware lifecycle:', error);
+    return [];
+  }
+}
+
+// VIEW ③ Assess — Population Risk: % of device-observed readings in hypo (<70) /
+// hyper (>180) range, per cohort. Baseline (outside any incident) vs the
+// positive-bias cohort (over-reads → hyper) vs negative-bias (under-reads → hypo)
+// during their incident windows = the clinical blast radius. Verified cols on
+// pseudo_incident_7d_labeled (same table the landing incident charts query).
+export async function getPopulationRisk() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH d AS (
+      SELECT
+        glucose_observed,
+        incident_direction,
+        CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+    )
+    SELECT
+      CASE
+        WHEN incident_period = 0 THEN 'Baseline'
+        WHEN incident_direction = 'positive' THEN 'Positive cohort'
+        WHEN incident_direction = 'negative' THEN 'Negative cohort'
+        ELSE 'Other'
+      END as cohort,
+      ROUND(SUM(CASE WHEN glucose_observed < 70 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) as pct_hypo,
+      ROUND(SUM(CASE WHEN glucose_observed > 180 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) as pct_hyper,
+      COUNT(*) as readings
+    FROM d
+    GROUP BY 1
+    ORDER BY cohort
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return {
+          cohort: v[0]?.string_value ?? v[0],
+          pctHypo: parseFloat(v[1]?.string_value ?? v[1]) || 0,
+          pctHyper: parseFloat(v[2]?.string_value ?? v[2]) || 0,
+          readings: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
+        };
+      }).filter(r => r.cohort !== 'Other');
+    }
+    console.warn('Could not parse population risk from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get population risk:', error);
+    return [];
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk };
 
