@@ -843,25 +843,6 @@ LIMIT 50`}
           </div>
         </section>
 
-        {/* Future Sections */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
-            Other Dashboards
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 opacity-50">
-              <h3 className="text-sm font-semibold text-slate-400 mb-2">Care Management Dashboard</h3>
-              <p className="text-xs text-slate-500">Metrics documentation coming soon...</p>
-            </div>
-
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 opacity-50">
-              <h3 className="text-sm font-semibold text-slate-400 mb-2">Diabetes Coach Dashboard</h3>
-              <p className="text-xs text-slate-500">Metrics documentation coming soon...</p>
-            </div>
-          </div>
-        </section>
-
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-slate-800 text-center text-xs text-slate-500">
           <p>All metrics are calculated in real-time from Databricks Unity Catalog via DBSQL MCP Server</p>
