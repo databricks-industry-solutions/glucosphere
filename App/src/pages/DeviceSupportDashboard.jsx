@@ -341,7 +341,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             Population Overview
           </h2>
           
-          <div className="grid grid-cols-12 gap-6">
+          <div className="grid grid-cols-12 gap-6 items-start">
             {/* Heatmap */}
             <div className="col-span-7 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="mb-4">
