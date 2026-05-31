@@ -363,7 +363,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
-            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+            <div data-tour="anomaly-heatmap" className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Events</h3>
                 <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
@@ -377,7 +377,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       Loading heatmap data...
                     </div>
                   ) : (
-                    <div data-tour="anomaly-heatmap" className="space-y-2">
+                    <div className="space-y-2">
                       {/* X-axis labels */}
                       <div className="flex items-center gap-3">
                         <div className="w-24" />
