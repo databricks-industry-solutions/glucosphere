@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
-import AgentChatInterface from '../components/AgentChatInterface';
 import RegionMap from '../components/RegionMap';
 import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution } from '../api/databricksSQL';
-import { callMultiAgentSupervisor } from '../api/databricksAgent';
+import { callAssistant } from '../api/databricksAgent';
+import { getEngine } from '../api/assistEngine';
 import ReactMarkdown from 'react-markdown';
 
 export default function DeviceSupportDashboard() {
@@ -181,9 +181,14 @@ As a biomedical equipment specialist, analyze:
 Focus on DEVICE technical issues, not patient clinical care. Provide actionable troubleshooting steps for biomedical technicians.`;
 
       console.log('Requesting deeper analysis for:', deviceKey);
-      
-      // Call multi-agent supervisor
-      const response = await callMultiAgentSupervisor(prompt);
+
+      // Engine-switchable: 'direct' (fast FM + fleet enrichment) or 'mas' (supervisor).
+      // mode:'analysis' tells the backend to fetch fleet context for this model/firmware.
+      const response = await callAssistant(prompt, {
+        engine: getEngine(),
+        mode: 'analysis',
+        context: { model: device.model, firmware: device.firmware },
+      });
       
       // Extract the response content
       let analysisText = 'Analysis complete. Please review recommendations.';
@@ -357,10 +362,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
       <main className="max-w-[1600px] mx-auto px-6 py-8">
         {/* Population Overview */}
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-lg font-semibold mb-1 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
             Population Overview
           </h2>
-          
+          <p className="text-xs font-mono text-slate-500 mb-6">
+            Operational fleet view — for the <span className="text-slate-300">device / biomedical team</span> (which devices &amp; firmware to service). For the clinical blast radius (which patients to contact), see{' '}
+            <button onClick={() => navigate('/population-risk')} className="text-cyan-400 hover:text-cyan-300">Population Risk →</button>.
+          </p>
+
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
             <div data-tour="anomaly-heatmap" className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
@@ -496,16 +505,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           </div>
         </section>
 
-        {/* Device Troubleshooting Intelligence - AI Chat */}
-        <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
-            Device Troubleshooting Intelligence
-          </h2>
-          
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-            <AgentChatInterface />
-          </div>
-        </section>
+        {/* Device troubleshooting moved to the global assistant (FAB, bottom-right):
+            ask the "Device support" mode for sensor/firmware/calibration help. */}
 
         {/* Device Detail Table */}
         <section>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import NavRail from './NavRail';
+import GlobalAssistant from './GlobalAssistant';
 
 const PIN_KEY = 'glucosphere-rail-pinned';
 
@@ -21,6 +22,8 @@ export default function AppShell({ children }) {
     <div className="min-h-screen bg-slate-950">
       <NavRail pinned={pinned} onTogglePin={togglePin} />
       <div className={`${pinned ? 'pl-56' : 'pl-16'} transition-all duration-200`}>{children}</div>
+      {/* Unified assistant (spec D4) — one surface for MAS + Genie on every page. */}
+      <GlobalAssistant />
     </div>
   );
 }

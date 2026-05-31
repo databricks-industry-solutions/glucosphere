@@ -85,5 +85,32 @@ export const callMultiAgentSupervisor = async (message, conversationHistory = []
   }
 };
 
+/**
+ * Unified assistant call → Flask /api/assist (switchable engine).
+ * opts: { engine('direct'|'mas'), mode('chat'|'analysis'), context({model,firmware}),
+ *         conversationHistory[], conversationId }
+ * Returns { response, engine, route }.
+ */
+export const callAssistant = async (message, opts = {}) => {
+  const { engine, mode = 'chat', context = null, conversationHistory = [], conversationId = null } = opts;
+  const messages = [
+    ...conversationHistory.map((m) => ({ role: m.role, content: m.content || '' })),
+    { role: 'user', content: message },
+  ];
+  const res = await fetch('/api/assist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, conversation_id: conversationId, engine, mode, context }),
+  });
+  if (!res.ok) {
+    let details;
+    const ct = res.headers.get('content-type');
+    try { details = ct && ct.includes('application/json') ? await res.json() : await res.text(); }
+    catch { details = ''; }
+    throw new Error(`API call failed: ${res.status} ${res.statusText}${details ? ' - ' + JSON.stringify(details) : ''}`);
+  }
+  return res.json();
+};
+
 export default {};
 
