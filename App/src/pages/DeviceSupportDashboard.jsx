@@ -376,7 +376,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         return (
                           <div 
                             key={fw}
-                            className="flex-1 h-14 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
+                            className="flex-1 h-10 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
                             style={{
                               backgroundColor: getHeatmapColor(outOfRangeEvents)
                             }}
@@ -437,41 +437,34 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   No alerts at this time
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {alerts.map((alert, idx) => (
-                    <div 
-                      key={idx}
-                      className="border border-slate-800 rounded-lg p-4 hover:border-slate-700 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            alert.severity === 'high' ? 'bg-rose-400' :
-                            alert.severity === 'medium' ? 'bg-amber-400' :
-                            'bg-yellow-400'
-                          }`} />
-                          <span className="text-xs font-mono text-slate-400 uppercase">{alert.severity}</span>
+                (() => {
+                  // Compact ranked bar chart — one bar per pattern, length ∝ out-of-range
+                  // event volume, colored by severity. Replaces the tall alert-card list.
+                  const maxEv = Math.max(...alerts.map(a => a.affected), 1);
+                  const barColor = (s) => s === 'high' ? 'bg-rose-500/70' : s === 'medium' ? 'bg-amber-500/70' : 'bg-yellow-500/70';
+                  const dotColor = (s) => s === 'high' ? 'bg-rose-400' : s === 'medium' ? 'bg-amber-400' : 'bg-yellow-400';
+                  return (
+                    <div className="space-y-3">
+                      {[...alerts].sort((a, b) => b.affected - a.affected).map((alert, idx) => (
+                        <div key={idx} className="group">
+                          <div className="flex items-center justify-between mb-1 text-xs">
+                            <span className="flex items-center gap-2 font-mono text-slate-300 truncate">
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(alert.severity)}`} />
+                              {alert.device_type} {alert.firmware_version}
+                              <span className="text-slate-600">· {alert.region}</span>
+                            </span>
+                            <span className="font-mono text-slate-400 shrink-0 ml-2">
+                              {alert.affected.toLocaleString()} <span className="text-slate-600">· {alert.rate_pct}%</span>
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div className={`h-full rounded-full ${barColor(alert.severity)} transition-all`} style={{ width: `${Math.max(3, (alert.affected / maxEv) * 100)}%` }} />
+                          </div>
                         </div>
-                        <span className="text-xs font-mono text-slate-500">{alert.rate_pct}%</span>
-                      </div>
-                      
-                      <h4 className="text-sm font-medium text-slate-200 mb-1">
-                        Elevated Out-of-Range Event Rate
-                      </h4>
-                      <p className="text-xs text-slate-500 font-mono mb-2">
-                        {alert.device_type} {alert.firmware_version}
-                      </p>
-                      
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs text-amber-400 font-mono">{alert.affected.toLocaleString()} out-of-range events</span>
-                      </div>
-                      
-                      <div className="mt-3 p-2 bg-cyan-500/5 border border-cyan-500/20 rounded text-xs text-cyan-400 font-mono">
-                        📍 {alert.region} region • {alert.days_tracked} days tracked
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()
               )}
             </div>
           </div>
