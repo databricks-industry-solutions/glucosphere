@@ -7,6 +7,7 @@ import DeviceSupportDashboard from './pages/DeviceSupportDashboard'
 import MetricsExplained from './pages/MetricsExplained'
 import AboutPage from './pages/AboutPage'
 import FirstVisitGate from './components/FirstVisitGate'
+import GuidedTour from './components/GuidedTour'
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/about" element={<AboutPage />} />
       </Routes>
       </FirstVisitGate>
+      <GuidedTour />
     </Router>
   )
 }

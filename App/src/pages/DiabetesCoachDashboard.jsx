@@ -453,7 +453,7 @@ export default function DiabetesCoachDashboard() {
           <div className="col-span-4 space-y-6">
             {/* Risk Forecast */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">72-Hour Risk Forecast</h3>
+              <h3 data-tour="coach-risk" className="text-sm font-medium text-slate-300 mb-4">72-Hour Risk Forecast</h3>
               
               <div className="space-y-4">
                 <div>

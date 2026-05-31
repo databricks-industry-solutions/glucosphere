@@ -114,7 +114,7 @@ export default function GlucoseLandingDashboard() {
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Hero Metrics */}
-        <div className="grid grid-cols-4 gap-4 mb-12">
+        <div data-tour="hero-metrics" className="grid grid-cols-4 gap-4 mb-12">
           <MetricCard
             label="Active Patients"
             value={metricsLoading ? '...' : (activePatients !== null ? activePatients.toLocaleString() : 'N/A')}
@@ -142,7 +142,7 @@ export default function GlucoseLandingDashboard() {
         </div>
 
         {/* Incident Analysis */}
-        <section className="mb-12">
+        <section data-tour="incident-charts" className="mb-12">
           <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
             Recent Incident Analysis
           </h2>
