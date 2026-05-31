@@ -78,7 +78,14 @@ export default function GuidedTour() {
     else if (rect.top - GAP - card.height >= M)           pos = { top: rect.top - GAP - card.height, left: clampX(cx) }; // above
     else if (rect.right + GAP + card.width <= vw - M)     pos = { top: clampY(cy), left: rect.right + GAP };             // right (tall element)
     else if (rect.left - GAP - card.width >= M)           pos = { top: clampY(cy), left: rect.left - GAP - card.width }; // left
-    else                                                  pos = { top: Math.max(M, vh - card.height - M), left: clampX(cx) }; // pinned fallback
+    else {
+      // Oversized target (a full-width, taller-than-viewport panel): no room on any
+      // side, so tuck the card into whichever viewport CORNER has more free space —
+      // covering as little of the highlight as possible instead of sitting dead-center.
+      const left = (vw - rect.right) >= rect.left ? vw - card.width - M : M;
+      const top = (vh - rect.bottom) >= rect.top ? vh - card.height - M : M;
+      pos = { top: clampY(top), left: clampX(left) };
+    }
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
 

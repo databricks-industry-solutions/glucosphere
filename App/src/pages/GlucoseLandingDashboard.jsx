@@ -52,10 +52,10 @@ export default function GlucoseLandingDashboard() {
               <BrandMark className="w-7 h-7 text-cyan-400" />
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-                  GlucoStream Intelligence
+                  Glucosphere
                 </h1>
-                <p className="text-xs text-slate-500 font-mono">Continuous Glucose Monitoring Platform</p>
-                <p className="text-[11px] text-cyan-400/80 font-mono mt-0.5">Fleet command center — detect · diagnose · act</p>
+                <p className="text-xs text-slate-500 font-mono">CGM Stream Intelligence</p>
+                <p className="text-[11px] text-cyan-400/80 font-mono mt-0.5">Fleet control tower — detect · diagnose · act</p>
               </div>
             </div>
           </div>

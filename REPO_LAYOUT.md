@@ -75,7 +75,7 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 | Path | Stack | What it does |
 |---|---|---|
 | [`App/src/`](App/src/) | React (Vite) | frontend root — `App.jsx`, `main.jsx`, `index.css`, `ErrorBoundary.jsx` |
-| [`App/src/pages/GlucoseLandingDashboard.jsx`](App/src/pages/GlucoseLandingDashboard.jsx) | React | landing page ("GlucoStream Intelligence") |
+| [`App/src/pages/GlucoseLandingDashboard.jsx`](App/src/pages/GlucoseLandingDashboard.jsx) | React | landing page ("Glucosphere") |
 | [`App/src/pages/DiabetesCoachDashboard.jsx`](App/src/pages/DiabetesCoachDashboard.jsx) | React | patient-facing coach dashboard |
 | [`App/src/pages/CareManagementDashboard.jsx`](App/src/pages/CareManagementDashboard.jsx) | React | clinician dashboard |
 | [`App/src/pages/DeviceSupportDashboard.jsx`](App/src/pages/DeviceSupportDashboard.jsx) | React | device-team dashboard |

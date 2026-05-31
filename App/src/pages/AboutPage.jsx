@@ -24,7 +24,7 @@ export default function AboutPage() {
             <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
-              <p className="text-xs text-slate-500 font-mono">CGM fleet command center — detect · diagnose · act</p>
+              <p className="text-xs text-slate-500 font-mono">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
             </div>
           </div>
         </div>
@@ -34,20 +34,26 @@ export default function AboutPage() {
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>What this is</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
-            <span className="text-cyan-400 font-medium">Glucosphere</span> is the platform; the live monitoring
-            surface is branded <span className="text-cyan-400 font-medium">GlucoStream Intelligence</span> — a
-            control tower for a continuous-glucose-monitor (CGM) device fleet: detect device-accuracy drift,
-            diagnose it to the firmware at fault, and assess the patient-risk impact.
+            <span className="text-cyan-400 font-medium">Glucosphere</span> is a control tower for a
+            continuous-glucose-monitor (CGM) device fleet: detect device-accuracy drift, diagnose it to the
+            firmware at fault, and assess the patient-risk impact. <span className="text-slate-500">(The
+            live monitoring feed is nicknamed "GlucoStream" — the continuous stream of device readings the
+            platform watches.)</span>
           </p>
         </section>
 
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-3 text-amber-300" style={{ fontFamily: 'Georgia, serif' }}>What's simulated vs real</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
-            The underlying CGM <span className="text-slate-200">glucose signal is real</span> (seeded from the
-            HUPA-UCM type-1-diabetes dataset). Patient identifiers, device metadata, and the ±40 mg/dL
-            device-calibration-bug incidents are <span className="text-amber-300 font-medium">simulated</span> for
-            demonstration — there is no real adverse-event PHI.
+            The underlying ground-truth glucose signal (<span className="font-mono text-slate-300">glucose_true</span>) is
+            <span className="text-slate-200"> real by default</span> — seeded from the HUPA-UCM type-1-diabetes dataset; a
+            fully-synthetic generator mode is also available for clean demos (chosen per deployment via{' '}
+            <span className="font-mono text-cyan-400">baseline_source</span>). What the device <em>reports</em>{' '}
+            (<span className="font-mono text-slate-300">glucose_observed</span>) is that signal with a{' '}
+            <span className="text-amber-300 font-medium">simulated</span> ±40 mg/dL calibration bias layered on during
+            incident windows — the gap between the two is the device fault the platform detects. Patient identifiers,
+            device metadata, and the calibration-bug incidents themselves are <span className="text-amber-300 font-medium">always
+            simulated</span> for demonstration — there is no real adverse-event PHI.
           </p>
         </section>
 

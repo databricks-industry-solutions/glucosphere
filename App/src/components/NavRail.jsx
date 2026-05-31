@@ -39,7 +39,9 @@ export default function NavRail({ pinned = false, onTogglePin }) {
     <nav className={`group fixed top-0 left-0 z-[90] h-screen ${pinned ? 'w-56' : 'w-16 hover:w-56'} bg-[#0b1220] border-r border-slate-800 transition-all duration-200 overflow-hidden flex flex-col py-3`}>
       {/* Brand + pin toggle */}
       <div className="flex items-center gap-3 px-[18px] pb-3 mb-2 border-b border-slate-800/70">
-        <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
+        <NavLink to="/" aria-label="Home — fleet overview" title="Home" className="shrink-0 hover:opacity-80 transition-opacity">
+          <BrandMark className="w-7 h-7 text-cyan-400" />
+        </NavLink>
         <div className={`${reveal} transition-opacity whitespace-nowrap flex-1 min-w-0`}>
           <p className="text-sm font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>Glucosphere</p>
           <p className="text-[10px] text-slate-500 font-mono">CGM control tower</p>
