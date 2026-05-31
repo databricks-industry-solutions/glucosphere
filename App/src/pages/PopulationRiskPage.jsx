@@ -3,19 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import PopulationRiskChart from '../components/PopulationRiskChart';
-import { getPopulationRisk } from '../api/databricksSQL';
+import { getPopulationRisk, getCohortAffected } from '../api/databricksSQL';
 
 // ③ Assess — which patient cohorts a device fault pushed into hypo/hyper exposure.
 export default function PopulationRiskPage() {
   const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [roster, setRoster] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try { setLoading(true); setData(await getPopulationRisk()); }
       catch (e) { console.error('Population risk fetch failed:', e); setData([]); }
       finally { setLoading(false); }
+    })();
+    (async () => {
+      try { setRosterLoading(true); setRoster(await getCohortAffected()); }
+      catch (e) { console.error('Cohort roster fetch failed:', e); setRoster([]); }
+      finally { setRosterLoading(false); }
     })();
   }, []);
 
@@ -52,6 +59,55 @@ export default function PopulationRiskPage() {
           {loading
             ? <div className="flex items-center justify-center h-64 text-slate-500">Loading population risk…</div>
             : <PopulationRiskChart data={data} />}
+        </section>
+
+        {/* Affected patients & devices — the act handoff */}
+        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+          <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Affected patients &amp; devices</h2>
+              <p className="text-xs text-slate-500 font-mono mt-1">The outreach / recall roster — worst exposure first. Identifiers simulated (no real PHI).</p>
+            </div>
+            <button onClick={() => navigate('/roadmap')} className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors shrink-0">
+              → Send to triage queue <span className="text-slate-500">(Live Alert · wip)</span>
+            </button>
+          </div>
+          {rosterLoading ? (
+            <div className="flex items-center justify-center h-32 text-slate-500">Loading roster…</div>
+          ) : roster.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-slate-500">No affected devices</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] font-mono text-slate-500 border-b border-slate-800">
+                    <th className="py-2 pr-3 font-normal">Patient</th>
+                    <th className="py-2 pr-3 font-normal">Device</th>
+                    <th className="py-2 pr-3 font-normal">Model</th>
+                    <th className="py-2 pr-3 font-normal">Region</th>
+                    <th className="py-2 pr-3 font-normal">Cohort</th>
+                    <th className="py-2 pr-3 font-normal text-right">% hypo</th>
+                    <th className="py-2 font-normal text-right">% hyper</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono text-slate-300">
+                  {roster.map((r, i) => (
+                    <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/40">
+                      <td className="py-2 pr-3">{r.patientId}</td>
+                      <td className="py-2 pr-3">{r.deviceId}</td>
+                      <td className="py-2 pr-3 text-slate-400">{r.deviceModel}</td>
+                      <td className="py-2 pr-3 text-slate-400">{r.region}</td>
+                      <td className="py-2 pr-3">
+                        <span className={r.direction === 'positive' ? 'text-rose-300' : 'text-blue-300'}>{r.direction === 'positive' ? 'over-read' : 'under-read'}</span>
+                      </td>
+                      <td className="py-2 pr-3 text-right text-blue-300">{r.pctHypo}</td>
+                      <td className="py-2 text-right text-rose-300">{r.pctHyper}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
     </div>

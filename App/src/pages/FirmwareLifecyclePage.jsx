@@ -39,11 +39,12 @@ export default function FirmwareLifecyclePage() {
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">② DIAGNOSE</span>
-          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Out-of-range rate by firmware version</h2>
+          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Calibration error (MAE) by firmware version</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             Once the fleet-wide monitor flags an accuracy spike, the next question is <span className="text-slate-200">which firmware</span>.
-            Each line is the share of device readings out of range (&lt;70 or &gt;180 mg/dL) per firmware version over the recent window —
-            the <span className="text-rose-300">faulty version</span> climbs while clean versions stay flat, pointing at the rollout to roll back or patch.
+            Each line is the mean device error — <span className="font-mono">|observed − true| glucose</span> — per firmware version per day.
+            Clean firmwares sit near <span className="text-emerald-300">0 mg/dL</span>; the <span className="text-rose-300">faulty version</span> spikes
+            during the incident, pointing at the exact rollout to roll back or patch.
           </p>
         </section>
 

@@ -323,21 +323,23 @@ export async function getDeviceRegionalDistribution() {
   }
 }
 
-// VIEW ② Diagnose — Firmware Lifecycle: out-of-range rate per firmware version
-// over time (last 7d). The faulty firmware spikes during the incident window
-// while clean versions stay flat. Verified cols on gold_patient_device_readings.
+// VIEW ② Diagnose — Firmware Lifecycle: device calibration error (MAE =
+// |observed − true|) per firmware version per day. Joins gold (firmware) to
+// pseudo_incident_7d_labeled (observed/true) — same signal as the landing MAE
+// chart. Clean firmwares sit near 0; the faulty version spikes during incident.
 export async function getFirmwareLifecycle() {
   const { catalog, schema } = await getConfig();
   const query = `
     SELECT
-      DATE(time) as day,
-      CAST(firmware_version AS STRING) as firmware_version,
-      ROUND(SUM(glucose_out_of_range) / NULLIF(COUNT(*), 0) * 100, 2) as oor_rate_pct,
-      SUM(glucose_out_of_range) as oor_events,
+      DATE(g.time) as day,
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      ROUND(AVG(ABS(p.glucose_observed - p.glucose_true)), 1) as mae,
       COUNT(*) as readings
-    FROM ${catalog}.${schema}.gold_patient_device_readings
-    WHERE firmware_version IS NOT NULL
-    GROUP BY DATE(time), CAST(firmware_version AS STRING)
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      ON g.patient_id = p.patient_id AND g.time = p.time
+    WHERE g.firmware_version IS NOT NULL
+    GROUP BY DATE(g.time), CAST(g.firmware_version AS STRING)
     ORDER BY day, firmware_version
   `;
   try {
@@ -349,9 +351,8 @@ export async function getFirmwareLifecycle() {
         return {
           day: v[0]?.string_value ?? v[0],
           firmwareVersion: v[1]?.string_value ?? v[1],
-          oorRatePct: parseFloat(v[2]?.string_value ?? v[2]) || 0,
-          oorEvents: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
-          readings: parseInt(v[4]?.string_value ?? v[4], 10) || 0,
+          mae: parseFloat(v[2]?.string_value ?? v[2]) || 0,
+          readings: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
         };
       });
     }
@@ -414,5 +415,56 @@ export async function getPopulationRisk() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk };
+// VIEW ③ → ACT — affected patients & devices per cohort: the outreach/recall
+// roster. Cohort + per-patient hypo/hyper exposure (pseudo_incident_7d_labeled)
+// joined to device/region (gold). One row per patient (firmware dropped to avoid
+// per-firmware duplication). Identifiers are simulated — no real PHI.
+export async function getCohortAffected() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH affected AS (
+      SELECT patient_id, incident_direction,
+        ROUND(SUM(CASE WHEN glucose_observed < 70 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) as pct_hypo,
+        ROUND(SUM(CASE WHEN glucose_observed > 180 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) as pct_hyper
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+      WHERE incident_direction IN ('positive','negative')
+      GROUP BY patient_id, incident_direction
+    ),
+    dev AS (
+      SELECT DISTINCT patient_id, device_id, device_model, region
+      FROM ${catalog}.${schema}.gold_patient_device_readings
+    )
+    SELECT a.patient_id, a.incident_direction, a.pct_hypo, a.pct_hyper,
+      d.device_id, d.device_model, d.region
+    FROM affected a
+    LEFT JOIN dev d ON a.patient_id = d.patient_id
+    ORDER BY a.incident_direction, GREATEST(a.pct_hypo, a.pct_hyper) DESC
+    LIMIT 40
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return {
+          patientId: v[0]?.string_value ?? v[0],
+          direction: v[1]?.string_value ?? v[1],
+          pctHypo: parseFloat(v[2]?.string_value ?? v[2]) || 0,
+          pctHyper: parseFloat(v[3]?.string_value ?? v[3]) || 0,
+          deviceId: v[4]?.string_value ?? v[4],
+          deviceModel: v[5]?.string_value ?? v[5],
+          region: v[6]?.string_value ?? v[6],
+        };
+      });
+    }
+    console.warn('Could not parse cohort-affected roster from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get cohort-affected roster:', error);
+    return [];
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected };
 

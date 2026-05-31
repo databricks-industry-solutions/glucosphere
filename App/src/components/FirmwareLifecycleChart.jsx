@@ -15,13 +15,13 @@ export default function FirmwareLifecycleChart({ data = [] }) {
 
   const days = [...new Set(data.map(d => d.day))].sort();
   const versions = [...new Set(data.map(d => d.firmwareVersion))].sort();
-  const maxY = Math.max(5, ...data.map(d => d.oorRatePct));
+  const maxY = Math.max(5, ...data.map(d => d.mae));
 
   const x = (day) => pad.left + (days.length === 1 ? innerW / 2 : (days.indexOf(day) / (days.length - 1)) * innerW);
   const y = (v) => pad.top + innerH - (v / maxY) * innerH;
 
   const seriesFor = (ver) => days
-    .map(day => { const row = data.find(d => d.day === day && d.firmwareVersion === ver); return row ? { day, v: row.oorRatePct } : null; })
+    .map(day => { const row = data.find(d => d.day === day && d.firmwareVersion === ver); return row ? { day, v: row.mae } : null; })
     .filter(Boolean);
 
   const fmtDay = (d) => (d || '').slice(5); // MM-DD
@@ -43,7 +43,7 @@ export default function FirmwareLifecycleChart({ data = [] }) {
         <text key={i} x={x(d)} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)">{fmtDay(d)}</text>
       ))}
       <text x={pad.left + innerW / 2} y={H - 6} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)">Day</text>
-      <text x={14} y={pad.top + innerH / 2} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)" transform={`rotate(-90 14 ${pad.top + innerH / 2})`}>Out-of-range rate (%)</text>
+      <text x={14} y={pad.top + innerH / 2} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)" transform={`rotate(-90 14 ${pad.top + innerH / 2})`}>Device error — MAE (mg/dL)</text>
 
       {/* series */}
       {versions.map((ver, vi) => {
@@ -53,7 +53,12 @@ export default function FirmwareLifecycleChart({ data = [] }) {
         return (
           <g key={ver}>
             <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-            {pts.map((p, i) => <circle key={i} cx={x(p.day)} cy={y(p.v)} r="2.5" fill={color} />)}
+            {pts.map((p, i) => (
+              <g key={i}>
+                <circle cx={x(p.day)} cy={y(p.v)} r={p.v >= 2 ? 3.5 : 2.5} fill={color} />
+                {p.v >= 2 && <text x={x(p.day)} y={y(p.v) - 7} textAnchor="middle" fontSize="10" fontFamily="monospace" fill={color}>{p.v}</text>}
+              </g>
+            ))}
             {/* legend */}
             <line x1={pad.left + innerW + 12} y1={pad.top + 6 + vi * 20} x2={pad.left + innerW + 30} y2={pad.top + 6 + vi * 20} stroke={color} strokeWidth="2.5" />
             <text x={pad.left + innerW + 35} y={pad.top + 9 + vi * 20} fontSize="11" fontFamily="monospace" fill="rgb(148 163 184)">FW {ver}</text>
