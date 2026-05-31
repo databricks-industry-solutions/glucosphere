@@ -25,22 +25,33 @@ export default function GuidedTour() {
     if (active && step && location.pathname !== step.route) navigate(step.route);
   }, [active, i, step, location.pathname, navigate]);
 
-  // Position the spotlight on the step's target (retry until present after route change).
+  // Position the spotlight on the step's target. Retry until present (route change),
+  // then MEASURE AFTER the smooth scroll settles + keep re-measuring on scroll/resize
+  // so the box stays glued to the element (measuring too early lands it off-target).
   useEffect(() => {
     if (!active || !step) return;
     let tries = 0;
-    const id = setInterval(() => {
+    let cleanup = () => {};
+    const find = setInterval(() => {
       const el = document.querySelector(step.selector);
       if (el) {
+        clearInterval(find);
+        const measure = () => setRect(el.getBoundingClientRect());
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setRect(el.getBoundingClientRect());
-        clearInterval(id);
-      } else if (++tries > 20) {
+        const t = setTimeout(measure, 380);           // after smooth-scroll settles
+        window.addEventListener('scroll', measure, true);
+        window.addEventListener('resize', measure);
+        cleanup = () => {
+          clearTimeout(t);
+          window.removeEventListener('scroll', measure, true);
+          window.removeEventListener('resize', measure);
+        };
+      } else if (++tries > 25) {
+        clearInterval(find);
         setRect(null);
-        clearInterval(id);
       }
     }, 100);
-    return () => clearInterval(id);
+    return () => { clearInterval(find); cleanup(); };
   }, [active, i, step, location.pathname]);
 
   const close = useCallback(() => { setActive(false); setRect(null); }, []);
