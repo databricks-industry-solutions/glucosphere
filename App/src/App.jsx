@@ -6,10 +6,12 @@ import DiabetesCoachDashboard from './pages/DiabetesCoachDashboard'
 import DeviceSupportDashboard from './pages/DeviceSupportDashboard'
 import MetricsExplained from './pages/MetricsExplained'
 import AboutPage from './pages/AboutPage'
+import FirstVisitGate from './components/FirstVisitGate'
 
 function App() {
   return (
     <Router>
+      <FirstVisitGate onStartTour={() => window.dispatchEvent(new Event('glucosphere:start-tour'))}>
       <Routes>
         <Route path="/" element={<GlucoseLandingDashboard />} />
         <Route path="/care-management" element={<CareManagementDashboard />} />
@@ -18,6 +20,7 @@ function App() {
         <Route path="/metrics-explained" element={<MetricsExplained />} />
         <Route path="/about" element={<AboutPage />} />
       </Routes>
+      </FirstVisitGate>
     </Router>
   )
 }
