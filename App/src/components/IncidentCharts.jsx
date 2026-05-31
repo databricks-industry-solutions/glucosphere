@@ -171,9 +171,9 @@ export function IncidentImpactChart() {
   }
 
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-      {/* Chart Title */}
-      <div className="mb-4">
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
+      {/* Chart Title (left column) */}
+      <div className="lg:w-60 lg:shrink-0">
         <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Incident Impact: {summary?.incident_description || 'Device Calibration Issue'}
         </h3>
@@ -182,9 +182,9 @@ export function IncidentImpactChart() {
         </p>
       </div>
 
-      {/* SVG Chart */}
-      <div className="overflow-x-auto">
-        <svg width={chartWidth} height={chartHeight} className="mx-auto">
+      {/* SVG Chart (right, responsive) */}
+      <div className="flex-1 min-w-0">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
           {/* Incident period highlights — one rectangle per contiguous incident block.
               With the two-window mirror design there are two separate incidents (Day 2
               and Day 5); rendering each one separately avoids one big rect spanning
@@ -550,9 +550,9 @@ export function GlucoseTimelineChart() {
   }
 
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-      {/* Chart Title */}
-      <div className="mb-4">
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
+      {/* Chart Title (left column) */}
+      <div className="lg:w-60 lg:shrink-0">
         <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Device Calibration Bias Over Time (±40 mg/dL Bidirectional)
         </h3>
@@ -561,9 +561,9 @@ export function GlucoseTimelineChart() {
         </p>
       </div>
 
-      {/* SVG Chart */}
-      <div className="overflow-x-auto">
-        <svg width={chartWidth} height={chartHeight} className="mx-auto">
+      {/* SVG Chart (right, responsive) */}
+      <div className="flex-1 min-w-0">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
           {/* Incident period highlights — one rectangle per contiguous incident block.
               Two-window mirror design renders each incident (Day 2 + Day 5) separately. */}
           {incidentBlocks.map((blk, i) => (
@@ -885,8 +885,8 @@ export function GlucoseAbsoluteChart() {
   const hyperY = (minGlucose <= 180 && maxGlucose >= 180) ? yScale(180) : null;
 
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-      <div className="mb-4">
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
+      <div className="lg:w-60 lg:shrink-0">
         <h3 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
           Glucose Timeline: Actual vs Device Readings (per-cohort)
         </h3>
@@ -894,8 +894,8 @@ export function GlucoseAbsoluteChart() {
           Affected patients only. Green = true glucose, Red = positive-bias cohort device readings (+40 mg/dL at Day 2 incident), Blue = negative-bias cohort device readings (-40 mg/dL at Day 5 incident).
         </p>
       </div>
-      <div className="overflow-x-auto">
-        <svg width={chartWidth} height={chartHeight} className="mx-auto">
+      <div className="flex-1 min-w-0">
+        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
           {/* Incident period shadings — one rectangle per contiguous incident block */}
           {incidentBlocks.map((blk, i) => {
             const x1 = xScale(blk.start);

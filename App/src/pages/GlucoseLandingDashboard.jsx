@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wifi, AlertCircle, Clock, Wrench, HeartHandshake, BookOpen, Compass } from 'lucide-react';
+import { BookOpen, Compass } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
@@ -41,40 +41,6 @@ export default function GlucoseLandingDashboard() {
 
     fetchMetrics();
   }, []);
-
-  const personas = [
-    {
-      icon: Wrench,
-      title: 'Device Support',
-      subtitle: 'Biomedical Engineering',
-      metric: '12 devices flagged',
-      color: 'from-amber-500 to-orange-500',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'border-amber-500/30',
-      route: '/device-support'
-    },
-    {
-      icon: HeartHandshake,
-      title: 'Diabetes Coach',
-      subtitle: 'Diabetes Coaching',
-      metric: 'View Dashboard',
-      color: 'from-cyan-500 to-blue-500',
-      bgColor: 'bg-cyan-500/10',
-      borderColor: 'border-cyan-500/30',
-      route: '/diabetes-coach'
-    }
-    // Care Management option temporarily hidden - uncomment to restore
-    // {
-    //   icon: Clipboard,
-    //   title: 'Care Management',
-    //   subtitle: 'RPM Nursing',
-    //   metric: '5 priority interventions',
-    //   color: 'from-emerald-500 to-teal-500',
-    //   bgColor: 'bg-emerald-500/10',
-    //   borderColor: 'border-emerald-500/30',
-    //   route: '/care-management'
-    // }
-  ];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
@@ -149,32 +115,9 @@ export default function GlucoseLandingDashboard() {
           />
         </div>
 
-        {/* Quick Access by Role — compact buttons near the top (front-door role branching) */}
-        <section className="mb-8">
-          <p className="text-xs text-slate-500 font-mono mb-3">Quick access by role</p>
-          <div className="flex flex-wrap gap-3">
-            {personas.map((persona, idx) => (
-              <button
-                key={idx}
-                onClick={() => navigate(persona.route)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${persona.borderColor} ${persona.bgColor} hover:border-cyan-500/50 transition-colors group`}
-              >
-                <div className={`w-9 h-9 rounded-md bg-gradient-to-br ${persona.color} flex items-center justify-center shrink-0`}>
-                  <persona.icon className="w-5 h-5 text-white" strokeWidth={2.5} />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>{persona.title}</div>
-                  <div className="text-[11px] text-slate-500 font-mono">{persona.subtitle} · {persona.metric}</div>
-                </div>
-                <svg className="w-4 h-4 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-0.5 transition-all ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Incident Analysis — the Detect detail (fleet/incident overview) */}
+        {/* Incident Analysis — the Detect detail (fleet/incident overview).
+            Role navigation lives in the nav rail (Device Support / Diabetes Coach),
+            so the old bottom "Quick Access by Role" cards were removed as redundant. */}
         <section data-tour="incident-charts" className="mb-8">
           <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
             Recent Incident Analysis
