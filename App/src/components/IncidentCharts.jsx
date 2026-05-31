@@ -344,17 +344,17 @@ export function IncidentImpactChart() {
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
             <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(59 130 246)" strokeWidth="2.5" />
             <text x="35" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE — Fleet-wide (diluted across all patients)
+              MAE — fleet-wide
             </text>
 
             <line x1="0" y1="20" x2="30" y2="20" stroke="rgb(251 146 60)" strokeWidth="2" />
             <text x="35" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE — Affected patients only (true bias magnitude)
+              MAE — affected patients
             </text>
 
             <rect x="0" y="35" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
             <text x="35" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident Period (3h)
+              Incident (3h)
             </text>
 
             <line x1="0" y1="60" x2="30" y2="60" stroke="rgb(148 163 184)" strokeWidth="1" strokeDasharray="4 4" opacity="0.5" />
@@ -717,22 +717,22 @@ export function GlucoseTimelineChart() {
           <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
             <line x1="0" y1="0" x2="40" y2="0" stroke="rgb(239 68 68)" strokeWidth="2" />
             <text x="45" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Positive bias cohort (over-reads — +40 during incident)
+              Positive bias (+40)
             </text>
 
             <line x1="0" y1="20" x2="40" y2="20" stroke="rgb(59 130 246)" strokeWidth="2" />
             <text x="45" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Negative bias cohort (under-reads — −40 during incident)
+              Negative bias (−40)
             </text>
 
             <line x1="0" y1="40" x2="40" y2="40" stroke="rgb(148 163 184)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
             <text x="45" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Zero bias (no calibration error)
+              Zero bias
             </text>
 
             <rect x="0" y="55" width="40" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
             <text x="45" y="64" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident Period (3h)
+              Incident (3h)
             </text>
           </g>
 
@@ -993,19 +993,19 @@ export function GlucoseAbsoluteChart() {
             <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(169 169 169)" strokeWidth="2" />
             <circle cx="15" cy="0" r="2.5" fill="rgb(169 169 169)" />
             <text x="38" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              True glucose (ground truth)
+              True glucose
             </text>
 
             <line x1="0" y1="18" x2="30" y2="18" stroke="rgb(239 68 68)" strokeWidth="2" />
             <rect x="12.5" y="15.5" width="5" height="5" fill="rgb(239 68 68)" />
             <text x="38" y="22" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — positive cohort (+40 mg/dL during Day 2 incident)
+              Device — positive cohort (+40)
             </text>
 
             <line x1="0" y1="36" x2="30" y2="36" stroke="rgb(59 130 246)" strokeWidth="2" />
             <polygon points="15,33 12,38 18,38" fill="rgb(59 130 246)" />
             <text x="38" y="40" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — negative cohort (-40 mg/dL during Day 5 incident)
+              Device — negative cohort (−40)
             </text>
 
             <rect x="0" y="50" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
