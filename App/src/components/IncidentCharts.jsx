@@ -63,7 +63,7 @@ export function IncidentImpactChart() {
   }
 
   // Calculate chart dimensions and scales
-  const chartWidth = 1400;
+  const chartWidth = 1000;
   const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
@@ -428,7 +428,7 @@ export function GlucoseTimelineChart() {
   }
 
   // Calculate chart dimensions and scales
-  const chartWidth = 1400;
+  const chartWidth = 1000;
   const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
@@ -793,7 +793,7 @@ export function GlucoseAbsoluteChart() {
   }
 
   // Layout (same scale as the other charts)
-  const chartWidth = 1400;
+  const chartWidth = 1000;
   const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
@@ -815,7 +815,8 @@ export function GlucoseAbsoluteChart() {
   // Y-axis fit to actual glucose range — use observed min/max with a small pad.
   const dataMin = Math.min(...allGlucoseValues);
   const dataMax = Math.max(...allGlucoseValues);
-  // Pad and snap to nice round numbers
+  // Pad and snap to nice round numbers (tight fit so the timeseries fills the plot).
+  // The legend is rendered ABOVE the plot (outside the data area) so it needs no headroom.
   const minGlucose = Math.max(0, Math.floor((dataMin - 10) / 10) * 10);
   const maxGlucose = Math.ceil((dataMax + 15) / 10) * 10;
   const minTime = Math.min(...timeValues);

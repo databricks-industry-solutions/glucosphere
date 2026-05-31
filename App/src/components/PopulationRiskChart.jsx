@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ChartTooltip from './ChartTooltip';
 
 // Grouped bars: % of device-observed readings in hypo (<70) / hyper (>180)
 // range, per cohort (Baseline vs positive-/negative-bias cohorts during their
 // incident windows) = the clinical blast radius. Semantic colors match the app:
 // blue = hypo / under-read, red = hyper / over-read. Responsive (viewBox).
 export default function PopulationRiskChart({ data = [] }) {
+  const [hover, setHover] = useState(null);
   if (!data.length) {
     return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">No population data</div>;
   }
@@ -21,6 +23,7 @@ export default function PopulationRiskChart({ data = [] }) {
   const y = (v) => pad.top + innerH - (v / maxY) * innerH;
 
   return (
+
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
       {/* y grid + labels */}
       {[0, 0.25, 0.5, 0.75, 1].map((t, i) => {
@@ -40,11 +43,21 @@ export default function PopulationRiskChart({ data = [] }) {
         const hypoX = cx - barW - 3, hyperX = cx + 3;
         return (
           <g key={r.cohort}>
-            <rect x={hypoX} y={y(r.pctHypo)} width={barW} height={pad.top + innerH - y(r.pctHypo)} rx="2" fill="#3b82f6" fillOpacity="0.8" />
-            <text x={hypoX + barW / 2} y={y(r.pctHypo) - 4} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="rgb(148 163 184)">{r.pctHypo}</text>
-            <rect x={hyperX} y={y(r.pctHyper)} width={barW} height={pad.top + innerH - y(r.pctHyper)} rx="2" fill="#f43f5e" fillOpacity="0.8" />
-            <text x={hyperX + barW / 2} y={y(r.pctHyper) - 4} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="rgb(148 163 184)">{r.pctHyper}</text>
-            <text x={cx} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(148 163 184)">{r.cohort.replace(' cohort', '')}</text>
+            <rect
+              x={hypoX} y={y(r.pctHypo)} width={barW} height={pad.top + innerH - y(r.pctHypo)} rx="2" fill="#3b82f6" fillOpacity="0.8"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHover({ ax: hypoX + barW / 2, ay: y(r.pctHypo), color: '#3b82f6', title: r.cohort, rows: [`% hypo (<70): ${r.pctHypo}%`, `${r.readings.toLocaleString()} readings`] })}
+              onMouseLeave={() => setHover(null)}
+            />
+            <text x={hypoX + barW / 2} y={y(r.pctHypo) - 4} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">{r.pctHypo}</text>
+            <rect
+              x={hyperX} y={y(r.pctHyper)} width={barW} height={pad.top + innerH - y(r.pctHyper)} rx="2" fill="#f43f5e" fillOpacity="0.8"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHover({ ax: hyperX + barW / 2, ay: y(r.pctHyper), color: '#f43f5e', title: r.cohort, rows: [`% hyper (>180): ${r.pctHyper}%`, `${r.readings.toLocaleString()} readings`] })}
+              onMouseLeave={() => setHover(null)}
+            />
+            <text x={hyperX + barW / 2} y={y(r.pctHyper) - 4} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">{r.pctHyper}</text>
+            <text x={cx} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">{r.cohort.replace(' cohort', '')}</text>
           </g>
         );
       })}
@@ -54,6 +67,8 @@ export default function PopulationRiskChart({ data = [] }) {
       <text x={pad.left + innerW + 30} y={pad.top + 14} fontSize="11" fontFamily="monospace" fill="rgb(148 163 184)">% hypo (&lt;70)</text>
       <rect x={pad.left + innerW + 14} y={pad.top + 24} width="12" height="12" rx="2" fill="#f43f5e" fillOpacity="0.8" />
       <text x={pad.left + innerW + 30} y={pad.top + 34} fontSize="11" fontFamily="monospace" fill="rgb(148 163 184)">% hyper (&gt;180)</text>
+
+      {hover && <ChartTooltip {...hover} W={W} H={H} />}
     </svg>
   );
 }

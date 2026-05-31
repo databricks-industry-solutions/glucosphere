@@ -1,16 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ChartTooltip from './ChartTooltip';
 
-// Multi-line chart: out-of-range rate (%) per firmware version over time.
-// The faulty firmware spikes during the incident window; clean versions stay
-// flat — the "rollout → fault → fix" read. Responsive (viewBox + w-full).
+// Multi-line chart: device calibration error (MAE = |observed − true| glucose)
+// per firmware version over time. The faulty firmware spikes during the incident
+// window; clean versions stay near 0 — the "rollout → fault → fix" read.
+// Responsive (viewBox), width-capped by the page for a compact footprint.
 const COLORS = ['#f43f5e', '#f59e0b', '#22c55e', '#22d3ee', '#a78bfa', '#ec4899'];
 
 export default function FirmwareLifecycleChart({ data = [] }) {
+  const [hover, setHover] = useState(null);
   if (!data.length) {
     return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">No firmware data</div>;
   }
 
-  const W = 760, H = 340, pad = { top: 20, right: 132, bottom: 52, left: 52 };
+  // Wide, short aspect: full page width but compact height (data is sparse — flat
+  // lines + a couple of spikes — so a tall plot is mostly empty). Keeps the whole
+  // page in one view; full-width keeps axis labels readable.
+  const W = 760, H = 200, pad = { top: 18, right: 132, bottom: 40, left: 52 };
   const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
 
   const days = [...new Set(data.map(d => d.day))].sort();
@@ -57,6 +63,12 @@ export default function FirmwareLifecycleChart({ data = [] }) {
               <g key={i}>
                 <circle cx={x(p.day)} cy={y(p.v)} r={p.v >= 2 ? 3.5 : 2.5} fill={color} />
                 {p.v >= 2 && <text x={x(p.day)} y={y(p.v) - 7} textAnchor="middle" fontSize="10" fontFamily="monospace" fill={color}>{p.v}</text>}
+                {/* invisible hover hit-target (bigger than the dot for easy targeting) */}
+                <circle
+                  cx={x(p.day)} cy={y(p.v)} r="8" fill="transparent" style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setHover({ ax: x(p.day), ay: y(p.v), color, title: `FW ${ver}`, rows: [`${fmtDay(p.day)} · MAE ${p.v} mg/dL`] })}
+                  onMouseLeave={() => setHover(null)}
+                />
               </g>
             ))}
             {/* legend */}
@@ -65,6 +77,8 @@ export default function FirmwareLifecycleChart({ data = [] }) {
           </g>
         );
       })}
+
+      {hover && <ChartTooltip {...hover} W={W} H={H} />}
     </svg>
   );
 }
