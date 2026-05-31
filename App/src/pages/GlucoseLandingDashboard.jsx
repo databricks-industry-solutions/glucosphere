@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Compass } from 'lucide-react';
+import { BookOpen, Compass, Github } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
@@ -60,6 +60,16 @@ export default function GlucoseLandingDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href="https://github.com/databricks-industry-solutions/glucosphere"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View on GitHub — databricks-industry-solutions/glucosphere"
+              className="flex items-center gap-2 px-3 py-2 border border-slate-700 rounded-lg hover:bg-slate-800/60 transition-colors"
+            >
+              <Github className="w-4 h-4 text-slate-300" />
+              <span className="hidden lg:inline text-sm font-mono text-slate-300">industry-solutions/glucosphere</span>
+            </a>
             <button
               onClick={() => window.dispatchEvent(new Event('glucosphere:start-tour'))}
               className="flex items-center gap-2 px-4 py-2 border border-cyan-500/40 rounded-lg hover:bg-cyan-500/10 transition-colors"
