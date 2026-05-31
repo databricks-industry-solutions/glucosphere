@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen } from 'lucide-react';
+import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen, Compass } from 'lucide-react';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
 import SplashGallery from '../components/SplashGallery';
@@ -94,6 +94,13 @@ export default function GlucoseLandingDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.dispatchEvent(new Event('glucosphere:start-tour'))}
+              className="flex items-center gap-2 px-4 py-2 border border-cyan-500/40 rounded-lg hover:bg-cyan-500/10 transition-colors"
+            >
+              <Compass className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm font-medium text-cyan-400">Take a tour</span>
+            </button>
             <button
               onClick={() => navigate('/metrics-explained')}
               className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg hover:bg-cyan-500/20 transition-colors"
