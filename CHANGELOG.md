@@ -19,6 +19,33 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-05-31]
+
+Issue #2 — App UI: control-tower redesign. A front-door app shell + Device Support overhaul, built and validated on an **isolated standalone app** (`glucosphere-app-v0-2`) for side-by-side comparison against the existing app, which is left untouched. Shares the same live governed data; no backend/pipeline changes.
+
+### Added
+
+- **Persistent left nav rail** (`App/src/components/AppShell.jsx` + `NavRail.jsx`) — collapsed icon strip that expands on hover and can be **pinned open** (choice persisted in `localStorage`); role entries (Device Support / Diabetes Coach) grouped under a "By role" label; replaces the old bottom persona cards. A "Take a tour" entry reprises the guided walkthrough.
+- **Glucosphere brand mark** (`BrandMark.jsx`) — a glucose pyranose-ring SVG (the sugar molecule a CGM measures) with a live-reading sensor node, used across the rail, page headers, and About; a "The mark" explainer added to the About page.
+- **About page** (`/about`) — platform-vs-product naming, real-vs-simulated data framing, repo link, and role quick-links.
+- **Roadmap page** (`/roadmap`) — the detect·diagnose·assess "fuller control-tower views" preview trio, moved off the operational landing into its own page (rail entry).
+- **Guided Tour** — no-dependency coachmarks keyed to the detect→diagnose→assess pitch beats; first-visit intro modal; replayable from the rail.
+- **Regional Distribution map** (Device Support) — stylized SVG region bubbles sized by monitored footprint and colored by out-of-range volume, from a region-aggregate query (no map dependency).
+
+### Changed
+
+- **Landing reframed as a neutral command-center front door** — hero metrics → recent incident analysis; incident charts compacted to a left-header + responsive-SVG panel layout; verbose chart legends trimmed (detail kept in each chart's subtitle); redundant bottom "Quick Access by Role" cards removed (the rail is the role nav).
+- **Diabetes Coach icon** stethoscope → heart-handshake (coaching, not clinical); "Other Dashboards" placeholder removed from Metrics Explained; glucose-range readout spacing fixed.
+- **Device Support "Population Overview"** is now three equal-height, dynamically balanced panels: out-of-range **heatmap** (with a vertical colorbar) · **regional map** · ranked **device-pattern alerts**.
+
+### Planned / follow-ups (not yet built)
+
+- Promote the Roadmap previews to live views — **Firmware Lifecycle** (diagnose) + **Population Risk** (assess) — via the existing SQL path (no new backend, no Lakebase).
+- **Unified global assistant** — one shell-mounted assistant (FAB → slide-out) on every page, folding the per-page agent/Genie chat panels into one (surfaces page content higher).
+- **Regional distribution**: optional toggle to break the view down by device type.
+- **Light/dark theming** via semantic CSS tokens.
+- **Interactive brand mark** — the glucose ring's branches as navigation links to the different views.
+
 ## [2026-05-30]
 
 DABs target generalization: live target renamed `mmt_aws_usw2` → `gsphere` (workspace-agnostic logical name) with `mode: development` for visual parity with harness deploys. Workspace housekeeping: orphaned harness deploys + pre-cutover catalog schemas + the historical `hls_amer` target stanza all cleaned up. New explicit linkage diagram (`.env.bundle` → `~/.databrickscfg` profile → workspace selection) added to `databricks.yml` and `DEPLOY.md`. New full `databricks.yml.example` template mirror.
