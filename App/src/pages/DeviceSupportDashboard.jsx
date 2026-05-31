@@ -478,19 +478,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   return (
                     <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
                       {[...alerts].sort((a, b) => b.affected - a.affected).map((alert, idx) => (
-                        <li key={idx} className="py-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="flex items-center gap-2">
-                              <span className="text-[10px] font-mono text-slate-600">{idx + 1}</span>
-                              <span className={`w-2 h-2 rounded-full ${dotColor(alert.severity)}`} />
-                              <span className="text-xs font-mono text-slate-400 uppercase">{alert.severity}</span>
-                            </span>
-                            <span className="text-xs font-mono text-slate-500">{alert.rate_pct}%</span>
-                          </div>
-                          <h4 className="text-sm font-medium text-slate-200">Elevated Out-of-Range Event Rate</h4>
-                          <p className="text-xs text-slate-500 font-mono">{alert.device_type} {alert.firmware_version}</p>
-                          <p className="text-xs text-amber-400 font-mono mt-1">{alert.affected.toLocaleString()} out-of-range events</p>
-                          <p className="text-[11px] text-cyan-400/80 font-mono mt-1">📍 {alert.region} region · {alert.days_tracked} days tracked</p>
+                        <li key={idx} className="flex items-center gap-3 py-3">
+                          <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(alert.severity)}`} title={alert.severity} />
+                          <span className="text-sm font-mono text-slate-200 truncate flex-1 min-w-0">
+                            {alert.device_type} {alert.firmware_version}<span className="text-slate-600"> · {alert.region} · {alert.days_tracked}d tracked</span>
+                          </span>
+                          <span className="text-sm font-mono text-amber-400 shrink-0">{alert.affected.toLocaleString()}</span>
+                          <span className="text-xs font-mono text-slate-500 shrink-0 w-14 text-right">{alert.rate_pct}%</span>
                         </li>
                       ))}
                     </ol>
