@@ -438,31 +438,23 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 </div>
               ) : (
                 (() => {
-                  // Compact ranked bar chart — one bar per pattern, length ∝ out-of-range
-                  // event volume, colored by severity. Replaces the tall alert-card list.
-                  const maxEv = Math.max(...alerts.map(a => a.affected), 1);
-                  const barColor = (s) => s === 'high' ? 'bg-rose-500/70' : s === 'medium' ? 'bg-amber-500/70' : 'bg-yellow-500/70';
+                  // Compact ranked list (no bars) — complements the heatmap matrix instead
+                  // of echoing its colored bars. Top out-of-range patterns by event volume.
                   const dotColor = (s) => s === 'high' ? 'bg-rose-400' : s === 'medium' ? 'bg-amber-400' : 'bg-yellow-400';
                   return (
-                    <div className="space-y-3">
+                    <ol className="divide-y divide-slate-800/70">
                       {[...alerts].sort((a, b) => b.affected - a.affected).map((alert, idx) => (
-                        <div key={idx} className="group">
-                          <div className="flex items-center justify-between mb-1 text-xs">
-                            <span className="flex items-center gap-2 font-mono text-slate-300 truncate">
-                              <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(alert.severity)}`} />
-                              {alert.device_type} {alert.firmware_version}
-                              <span className="text-slate-600">· {alert.region}</span>
-                            </span>
-                            <span className="font-mono text-slate-400 shrink-0 ml-2">
-                              {alert.affected.toLocaleString()} <span className="text-slate-600">· {alert.rate_pct}%</span>
-                            </span>
-                          </div>
-                          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                            <div className={`h-full rounded-full ${barColor(alert.severity)} transition-all`} style={{ width: `${Math.max(3, (alert.affected / maxEv) * 100)}%` }} />
-                          </div>
-                        </div>
+                        <li key={idx} className="flex items-center gap-3 py-3">
+                          <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(alert.severity)}`} title={alert.severity} />
+                          <span className="text-sm font-mono text-slate-200 truncate flex-1 min-w-0">
+                            {alert.device_type} {alert.firmware_version}<span className="text-slate-600"> · {alert.region}</span>
+                          </span>
+                          <span className="text-sm font-mono text-amber-400 shrink-0">{alert.affected.toLocaleString()}</span>
+                          <span className="text-xs font-mono text-slate-500 shrink-0 w-14 text-right">{alert.rate_pct}%</span>
+                        </li>
                       ))}
-                    </div>
+                    </ol>
                   );
                 })()
               )}
