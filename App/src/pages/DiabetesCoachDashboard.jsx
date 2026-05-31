@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Stethoscope, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity, Loader2 } from 'lucide-react';
+import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity, Loader2 } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics } from './DiabetesCoachDashboard/queries';
 
 export default function DiabetesCoachDashboard() {
@@ -125,7 +125,7 @@ export default function DiabetesCoachDashboard() {
             </button>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <Stethoscope className="w-5 h-5 text-white" strokeWidth={2.5} />
+                <HeartHandshake className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>

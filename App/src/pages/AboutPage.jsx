@@ -1,12 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Stethoscope, Wrench, BookOpen, ArrowLeft } from 'lucide-react';
+import { HeartHandshake, Wrench, BookOpen, ArrowLeft } from 'lucide-react';
+import BrandMark from '../components/BrandMark';
 
 const REPO_URL = 'https://github.com/databricks-industry-solutions/glucosphere';
 
 const ROLE_CARDS = [
   { icon: Wrench, title: 'Device Support', sub: 'Biomedical Engineering', route: '/device-support' },
-  { icon: Stethoscope, title: 'Diabetes Coach', sub: 'Diabetes Coaching', route: '/diabetes-coach' },
+  { icon: HeartHandshake, title: 'Diabetes Coach', sub: 'Diabetes Coaching', route: '/diabetes-coach' },
   { icon: BookOpen, title: 'Metrics Explained', sub: 'How every metric is computed', route: '/metrics-explained' },
 ];
 
@@ -20,7 +21,7 @@ export default function AboutPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <Activity className="w-7 h-7 text-cyan-400" strokeWidth={2.5} />
+            <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
               <p className="text-xs text-slate-500 font-mono">CGM fleet command center — detect · diagnose · act</p>

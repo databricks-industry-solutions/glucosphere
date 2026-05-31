@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen, Compass } from 'lucide-react';
+import { Wifi, AlertCircle, Clock, Wrench, HeartHandshake, BookOpen, Compass } from 'lucide-react';
+import BrandMark from '../components/BrandMark';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
 import SplashGallery from '../components/SplashGallery';
@@ -54,7 +55,7 @@ export default function GlucoseLandingDashboard() {
       route: '/device-support'
     },
     {
-      icon: Stethoscope,
+      icon: HeartHandshake,
       title: 'Diabetes Coach',
       subtitle: 'Diabetes Coaching',
       metric: 'View Dashboard',
@@ -83,7 +84,7 @@ export default function GlucoseLandingDashboard() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <Activity className="w-7 h-7 text-cyan-400" strokeWidth={2.5} />
+              <BrandMark className="w-7 h-7 text-cyan-400" />
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
                   GlucoStream Intelligence
