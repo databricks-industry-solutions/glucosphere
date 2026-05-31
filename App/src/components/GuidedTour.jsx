@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TOUR_STEPS } from '../tour/steps';
 
@@ -9,6 +9,8 @@ export default function GuidedTour() {
   const [active, setActive] = useState(false);
   const [i, setI] = useState(0);
   const [rect, setRect] = useState(null);
+  const [cardStyle, setCardStyle] = useState(null);
+  const cardRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -39,10 +41,17 @@ export default function GuidedTour() {
         const measure = () => setRect(el.getBoundingClientRect());
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const t = setTimeout(measure, 380);           // after smooth-scroll settles
+        // Re-measure when the target's size changes (async data renders into the
+        // heatmap/charts AFTER the initial measure → box would otherwise be too small)
+        // and when the page scrolls/resizes, so the spotlight stays glued + correctly sized.
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        ro.observe(document.body);
         window.addEventListener('scroll', measure, true);
         window.addEventListener('resize', measure);
         cleanup = () => {
           clearTimeout(t);
+          ro.disconnect();
           window.removeEventListener('scroll', measure, true);
           window.removeEventListener('resize', measure);
         };
@@ -54,7 +63,21 @@ export default function GuidedTour() {
     return () => { clearInterval(find); cleanup(); };
   }, [active, i, step, location.pathname]);
 
-  const close = useCallback(() => { setActive(false); setRect(null); }, []);
+  // Place the tooltip card RELATIVE to the spotlighted element: below it when there's
+  // room, else above, else pinned near the bottom — so the card never covers the highlight.
+  useLayoutEffect(() => {
+    if (!rect || !cardRef.current) { setCardStyle(null); return; }
+    const card = cardRef.current.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
+    const left = Math.max(M, Math.min(rect.left + rect.width / 2 - card.width / 2, vw - card.width - M));
+    let top;
+    if (rect.bottom + GAP + card.height <= vh - M) top = rect.bottom + GAP;        // below
+    else if (rect.top - GAP - card.height >= M) top = rect.top - GAP - card.height; // above
+    else top = Math.max(M, vh - card.height - M);                                   // pinned fallback
+    setCardStyle({ position: 'fixed', top, left, pointerEvents: 'auto' });
+  }, [rect, i]);
+
+  const close = useCallback(() => { setActive(false); setRect(null); setCardStyle(null); }, []);
   if (!active || !step) return null;
 
   return (
@@ -64,8 +87,9 @@ export default function GuidedTour() {
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
           style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2,6,23,0.55)' }} />
       )}
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-10 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl"
-        style={{ pointerEvents: 'auto' }}>
+      <div ref={cardRef}
+        className="fixed w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl transition-all"
+        style={cardStyle || { left: '50%', transform: 'translateX(-50%)', bottom: 40, pointerEvents: 'auto' }}>
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {TOUR_STEPS.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>{step.title}</h3>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
