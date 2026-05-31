@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen } from 'lucide-react';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
+import SplashGallery from '../components/SplashGallery';
 // Clipboard import available if Care Management is restored
 
 export default function GlucoseLandingDashboard() {
@@ -152,6 +153,8 @@ export default function GlucoseLandingDashboard() {
             <GlucoseTimelineChart />
           </div>
         </section>
+
+        <SplashGallery />
 
         {/* Quick Access by Role */}
         <section>
