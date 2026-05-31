@@ -349,75 +349,74 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
               </div>
               
-              {heatmapLoading ? (
-                <div className="flex items-center justify-center h-48 text-slate-500">
-                  Loading heatmap data...
-                </div>
-              ) : (
-                <div data-tour="anomaly-heatmap" className="space-y-2">
-                  {/* X-axis labels */}
-                  <div className="flex items-center gap-3">
-                    <div className="w-24" />
-                    {firmwareVersions.map(fw => (
-                      <div key={fw} className="flex-1 text-center">
-                        <span className="text-sm font-mono text-slate-400">{fw}</span>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Heatmap cells */}
-                  {deviceTypes.map(deviceType => (
-                    <div key={deviceType} className="flex items-center gap-3">
-                      <div className="w-24 text-sm text-slate-300 font-mono">{deviceType}</div>
-                      {firmwareVersions.map(fw => {
-                        const data = heatmapData.find(d => d.device_type === deviceType && d.firmware_version === fw);
-                        const outOfRangeEvents = data ? data.out_of_range_events : 0;
-                        
-                        return (
-                          <div 
-                            key={fw}
-                            className="flex-1 h-10 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
-                            style={{
-                              backgroundColor: getHeatmapColor(outOfRangeEvents)
-                            }}
-                          >
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                              <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-sm font-mono whitespace-nowrap shadow-xl">
-                                <span className="text-cyan-400 font-bold">{outOfRangeEvents}</span>
-                                <span className="text-slate-400"> events</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+              <div className="flex gap-4 items-stretch">
+                {/* Heatmap grid */}
+                <div className="flex-1 min-w-0">
+                  {heatmapLoading ? (
+                    <div className="flex items-center justify-center h-48 text-slate-500">
+                      Loading heatmap data...
                     </div>
-                  ))}
-                </div>
-              )}
+                  ) : (
+                    <div data-tour="anomaly-heatmap" className="space-y-2">
+                      {/* X-axis labels */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-24" />
+                        {firmwareVersions.map(fw => (
+                          <div key={fw} className="flex-1 text-center">
+                            <span className="text-sm font-mono text-slate-400">{fw}</span>
+                          </div>
+                        ))}
+                      </div>
 
-              {/* Legend */}
-              <div className="mt-6 flex items-center justify-between">
-                <div className="text-xs text-slate-500 font-mono">
-                  <div>Low</div>
-                  <div className="text-cyan-400 font-bold">{minOutOfRangeEvents}</div>
+                      {/* Heatmap cells */}
+                      {deviceTypes.map(deviceType => (
+                        <div key={deviceType} className="flex items-center gap-3">
+                          <div className="w-24 text-sm text-slate-300 font-mono">{deviceType}</div>
+                          {firmwareVersions.map(fw => {
+                            const data = heatmapData.find(d => d.device_type === deviceType && d.firmware_version === fw);
+                            const outOfRangeEvents = data ? data.out_of_range_events : 0;
+
+                            return (
+                              <div
+                                key={fw}
+                                className="flex-1 h-10 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
+                                style={{
+                                  backgroundColor: getHeatmapColor(outOfRangeEvents)
+                                }}
+                              >
+                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                                  <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-sm font-mono whitespace-nowrap shadow-xl">
+                                    <span className="text-cyan-400 font-bold">{outOfRangeEvents}</span>
+                                    <span className="text-slate-400"> events</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-1">
-                  {[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0].map((normalized, i) => (
-                    <div 
-                      key={i}
-                      className="w-10 h-6 rounded"
-                      style={{ 
-                        backgroundColor: getHeatmapColor(
-                          minOutOfRangeEvents + (normalized * (maxOutOfRangeEvents - minOutOfRangeEvents))
-                        ) 
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="text-xs text-slate-500 font-mono text-right">
-                  <div>High</div>
-                  <div className="text-rose-400 font-bold">{maxOutOfRangeEvents}</div>
-                </div>
+
+                {/* Vertical legend (colorbar) — to the right of the grid */}
+                {!heatmapLoading && (
+                  <div className="flex flex-col items-center gap-1 pt-8 shrink-0">
+                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOutOfRangeEvents}</span>
+                    <span className="text-[10px] font-mono text-slate-500 mb-0.5">High</span>
+                    <div className="flex flex-col rounded overflow-hidden">
+                      {[1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0].map((normalized, i) => (
+                        <div
+                          key={i}
+                          className="w-3.5 h-4"
+                          style={{ backgroundColor: getHeatmapColor(minOutOfRangeEvents + (normalized * (maxOutOfRangeEvents - minOutOfRangeEvents))) }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-500 mt-0.5">Low</span>
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOutOfRangeEvents}</span>
+                  </div>
+                )}
               </div>
             </div>
 
