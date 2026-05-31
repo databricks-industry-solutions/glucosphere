@@ -1,5 +1,9 @@
 import React from 'react';
 
+// PARKED IDEA (user 2026-05-31): add a toggle to break regional distribution down
+// BY DEVICE TYPE (region × device_type) — needs a GROUP BY region, device_model query
+// + a small toggle control. Feature scope; revisit alongside Phase-3 geo work.
+//
 // Stylized regional distribution ("schematic geo", no map dependency). Each region
 // is a bubble placed in a rough West→East geographic layout on a faint map-coordinate
 // field; bubble size ∝ monitored footprint (patients), color ∝ out-of-range volume
