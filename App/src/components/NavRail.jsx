@@ -59,9 +59,9 @@ export default function NavRail({ pinned = false, onTogglePin }) {
       <div className="mt-2 mb-1 mx-[18px] border-t border-slate-800/70" />
       {MORE.map((it) => <Item key={it.to} {...it} />)}
 
-      <div className="flex-1" />
+      {/* Take a tour sits directly under the nav items (not pinned to the bottom). */}
       <button onClick={() => window.dispatchEvent(new Event('glucosphere:start-tour'))}
-        className="flex items-center gap-3 px-[18px] py-2.5 border-l-[3px] border-transparent text-slate-300 hover:bg-slate-800/60 whitespace-nowrap">
+        className="flex items-center gap-3 px-[18px] py-2.5 mt-1 border-l-[3px] border-transparent text-slate-300 hover:bg-slate-800/60 whitespace-nowrap">
         <Compass className="w-5 h-5 shrink-0 text-cyan-400" />
         <span className={`${reveal} transition-opacity text-sm text-cyan-300`}>Take a tour</span>
       </button>
