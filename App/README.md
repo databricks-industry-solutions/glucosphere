@@ -16,7 +16,7 @@ This application provides:
 - **Frontend**: React + Vite + Tailwind CSS
 - **Backend**: Flask (proxy server for Databricks APIs)
 - **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
-- **AI Agent**: Databricks Multi-Agent Supervisor
+- **AI assistant**: switchable — a fast app-side **router** (Genie / Knowledge Assistant / foundation model, called directly; default) or the Databricks **Multi-Agent Supervisor** (toggle). See *Assistant engine switch* below.
 
 ### Agent endpoints — Genie / KA / MAS (often confused)
 
@@ -26,7 +26,7 @@ The App's natural-language query experience is powered by **three native Databri
 |---|---|---|
 | **Genie** | Gold table `<catalog>.<schema>.gold_patient_device_readings` | Natural-language → SQL over **structured CGM data** (patient readings, device incidents, fleet stats, trends) |
 | **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
-| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type | The endpoint the App's chat UI actually calls — operator never invokes Genie or KA directly. Branded as "GlucoScope" in `08_genie_ka_mas.py` |
+| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type (5–7 serial LLM calls) | Available as the **🤖 MAS** engine toggle. Branded "GlucoScope" in `08_genie_ka_mas.py`. **Not** the default — the app's **default fast router calls Genie / KA / a foundation model directly** (see *Assistant engine switch* below). |
 
 The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
 
@@ -185,12 +185,12 @@ This will:
 - **Heatmap**: Out-of-range events by device type and firmware
 - **Device Details**: Expandable table with device information
 - **Pattern Alerts**: Emerging anomalies across device cohorts
-- **AI Troubleshooting**: Multi-agent supervisor for device analysis
+- **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
-### Multi-Agent Supervisor
-- Chat interface for device troubleshooting
-- Deeper analysis for specific devices
-- Integration with CGM analytics and clinical knowledge
+### Assistant (fast router · MAS toggle)
+- Chat interface for device troubleshooting (`/api/assist`)
+- Deeper per-device Clinical Analysis (fast FM + fleet-stats enrichment by default)
+- Integration with CGM analytics (Genie) and clinical knowledge (KA) — called directly by the router, or via the MAS supervisor when toggled. See *Assistant engine switch* above.
 
 ## Data Schema
 
@@ -243,9 +243,10 @@ Python runtime is provided by the Databricks Apps platform — no local Python p
 | Service | Where used | Why it's used |
 | --- | --- | --- |
 | **Databricks Statement Execution API** | `App/databricks/app.py` `/api/sql/query` | Routes SQL queries to the bundle-managed serverless warehouse |
-| **Multi-Agent Supervisor (MAS) serving endpoint** | `App/databricks/app.py` `/api/clinician-summary` | Clinical reasoning queries |
-| **Knowledge Assistant (KA) serving endpoint** | Routed through MAS | RAG over WHO clinical-guidelines PDF |
-| **Genie space** | Routed through MAS | NL-to-SQL over gold device tables |
+| **Foundation model** (`databricks-claude-sonnet-4-6`) | `app.py` `/api/assist` (engine=direct) | Device reasoning / Clinical-Analysis — the default fast router's reasoning path |
+| **Knowledge Assistant (KA) serving endpoint** | `app.py` `/api/assist` (called directly by the router for clinical Qs; or via MAS) | RAG over WHO clinical-guidelines PDF |
+| **Genie space** | `app.py` `/api/genie/query` (CGM-data mode, direct) and via the router/MAS | NL-to-SQL over gold device tables |
+| **Multi-Agent Supervisor (MAS) serving endpoint** | `app.py` `/api/assist` (engine=mas — the 🤖 toggle, not default) | Agentic multi-agent orchestration (Beta; slower) |
 | **Databricks Apps Platform** | Deployment target | Hosts Flask + React static build |
 
 ## License + support
