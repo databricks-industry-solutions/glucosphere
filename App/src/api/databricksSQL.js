@@ -97,17 +97,22 @@ export async function getDistinctDeviceCount() {
  * @returns {Promise<Array>} Heatmap data with device_type, firmware_version, out_of_range_events
  */
 export async function getDeviceHeatmapData() {
-  // CGM schema: count ONLY out-of-range readings by device type and firmware
+  // CGM schema: count ONLY out-of-range readings by device type and firmware.
+  // device_model comes from silver_patient_registry (per-patient SSOT) joined on
+  // patient_id — NOT gold's per-reading device_model, which disagrees with the
+  // registry for most patients and would make this heatmap inconsistent with the
+  // Coach / Population Risk views. firmware_version is reading-level (gold).
   const { catalog, schema } = await getConfig();
   const query = `
-    SELECT 
-      device_model as device_type, 
-      CAST(firmware_version AS STRING) as firmware_version,
-      COUNT(*) as out_of_range_events 
-    FROM ${catalog}.${schema}.gold_patient_device_readings 
-    WHERE glucose_out_of_range = 1
-    GROUP BY device_model, firmware_version
-    ORDER BY device_model, firmware_version
+    SELECT
+      r.device_model as device_type,
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      COUNT(*) as out_of_range_events
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    WHERE g.glucose_out_of_range = 1
+    GROUP BY r.device_model, g.firmware_version
+    ORDER BY r.device_model, g.firmware_version
   `;
   
   try {
@@ -159,22 +164,25 @@ export async function getOutOfRangeDevices() {
   // OOR rows from the full 7-day window, which gave an inconsistent
   // implicit time scope.
   const { catalog, schema } = await getConfig();
+  // device_model from silver_patient_registry (per-patient SSOT) joined on
+  // patient_id — gold's per-reading device_model disagrees with the registry.
   const query = `
     SELECT
-      device_id,
-      TIMESTAMPDIFF(MINUTE, time, (SELECT MAX(time) FROM ${catalog}.${schema}.gold_patient_device_readings)) as minutes_since_last_reading,
-      patient_id,
-      device_model as device_type,
-      CAST(firmware_version AS STRING) as firmware_version,
-      glucose as glucose_value
+      g.device_id,
+      TIMESTAMPDIFF(MINUTE, g.time, (SELECT MAX(time) FROM ${catalog}.${schema}.gold_patient_device_readings)) as minutes_since_last_reading,
+      g.patient_id,
+      r.device_model as device_type,
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      g.glucose as glucose_value
     FROM
-      ${catalog}.${schema}.gold_patient_device_readings
-    WHERE glucose_out_of_range = 1
-      AND time >= (
+      ${catalog}.${schema}.gold_patient_device_readings g
+      JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    WHERE g.glucose_out_of_range = 1
+      AND g.time >= (
         SELECT MAX(time) - INTERVAL 3 HOUR
         FROM ${catalog}.${schema}.gold_patient_device_readings
       )
-    ORDER BY time DESC
+    ORDER BY g.time DESC
     LIMIT 50
   `;
   
@@ -226,18 +234,22 @@ export async function getDevicePatternAlerts() {
   // CGM schema: aggregate from gold_patient_device_readings (no pre-aggregated table available)
   // Lower threshold from 1000 to 10 due to smaller dataset in CGM schema
   const { catalog, schema } = await getConfig();
+  // device_model from silver_patient_registry (per-patient SSOT) joined on patient_id
+  // — gold's per-reading device_model disagrees with the registry. region is consistent
+  // across both tables (verified 0 mismatch), sourced from the registry here for SSOT.
   const query = `
-    SELECT 
-      device_model as device_type,
-      CAST(firmware_version AS STRING) as firmware_version,
-      region,
-      SUM(glucose_out_of_range) as total_oor_events,
+    SELECT
+      r.device_model as device_type,
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      r.region,
+      SUM(g.glucose_out_of_range) as total_oor_events,
       COUNT(*) as total_events,
-      ROUND(AVG(CASE WHEN glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
-      COUNT(DISTINCT DATE(time)) as days_tracked
-    FROM ${catalog}.${schema}.gold_patient_device_readings
-    GROUP BY device_model, firmware_version, region
-    HAVING SUM(glucose_out_of_range) > 10
+      ROUND(AVG(CASE WHEN g.glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
+      COUNT(DISTINCT DATE(g.time)) as days_tracked
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    GROUP BY r.device_model, g.firmware_version, r.region
+    HAVING SUM(g.glucose_out_of_range) > 10
     ORDER BY avg_oor_rate_pct DESC
     LIMIT 4
   `;
@@ -415,10 +427,15 @@ export async function getPopulationRisk() {
   }
 }
 
-// VIEW ③ → ACT — affected patients & devices per cohort: the outreach/recall
-// roster. Cohort + per-patient hypo/hyper exposure (pseudo_incident_7d_labeled)
-// joined to device/region (gold). One row per patient (firmware dropped to avoid
-// per-firmware duplication). Identifiers are simulated — no real PHI.
+// VIEW ③ → ACT — affected patients & devices: the outreach/recall roster. Two
+// DISTINCT, non-conflated axes per patient:
+//   • Device bias (incident_direction) = over-read / under-read — the DEVICE FAULT
+//     direction (device reports higher / lower than true). Orthogonal to glucose level.
+//   • %hypo / %hyper = the patient's CLINICAL exposure over their full observed window
+//     (glucose_observed) — matches the Coach's Observations exactly (verified: gold.glucose
+//     and pseudo_incident.glucose_observed agree). A patient can be under-read AND hyper
+//     (e.g. true glucose ~236, under-read to ~196 → still hyper). The two are independent.
+// device_model/region from silver_patient_registry (SSOT). Simulated, no PHI.
 export async function getCohortAffected() {
   const { catalog, schema } = await getConfig();
   const query = `
@@ -431,14 +448,18 @@ export async function getCohortAffected() {
       GROUP BY patient_id, incident_direction
     ),
     dev AS (
-      SELECT DISTINCT patient_id, device_id, device_model, region
-      FROM ${catalog}.${schema}.gold_patient_device_readings
+      -- silver_patient_registry is the per-patient SSOT for device_model/region/device_id
+      -- (one row per patient). gold readings carry a device_model that can disagree with
+      -- the registry for the same device_id, so reading from gold here made the roster
+      -- conflict with the Coach view + the summary bars. Registry keeps all views aligned.
+      SELECT patient_id, device_id, device_model, region
+      FROM ${catalog}.${schema}.silver_patient_registry
     )
     SELECT a.patient_id, a.incident_direction, a.pct_hypo, a.pct_hyper,
       d.device_id, d.device_model, d.region
     FROM affected a
     LEFT JOIN dev d ON a.patient_id = d.patient_id
-    ORDER BY a.incident_direction, GREATEST(a.pct_hypo, a.pct_hyper) DESC
+    ORDER BY GREATEST(a.pct_hypo, a.pct_hyper) DESC
     LIMIT 40
   `;
   try {
@@ -466,5 +487,89 @@ export async function getCohortAffected() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected };
+// VIEW ② → ACT — per firmware, the AFFECTED fleet: distinct patients/devices that
+// had an in-incident (calibration-fault) reading WHILE on that firmware. This is the
+// recall/outreach number — NOT "ever ran the firmware", which double-counts cohorts
+// that ran the version but stayed clean on it (verified: 600 ran FW 4.0 but only the
+// 300 positive-cohort patients were actually faulted on it).
+export async function getFirmwareImpact() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      COUNT(DISTINCT CASE WHEN p.time >= p.incident_start_time AND p.time < p.incident_end_time THEN g.patient_id END) as affected_patients,
+      COUNT(DISTINCT CASE WHEN p.time >= p.incident_start_time AND p.time < p.incident_end_time THEN g.device_id END) as affected_devices
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      ON g.patient_id = p.patient_id AND g.time = p.time
+    WHERE g.firmware_version IS NOT NULL
+    GROUP BY CAST(g.firmware_version AS STRING)
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return {
+          firmwareVersion: v[0]?.string_value ?? v[0],
+          affectedPatients: parseInt(v[1]?.string_value ?? v[1], 10) || 0,
+          affectedDevices: parseInt(v[2]?.string_value ?? v[2], 10) || 0,
+        };
+      });
+    }
+    console.warn('Could not parse firmware impact from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get firmware impact:', error);
+    return [];
+  }
+}
+
+// VIEW ③ — affected-cohort breakdown by region + device model, EACH split by error
+// direction (positive=over-read, negative=under-read) so both sub-groups show. Full
+// affected population (not the LIMIT-40 roster): distinct incident-cohort patients
+// joined to their registry region/model. Powers the Population Risk summary bars.
+export async function getCohortAffectedBreakdown() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH affected AS (
+      SELECT DISTINCT patient_id, incident_direction FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+      WHERE incident_direction IN ('positive','negative')
+    ),
+    reg AS (
+      SELECT a.patient_id, a.incident_direction, r.region, r.device_model
+      FROM affected a JOIN ${catalog}.${schema}.silver_patient_registry r ON a.patient_id = r.patient_id
+    )
+    SELECT 'region' as dim, region as label, incident_direction as dir, COUNT(*) as n FROM reg GROUP BY region, incident_direction
+    UNION ALL
+    SELECT 'model' as dim, device_model as label, incident_direction as dir, COUNT(*) as n FROM reg GROUP BY device_model, incident_direction
+    ORDER BY dim, label, dir
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    const acc = { region: {}, model: {} };
+    if (rows && rows.length > 0) {
+      rows.forEach(r => {
+        const v = r.values || r;
+        const dim = v[0]?.string_value ?? v[0];
+        const label = v[1]?.string_value ?? v[1];
+        const dir = v[2]?.string_value ?? v[2];
+        const n = parseInt(v[3]?.string_value ?? v[3], 10) || 0;
+        const bucket = acc[dim] || (acc[dim] = {});
+        const item = bucket[label] || (bucket[label] = { label, positive: 0, negative: 0, total: 0 });
+        if (dir === 'positive') item.positive += n; else item.negative += n;
+        item.total += n;
+      });
+    }
+    const toSorted = (obj) => Object.values(obj).sort((a, b) => b.total - a.total);
+    return { byRegion: toSorted(acc.region), byModel: toSorted(acc.model) };
+  } catch (error) {
+    console.error('Failed to get cohort affected breakdown:', error);
+    return { byRegion: [], byModel: [] };
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown };
 
