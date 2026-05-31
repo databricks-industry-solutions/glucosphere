@@ -5,6 +5,7 @@ import CareManagementDashboard from './pages/CareManagementDashboard'
 import DiabetesCoachDashboard from './pages/DiabetesCoachDashboard'
 import DeviceSupportDashboard from './pages/DeviceSupportDashboard'
 import MetricsExplained from './pages/MetricsExplained'
+import AboutPage from './pages/AboutPage'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/diabetes-coach" element={<DiabetesCoachDashboard />} />
         <Route path="/device-support" element={<DeviceSupportDashboard />} />
         <Route path="/metrics-explained" element={<MetricsExplained />} />
+        <Route path="/about" element={<AboutPage />} />
       </Routes>
     </Router>
   )
