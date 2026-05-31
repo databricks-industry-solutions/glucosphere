@@ -1,113 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, MessageSquare, FileText, Activity, Loader2 } from 'lucide-react';
-import { getPopulationMetrics, getInsulinMetrics } from './DiabetesCoachDashboard/queries';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Activity, Loader2, ChevronRight } from 'lucide-react';
+import { getPopulationMetrics, getInsulinMetrics, getPatientList, getPatientDetail } from './DiabetesCoachDashboard/queries';
+import { getFirmwareLifecycle } from '../api/databricksSQL';
 
 export default function DiabetesCoachDashboard() {
   const navigate = useNavigate();
-  const [selectedPatient, setSelectedPatient] = useState('Sarah K.');
-  const [queryText, setQueryText] = useState('');
-  
-  // Clinical metrics state
+  const location = useLocation();
+  // Back button: return to wherever we arrived from (e.g. Population Risk row-click,
+  // the rail, or Home). location.key === 'default' means a direct/deep-link load with
+  // no in-app history to pop, so fall back to Home rather than leaving the app.
+  const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
+
+  // Clinical metrics state (population-level — already live)
   const [populationMetrics, setPopulationMetrics] = useState(null);
   const [insulinMetrics, setInsulinMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
-  
-  // Genie query state
-  const [genieResponse, setGenieResponse] = useState(null);
-  const [genieLoading, setGenieLoading] = useState(false);
-  const [genieError, setGenieError] = useState(null);
-  const [conversationId, setConversationId] = useState(null);
-  
-  // Fetch population-level clinical metrics
+
+  // Per-patient state (GitHub #5 — replaces the hardcoded Sarah-K. demo panel)
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [patientDetail, setPatientDetail] = useState(null);
+  const [patientLoading, setPatientLoading] = useState(true);
+  const [searchText, setSearchText] = useState('');
+  const [patientOptions, setPatientOptions] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchTimer = useRef(null);
+  const [searchParams] = useSearchParams();
+  // {firmwareVersion: peakMAE} for firmwares whose calibration error spiked (the
+  // faulty rollout) — used to flag a patient whose device runs that firmware.
+  const [firmwareFlags, setFirmwareFlags] = useState({});
+  // Hovered reading index on the glucose-history profile (null = not hovering).
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  // Fetch population-level clinical metrics + which firmwares are faulty
   useEffect(() => {
     const fetchMetrics = async () => {
       try {
         setMetricsLoading(true);
-        const [popMetrics, insulinData] = await Promise.all([
+        const [popMetrics, insulinData, firmware] = await Promise.all([
           getPopulationMetrics(),
-          getInsulinMetrics()
+          getInsulinMetrics(),
+          getFirmwareLifecycle()
         ]);
-        
         setPopulationMetrics(popMetrics);
         setInsulinMetrics(insulinData);
+        // Peak MAE per firmware; flag versions clearing the same >=5 mg/dL bar the
+        // Firmware Lifecycle page uses to call a rollout "faulty".
+        const peak = {};
+        firmware.forEach((d) => { peak[d.firmwareVersion] = Math.max(peak[d.firmwareVersion] || 0, d.mae); });
+        setFirmwareFlags(Object.fromEntries(Object.entries(peak).filter(([, v]) => v >= 5)));
       } catch (error) {
         console.error('Failed to fetch clinical metrics:', error);
       } finally {
         setMetricsLoading(false);
       }
     };
-    
     fetchMetrics();
   }, []);
-  
-  // Handle Genie query
-  const handleGenieQuery = async () => {
-    if (!queryText.trim()) return;
-    
+
+  // Load the initial patient list and auto-select the first patient
+  useEffect(() => {
+    (async () => {
+      const list = await getPatientList('');
+      setPatientOptions(list);
+      // Deep-link wins (drill-down from Population Risk: /diabetes-coach?patient=PSEUDO_xxxx);
+      // otherwise a random default so each visit surfaces a different patient.
+      const requested = searchParams.get('patient');
+      if (requested) {
+        selectPatient(requested);
+      } else if (list.length > 0) {
+        selectPatient(list[Math.floor(Math.random() * list.length)].patientId);
+      } else {
+        setPatientLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectPatient = async (pid) => {
+    setSelectedPatientId(pid);
+    setSearchOpen(false);
+    setSearchText('');
+    setPatientLoading(true);
     try {
-      setGenieLoading(true);
-      setGenieError(null);
-      
-      const response = await fetch('/api/genie/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          question: queryText,
-          conversation_id: conversationId
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to query Genie');
-      }
-      
-      const data = await response.json();
-      console.log('Genie response:', data);
-      
-      // Update conversation ID for follow-up questions
-      if (data.conversation_id) {
-        setConversationId(data.conversation_id);
-      }
-      
-      setGenieResponse(data);
-    } catch (error) {
-      console.error('Genie query error:', error);
-      setGenieError(error.message);
+      setPatientDetail(await getPatientDetail(pid));
+    } catch (e) {
+      console.error('Failed to load patient detail:', e);
+      setPatientDetail(null);
     } finally {
-      setGenieLoading(false);
+      setPatientLoading(false);
     }
   };
 
+  // Debounced server-side typeahead (patient_id LIKE) — never loads all ~1000.
+  const handleSearch = (text) => {
+    setSearchText(text);
+    setSearchOpen(true);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setPatientOptions(await getPatientList(text));
+    }, 250);
+  };
 
-  const glucoseData = [
-    { time: '12am', value: 110 },
-    { time: '3am', value: 95 },
-    { time: '6am', value: 140 },
-    { time: '9am', value: 180 },
-    { time: '12pm', value: 160 },
-    { time: '3pm', value: 145 },
-    { time: '6pm', value: 190 },
-    { time: '9pm', value: 130 }
-  ];
+  // ── Derived per-patient values (all from real fetched data) ──
+  const demo = patientDetail?.demographics;
+  const kpis = patientDetail?.kpis;
+  const fc = patientDetail?.forecast;
+  const incident = patientDetail?.incident;
+  const series = patientDetail?.series || [];
+  // Peak MAE if this patient's device runs a flagged (faulty) firmware, else undefined.
+  const fwFlagPeak = kpis?.firmware ? firmwareFlags[kpis.firmware] : undefined;
 
-  const patterns = [
-    { type: 'Nocturnal Hypoglycemia', frequency: '3x/week', trend: 'increasing', severity: 'high' },
-    { type: 'Post-Meal Spikes', frequency: 'Daily', trend: 'stable', severity: 'medium' },
-    { type: 'Dawn Phenomenon', frequency: '5x/week', trend: 'decreasing', severity: 'low' }
-  ];
+  const windowDays = kpis?.firstTime && kpis?.lastTime
+    ? Math.max(1, Math.round((new Date(kpis.lastTime) - new Date(kpis.firstTime)) / 86400000))
+    : null;
 
-  const recentQueries = [
-    'How many patients had hypoglycemia in the last 24 hours?',
-    'What is the average glucose level by region?',
-    'Show me patients with glucose out of range grouped by device model',
-    'How many patients are using each device model?',
-    'What is the average time in range for all patients?',
-    'Show the distribution of patients by diagnosis type'
-  ];
+  // ── glucose-history chart scale (dynamic y w/ headroom so spikes/lows aren't clipped) ──
+  const gVals = series.flatMap((d) => [d.observed, d.glucoseTrue].filter((v) => v != null));
+  const dataMin = gVals.length ? Math.min(...gVals) : 50;
+  const dataMax = gVals.length ? Math.max(...gVals) : 250;
+  // pad ~10 mg/dL each side, round to 10s; never below 0; keep at least a 50–250 frame.
+  const gMin = Math.max(0, Math.min(50, Math.floor((dataMin - 10) / 10) * 10));
+  const gMax = Math.max(250, Math.ceil((dataMax + 10) / 10) * 10);
+  // value → vertical % (0 = top). Clamped for safety.
+  const yOf = (v) => Math.max(0, Math.min(100, 100 - ((v - gMin) / (gMax - gMin)) * 100));
+  const xOf = (i) => (series.length > 1 ? (i / (series.length - 1)) * 100 : 0);
+  const gridVals = [0, 25, 50, 75, 100].map((t) => Math.round(gMax - (t / 100) * (gMax - gMin)));
+  // Incident window → x% span for shading (series is time-ordered ~uniform 5-min readings).
+  const iw = patientDetail?.incidentWindow;
+  const incX = (() => {
+    if (!iw || series.length < 2) return null;
+    const s = new Date(iw.start).getTime(), e = new Date(iw.end).getTime();
+    const idxs = series.map((d, i) => ({ t: new Date(d.time).getTime(), i })).filter((o) => o.t >= s && o.t <= e).map((o) => o.i);
+    return idxs.length ? { x1: xOf(idxs[0]), x2: xOf(idxs[idxs.length - 1]) } : null;
+  })();
+  const fmtTick = (t) => new Date(t).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit' });
+
+  // Rule-based risk band from time-in-range + hypo exposure (not a trained classifier).
+  // NOTE: full static Tailwind class strings — interpolated class names (`bg-${x}-500`)
+  // get purged by the JIT compiler and would render unstyled.
+  const risk = kpis
+    ? (kpis.timeInRange >= 70 && kpis.pctHypo < 4 ? { label: 'LOW', box: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400' }
+      : kpis.timeInRange >= 50 ? { label: 'MODERATE', box: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400' }
+      : { label: 'HIGH', box: 'bg-rose-500/10 border-rose-500/30', text: 'text-rose-400' })
+    : { label: '—', box: 'bg-slate-500/10 border-slate-500/30', text: 'text-slate-400' };
+
+  // Honest, data-derived observations (replaces the old hardcoded pattern list).
+  const observations = kpis ? [
+    { type: 'Hypoglycemia exposure', detail: `${kpis.pctHypo}% of readings < 70 mg/dL`, severity: kpis.pctHypo >= 4 ? 'high' : kpis.pctHypo > 0 ? 'medium' : 'low' },
+    { type: 'Hyperglycemia exposure', detail: `${kpis.pctHyper}% of readings > 180 mg/dL`, severity: kpis.pctHyper >= 25 ? 'high' : kpis.pctHyper > 0 ? 'medium' : 'low' },
+    { type: 'Glycemic variability', detail: `CV ${kpis.cv}% (target < 36%)`, severity: kpis.cv >= 36 ? 'high' : 'low' },
+  ] : [];
+
+  const classify = (g) => g == null ? null
+    : g < 70 ? { label: 'Hypo', cls: 'text-rose-400 bg-rose-500/10 border-rose-500/30' }
+    : g > 180 ? { label: 'Hyper', cls: 'text-amber-400 bg-amber-500/10 border-amber-500/30' }
+    : { label: 'In range', cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -115,8 +163,9 @@ export default function DiabetesCoachDashboard() {
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/')}
+            <button
+              onClick={goBack}
+              aria-label="Back"
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -152,7 +201,7 @@ export default function DiabetesCoachDashboard() {
             </h2>
             <span className="text-xs text-slate-500 font-mono">(Last 24 Hours)</span>
           </div>
-          
+
           <div className="grid grid-cols-6 gap-4 mb-6">
             {/* Time in Range - Most Important */}
             <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 rounded-lg p-5 hover:border-emerald-500/50 transition-colors">
@@ -162,8 +211,8 @@ export default function DiabetesCoachDashboard() {
               </p>
               <p className="text-xs text-slate-500 mt-2">70-180 mg/dL</p>
               <div className="mt-3 h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" 
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400"
                   style={{ width: `${populationMetrics?.timeInRange || 0}%` }}
                 />
               </div>
@@ -276,23 +325,65 @@ export default function DiabetesCoachDashboard() {
           )}
         </section>
 
-        {/* Patient Selector */}
+        {/* Patient Selector — live typeahead over the simulated patient cohort */}
         <section className="mb-8">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 z-10" />
               <input
                 type="text"
-                placeholder="Patient search — coming soon (demo cohort fixed); see GitHub issue #5"
-                disabled
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors cursor-not-allowed opacity-60"
+                value={searchText}
+                onChange={(e) => handleSearch(e.target.value)}
+                onFocus={() => setSearchOpen(true)}
+                placeholder="Search patient ID (e.g. PSEUDO_0000530) — simulated cohort, no real PHI"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
+              {searchOpen && patientOptions.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto bg-slate-950 border border-slate-700 rounded-lg shadow-xl">
+                  {patientOptions.map((p) => (
+                    <button
+                      key={p.patientId}
+                      onClick={() => selectPatient(p.patientId)}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-slate-800/70 transition-colors border-b border-slate-800/50 last:border-0 ${p.patientId === selectedPatientId ? 'bg-slate-800/40' : ''}`}
+                    >
+                      <span className="text-sm font-mono text-slate-200">{p.patientId}</span>
+                      <span className="text-xs font-mono text-slate-500">{p.deviceModel} · {p.region}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+            {searchOpen && (
+              <button onClick={() => setSearchOpen(false)} className="fixed inset-0 z-0 cursor-default" aria-hidden tabIndex={-1} />
+            )}
           </div>
         </section>
 
         {/* Pre-Visit Summary Panel */}
+        {patientLoading ? (
+          <div className="flex items-center justify-center h-64 text-slate-500 mb-8">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading patient…
+          </div>
+        ) : !patientDetail ? (
+          <div className="flex items-center justify-center h-32 text-slate-500 mb-8">No data for this patient.</div>
+        ) : (
         <div className="grid grid-cols-12 gap-6 mb-8">
+          {/* ⚠ Masked-severity alert — device under-read while the patient's TRUE glucose
+              was hyper, so the displayed value under-reported danger. The unsafe failure mode. */}
+          {incident?.maskedSeverity && (
+            <div className="col-span-12 flex items-start gap-3 bg-rose-500/10 border border-rose-500/40 rounded-lg p-4">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-rose-300">⚠ Masked severity — device under-read during a calibration incident</p>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  This device <span className="text-rose-300">under-reported</span> by ~{Math.round(incident.biasGap)} mg/dL during the incident:
+                  true glucose reached <span className="font-mono text-rose-300">~{Math.round(incident.trueMax)} mg/dL</span> but the device displayed
+                  <span className="font-mono"> ~{Math.round(incident.obsMean)} mg/dL</span> — hyperglycemia severity was <span className="text-rose-300">under-stated</span>.
+                  Verify true status before acting on this device's readings.
+                </p>
+              </div>
+            </div>
+          )}
           {/* Left Column - Main Summary */}
           <div className="col-span-8 space-y-6">
             {/* Patient Header */}
@@ -300,148 +391,190 @@ export default function DiabetesCoachDashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-2xl font-semibold" style={{ fontFamily: 'Georgia, serif' }}>
-                      {selectedPatient}
+                    <h2 className="text-2xl font-semibold font-mono" style={{ fontFamily: 'Georgia, serif' }}>
+                      {selectedPatientId}
                     </h2>
-                    <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-400 font-mono" title="Patient demographics, KPIs, and 24h chart are demo data — see GitHub issue #5 to wire to real per-patient data.">Demo data</span>
+                    <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 rounded text-xs text-emerald-400 font-mono">Live</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-slate-400 font-mono">
-                    <span>Age: 34</span>
+                    <span>Age: {demo?.age ?? '—'}</span>
                     <span>•</span>
-                    <span>Type 1 Diabetes</span>
+                    <span>{demo?.diagnosis === 'T1D' ? 'Type 1 Diabetes' : demo?.diagnosis === 'T2D' ? 'Type 2 Diabetes' : (demo?.diagnosis ?? '—')}</span>
                     <span>•</span>
-                    <span>Device: Dexcom G6</span>
+                    <span>Device: {demo?.deviceModel ?? '—'}</span>
                   </div>
                 </div>
-                <div className="px-4 py-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
-                  <p className="text-xs text-rose-400 font-mono mb-1">RISK LEVEL</p>
-                  <p className="text-xl font-mono font-bold text-rose-400">HIGH</p>
+                <div className={`px-4 py-2 border rounded-lg ${risk.box}`}>
+                  <p className={`text-xs font-mono mb-1 ${risk.text}`}>RISK LEVEL</p>
+                  <p className={`text-xl font-mono font-bold ${risk.text}`}>{risk.label}</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-4 gap-4">
                 <div className="p-3 bg-slate-950 rounded border border-slate-800">
                   <p className="text-xs text-slate-500 font-mono mb-1">AVG GLUCOSE</p>
-                  <p className="text-2xl font-mono font-bold text-slate-200">167</p>
-                  <p className="text-xs text-slate-500 mt-1">mg/dL (30d)</p>
+                  <p className="text-2xl font-mono font-bold text-slate-200">{kpis?.avgGlucose ?? '—'}</p>
+                  <p className="text-xs text-slate-500 mt-1">mg/dL{windowDays ? ` (${windowDays}d)` : ''}</p>
                 </div>
                 <div className="p-3 bg-slate-950 rounded border border-slate-800">
                   <p className="text-xs text-slate-500 font-mono mb-1">TIME IN RANGE</p>
-                  <p className="text-2xl font-mono font-bold text-amber-400">64%</p>
+                  <p className={`text-2xl font-mono font-bold ${kpis?.timeInRange >= 70 ? 'text-emerald-400' : 'text-amber-400'}`}>{kpis?.timeInRange != null ? `${kpis.timeInRange}%` : '—'}</p>
                   <p className="text-xs text-slate-500 mt-1">Target: 70-180</p>
                 </div>
                 <div className="p-3 bg-slate-950 rounded border border-slate-800">
                   <p className="text-xs text-slate-500 font-mono mb-1">HYPOGLYCEMIA</p>
-                  <p className="text-2xl font-mono font-bold text-rose-400">12%</p>
+                  <p className="text-2xl font-mono font-bold text-rose-400">{kpis?.pctHypo != null ? `${kpis.pctHypo}%` : '—'}</p>
                   <p className="text-xs text-slate-500 mt-1">&lt;70 mg/dL</p>
                 </div>
                 <div className="p-3 bg-slate-950 rounded border border-slate-800">
                   <p className="text-xs text-slate-500 font-mono mb-1">CV</p>
-                  <p className="text-2xl font-mono font-bold text-slate-200">38%</p>
+                  <p className="text-2xl font-mono font-bold text-slate-200">{kpis?.cv != null ? `${kpis.cv}%` : '—'}</p>
                   <p className="text-xs text-slate-500 mt-1">Variability</p>
                 </div>
               </div>
             </div>
 
-            {/* Glucose Trend Chart */}
+            {/* Glucose history — real full-window series, observed vs true with incident shading */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-sm font-medium text-slate-300 mb-1">24-Hour Glucose Profile</h3>
-                  <p className="text-xs text-slate-500 font-mono">Last updated: 15 minutes ago</p>
+                  <h3 className="text-sm font-medium text-slate-300 mb-1">Glucose History{windowDays ? ` (~${windowDays} days)` : ''}</h3>
+                  <p className="text-xs text-slate-500 font-mono">{series.length} readings · device-observed vs true glucose</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-slate-950 rounded border border-slate-800">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 rounded border border-slate-800">
+                    <div className="w-3 h-0.5 bg-cyan-400" />
+                    <span className="text-[11px] text-slate-400 font-mono">Observed</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 rounded border border-slate-800">
+                    <div className="w-3 border-t border-dashed border-rose-400" />
+                    <span className="text-[11px] text-slate-400 font-mono">True</span>
+                  </div>
+                  {incX && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 rounded border border-slate-800">
+                      <div className="w-3 h-2.5 bg-rose-500/20 border-x border-rose-500/40" />
+                      <span className="text-[11px] text-slate-400 font-mono">Incident</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 rounded border border-slate-800">
                     <div className="w-3 h-0.5 bg-emerald-500" />
-                    <span className="text-xs text-slate-400 font-mono">Target Range</span>
+                    <span className="text-[11px] text-slate-400 font-mono">Target 70–180</span>
                   </div>
                 </div>
               </div>
-              
-              <div className="relative h-64">
-                {/* Target Range Band */}
-                <div className="absolute inset-x-0 bg-emerald-500/5 border-y border-emerald-500/20" style={{ top: '30%', height: '40%' }} />
-                
-                {/* Grid Lines */}
-                {[0, 25, 50, 75, 100].map((val) => (
+
+              {/* ml-12 gutter so the -left-12 y-axis labels (250…50) sit inside the card */}
+              <div className="relative h-64 ml-12">
+                {/* Incident window shading (device-fault period) — drawn first so lines sit on top */}
+                {incX && (
+                  <div className="absolute top-0 bottom-0 bg-rose-500/10 border-x border-rose-500/30" style={{ left: `${incX.x1}%`, width: `${Math.max(0.5, incX.x2 - incX.x1)}%` }} />
+                )}
+
+                {/* Target Range Band (70–180) — positioned on the dynamic scale */}
+                <div className="absolute inset-x-0 bg-emerald-500/5 border-y border-emerald-500/20" style={{ top: `${yOf(180)}%`, height: `${yOf(70) - yOf(180)}%` }} />
+
+                {/* Grid Lines + dynamic y labels */}
+                {[0, 25, 50, 75, 100].map((val, idx) => (
                   <div key={val} className="absolute inset-x-0 border-t border-slate-800" style={{ top: `${val}%` }}>
-                    <span className="absolute -left-12 -top-2 text-xs font-mono text-slate-600">
-                      {250 - (val * 2.5)}
-                    </span>
+                    <span className="absolute -left-12 -top-2 text-xs font-mono text-slate-600">{gridVals[idx]}</span>
                   </div>
                 ))}
-                
-                {/* Glucose Line */}
-                <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-                  <polyline
-                    points={glucoseData.map((d, i) => 
-                      `${(i / (glucoseData.length - 1)) * 100}%,${100 - ((d.value - 50) / 200) * 100}%`
-                    ).join(' ')}
-                    fill="none"
-                    stroke="rgb(34 211 238)"
-                    strokeWidth="2"
-                    className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"
-                  />
-                  {glucoseData.map((d, i) => (
-                    <circle
-                      key={i}
-                      cx={`${(i / (glucoseData.length - 1)) * 100}%`}
-                      cy={`${100 - ((d.value - 50) / 200) * 100}%`}
-                      r="3"
-                      fill="rgb(34 211 238)"
-                      className="cursor-pointer hover:r-5 transition-all"
+
+                {/* Glucose lines: true (dashed rose) + observed (solid cyan). Outside the
+                    incident they overlap; during it the gap = the device under/over-read.
+                    viewBox + unitless coords (SVG `points` rejects % units); non-scaling-stroke
+                    keeps strokes ~constant despite preserveAspectRatio="none". */}
+                {series.length > 1 && (
+                  <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polyline
+                      points={series.map((d, i) => `${xOf(i)},${yOf(d.glucoseTrue ?? d.observed)}`).join(' ')}
+                      fill="none" stroke="rgb(251 113 133)" strokeWidth="1.5" strokeDasharray="3 2"
+                      vectorEffect="non-scaling-stroke"
                     />
-                  ))}
-                </svg>
-                
-                {/* Time Labels */}
-                <div className="absolute -bottom-6 inset-x-0 flex justify-between text-xs font-mono text-slate-600">
-                  {glucoseData.map((d, i) => (
-                    <span key={i}>{d.time}</span>
-                  ))}
-                </div>
+                    <polyline
+                      points={series.map((d, i) => `${xOf(i)},${yOf(d.observed)}`).join(' ')}
+                      fill="none" stroke="rgb(34 211 238)" strokeWidth="2"
+                      vectorEffect="non-scaling-stroke"
+                      className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"
+                    />
+                  </svg>
+                )}
+
+                {/* Time Labels (first / mid / last) — date-aware for the multi-day window */}
+                {series.length > 1 && (
+                  <div className="absolute -bottom-6 inset-x-0 flex justify-between text-[11px] font-mono text-slate-600">
+                    <span>{fmtTick(series[0].time)}</span>
+                    <span>{fmtTick(series[Math.floor(series.length / 2)].time)}</span>
+                    <span>{fmtTick(series[series.length - 1].time)}</span>
+                  </div>
+                )}
+
+                {/* Hover overlay — maps cursor x to the nearest reading. The plot SVG is
+                    stretched (preserveAspectRatio="none"), so we read pixels from this div
+                    and map to the same unitless x/y the polylines use. */}
+                {series.length > 1 && (() => {
+                  const onMove = (e) => {
+                    const r = e.currentTarget.getBoundingClientRect();
+                    const frac = (e.clientX - r.left) / r.width;
+                    setHoverIdx(Math.max(0, Math.min(series.length - 1, Math.round(frac * (series.length - 1)))));
+                  };
+                  const pt = hoverIdx != null ? series[hoverIdx] : null;
+                  const xPct = pt != null ? xOf(hoverIdx) : 0;
+                  const yPct = pt != null ? yOf(pt.observed) : 0;
+                  const gap = pt != null && pt.glucoseTrue != null ? Math.round(pt.glucoseTrue - pt.observed) : null;
+                  const flip = xPct > 62; // anchor tooltip left of the point near the right edge
+                  return (
+                    <div className="absolute inset-0 z-10" style={{ cursor: 'crosshair' }} onMouseMove={onMove} onMouseLeave={() => setHoverIdx(null)}>
+                      {pt && (
+                        <>
+                          <div className="absolute top-0 bottom-0 w-px bg-cyan-400/40" style={{ left: `${xPct}%` }} />
+                          {/* observed marker */}
+                          <div className="absolute w-2.5 h-2.5 rounded-full bg-cyan-300 ring-2 ring-slate-950 -translate-x-1/2 -translate-y-1/2" style={{ left: `${xPct}%`, top: `${yPct}%` }} />
+                          {/* true marker (only show distinctly when it diverges) */}
+                          {pt.glucoseTrue != null && Math.abs(gap) >= 5 && (
+                            <div className="absolute w-2 h-2 rounded-full bg-rose-400 ring-2 ring-slate-950 -translate-x-1/2 -translate-y-1/2" style={{ left: `${xPct}%`, top: `${yOf(pt.glucoseTrue)}%` }} />
+                          )}
+                          <div
+                            className="absolute -translate-y-1/2 bg-slate-950/95 border border-slate-700 rounded px-2 py-1 whitespace-nowrap pointer-events-none shadow-lg"
+                            style={{ left: `${xPct}%`, top: `${yPct}%`, transform: `translate(${flip ? 'calc(-100% - 12px)' : '12px'}, -50%)` }}
+                          >
+                            <div className="text-sm font-semibold text-cyan-300 font-mono">{Math.round(pt.observed)} <span className="text-[10px] text-slate-500">mg/dL observed</span></div>
+                            {pt.glucoseTrue != null && (
+                              <div className="text-xs font-mono text-rose-300">{Math.round(pt.glucoseTrue)} <span className="text-[10px] text-slate-500">true{gap ? ` (${gap > 0 ? '+' : ''}${gap})` : ''}</span></div>
+                            )}
+                            <div className="text-[10px] text-slate-500 font-mono">{new Date(pt.time).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            {/* Detected Patterns */}
+            {/* Observations — derived from this patient's real readings */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">Detected Patterns (Last 30 Days)</h3>
+              <h3 className="text-sm font-medium text-slate-300 mb-1">Observations</h3>
+              <p className="text-xs text-slate-500 font-mono mb-4">Derived from this patient's observed window{windowDays ? ` (${windowDays}d)` : ''}</p>
               <div className="space-y-3">
-                {patterns.map((pattern, idx) => (
+                {observations.map((o, idx) => (
                   <div key={idx} className="flex items-center justify-between p-4 bg-slate-950 rounded border border-slate-800 hover:border-slate-700 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        pattern.severity === 'high' ? 'bg-rose-500/10 border border-rose-500/30' :
-                        pattern.severity === 'medium' ? 'bg-amber-500/10 border border-amber-500/30' :
-                        'bg-yellow-500/10 border border-yellow-500/30'
+                        o.severity === 'high' ? 'bg-rose-500/10 border border-rose-500/30' :
+                        o.severity === 'medium' ? 'bg-amber-500/10 border border-amber-500/30' :
+                        'bg-emerald-500/10 border border-emerald-500/30'
                       }`}>
                         <AlertCircle className={`w-5 h-5 ${
-                          pattern.severity === 'high' ? 'text-rose-400' :
-                          pattern.severity === 'medium' ? 'text-amber-400' :
-                          'text-yellow-400'
+                          o.severity === 'high' ? 'text-rose-400' :
+                          o.severity === 'medium' ? 'text-amber-400' :
+                          'text-emerald-400'
                         }`} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-medium text-slate-200">{pattern.type}</h4>
-                        <p className="text-xs text-slate-500 font-mono">{pattern.frequency}</p>
+                        <h4 className="text-sm font-medium text-slate-200">{o.type}</h4>
+                        <p className="text-xs text-slate-500 font-mono">{o.detail}</p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {pattern.trend === 'increasing' ? (
-                        <div className="flex items-center gap-1 text-rose-400">
-                          <TrendingUp className="w-4 h-4" />
-                          <span className="text-xs font-mono">Increasing</span>
-                        </div>
-                      ) : pattern.trend === 'decreasing' ? (
-                        <div className="flex items-center gap-1 text-emerald-400">
-                          <TrendingDown className="w-4 h-4" />
-                          <span className="text-xs font-mono">Decreasing</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-slate-500">
-                          <span className="text-xs font-mono">→ Stable</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -449,366 +582,102 @@ export default function DiabetesCoachDashboard() {
             </div>
           </div>
 
-          {/* Right Column - Risk & Context */}
+          {/* Right Column - Forecast & Device */}
           <div className="col-span-4 space-y-6">
-            {/* Risk Forecast */}
+            {/* Near-term glucose forecast — real XGBoost 15/30-min model output */}
             <div data-tour="coach-risk" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">72-Hour Risk Forecast</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-500 font-mono">Hypoglycemia Risk</span>
-                    <span className="text-sm font-mono font-bold text-amber-400">MED - 78%</span>
+              <h3 className="text-sm font-medium text-slate-300 mb-1">Near-term glucose forecast</h3>
+              <p className="text-xs text-slate-500 font-mono mb-4">XGBoost · 15 / 30-min horizons</p>
+
+              {fc ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-slate-950 rounded border border-slate-800">
+                    <span className="text-xs text-slate-500 font-mono">Now (observed)</span>
+                    <span className="text-lg font-mono font-bold text-slate-200">{fc.glucoseObserved != null ? Math.round(fc.glucoseObserved) : '—'} <span className="text-xs text-slate-500">mg/dL</span></span>
                   </div>
-                  <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: '78%' }} />
-                  </div>
+
+                  {[{ label: '+15 min', val: fc.pred15m, delta: fc.delta15m }, { label: '+30 min', val: fc.pred30m, delta: fc.delta30m }].map((h, i) => {
+                    const c = classify(h.val);
+                    return (
+                      <div key={i} className="p-3 bg-slate-950 rounded border border-slate-800">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-slate-500 font-mono">{h.label}</span>
+                          {c && <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${c.cls}`}>{c.label}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl font-mono font-bold text-slate-200">{h.val != null ? Math.round(h.val) : '—'}</span>
+                          <span className="text-xs text-slate-500">mg/dL</span>
+                          {h.delta != null && (
+                            <span className={`flex items-center gap-0.5 text-xs font-mono ml-auto ${h.delta >= 0 ? 'text-amber-400' : 'text-cyan-400'}`}>
+                              {h.delta >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {h.delta >= 0 ? '+' : ''}{Math.round(h.delta)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Predicted CGM value vs the current reading. 60-min horizon is on the roadmap (requires a longer-horizon model).
+                  </p>
                 </div>
-                
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-500 font-mono">Hyperglycemia Risk</span>
-                    <span className="text-sm font-mono font-bold text-amber-400">MED - 52%</span>
-                  </div>
-                  <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: '52%' }} />
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-500 font-mono">Severe Event Risk</span>
-                    <span className="text-sm font-mono font-bold text-emerald-400">LOW - 18%</span>
-                  </div>
-                  <div className="h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style={{ width: '18%' }} />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-400">
-                <p className="font-mono mb-1">⚠️ Key Driver:</p>
-                <p>Nocturnal hypoglycemia pattern + recent basal insulin adjustment</p>
-              </div>
+              ) : (
+                <p className="text-sm text-slate-500">No forecast available for this patient.</p>
+              )}
             </div>
 
-            {/* Device Status */}
+            {/* Device — real registry + latest firmware */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">Device Status</h3>
-              
+              <h3 className="text-sm font-medium text-slate-300 mb-4">Device</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">Sensor Age</span>
-                  <span className="text-sm font-mono text-slate-300">6 days</span>
+                  <span className="text-xs text-slate-500 font-mono">Model</span>
+                  <span className="text-sm font-mono text-slate-300">{demo?.deviceModel ?? '—'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">Signal Quality</span>
-                  <span className="text-sm font-mono text-emerald-400">Excellent</span>
+                  <span className="text-xs text-slate-500 font-mono">Device ID</span>
+                  <span className="text-sm font-mono text-slate-300">{demo?.deviceId ?? '—'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">Last Calibration</span>
-                  <span className="text-sm font-mono text-slate-300">18 hours ago</span>
+                  <span className="text-xs text-slate-500 font-mono">Firmware</span>
+                  {fwFlagPeak != null ? (
+                    <span className="text-sm font-mono text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" /> {kpis.firmware}
+                    </span>
+                  ) : (
+                    <span className="text-sm font-mono text-slate-300">{kpis?.firmware ?? '—'}</span>
+                  )}
+                </div>
+                {fwFlagPeak != null && (
+                  <button
+                    onClick={() => navigate('/firmware-lifecycle')}
+                    className="w-full text-left text-[11px] font-mono text-rose-300 bg-rose-500/5 border border-rose-500/30 rounded px-2 py-1.5 hover:bg-rose-500/10 transition-colors"
+                  >
+                    ⚠ Flagged firmware — calibration error spiked to {fwFlagPeak} mg/dL on this rollout. See Firmware Lifecycle →
+                  </button>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-mono">Region</span>
+                  <span className="text-sm font-mono text-slate-300">{demo?.region ?? '—'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-mono">Data Coverage</span>
-                  <span className="text-sm font-mono text-slate-300">97%</span>
+                  <span className="text-xs text-slate-500 font-mono">Readings</span>
+                  <span className="text-sm font-mono text-slate-300">{kpis?.readings?.toLocaleString() ?? '—'}{windowDays ? ` · ${windowDays}d` : ''}</span>
                 </div>
               </div>
-              
-              <div className="mt-4 pt-4 border-t border-slate-800">
-                <div className="flex items-center gap-2 text-emerald-400">
-                  <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                  <span className="text-xs font-mono">No device issues detected</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Historical Context */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">Relevant History</h3>
-              
-              <div className="space-y-3">
-                <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                  <p className="text-xs text-cyan-400 font-mono mb-1">2 weeks ago</p>
-                  <p className="text-xs text-slate-400">Basal insulin increased from 24u to 28u due to persistent hyperglycemia</p>
-                </div>
-                <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                  <p className="text-xs text-cyan-400 font-mono mb-1">1 month ago</p>
-                  <p className="text-xs text-slate-400">Started new exercise routine (morning cardio), correlates with nocturnal lows</p>
-                </div>
-                <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                  <p className="text-xs text-cyan-400 font-mono mb-1">3 months ago</p>
-                  <p className="text-xs text-slate-400">HbA1c: 7.8% (improved from 8.4%)</p>
-                </div>
-              </div>
+              <button
+                onClick={() => navigate('/device-support')}
+                className="mt-4 w-full flex items-center justify-center gap-1 text-xs font-mono px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors"
+              >
+                Device fleet diagnostics <ChevronRight className="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>
+        )}
 
-        {/* Natural Language Query with CGM Genie */}
-        <section>
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
-            Natural Language Query - CGM Genie
-          </h2>
-          
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-            <div className="relative mb-4">
-              <MessageSquare className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              <input 
-                type="text"
-                value={queryText}
-                onChange={(e) => setQueryText(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleGenieQuery()}
-                placeholder="Ask a question about CGM data... (e.g., 'Show patients with hypoglycemia in the last 24 hours')"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-32 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-                disabled={genieLoading}
-              />
-              <button
-                onClick={handleGenieQuery}
-                disabled={genieLoading || !queryText.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-              >
-                {genieLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {genieLoading ? 'Querying...' : 'Query'}
-              </button>
-            </div>
-
-            {/* Visible status line when query is in flight — earlier the only
-                feedback was the button label flipping to "Querying...", which
-                wasn't clear enough that the query had actually been submitted. */}
-            {genieLoading && (
-              <div className="mb-4 flex items-center gap-2 text-xs text-cyan-300 font-mono bg-cyan-500/10 border border-cyan-500/30 rounded px-3 py-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Sending query to CGM Genie — this typically takes 3–10 seconds…</span>
-              </div>
-            )}
-
-            <div className="mb-4">
-              <p className="text-xs text-slate-500 mb-2">Suggested Queries:</p>
-              <div className="grid grid-cols-2 gap-2">
-                {recentQueries.map((query, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={() => setQueryText(query)}
-                    disabled={genieLoading}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800 disabled:cursor-not-allowed rounded text-xs text-slate-400 text-left transition-colors border border-slate-700"
-                  >
-                    💬 {query}
-                  </button>
-                ))}
-              </div>
-              
-              {/* Query Categories */}
-              <details className="mt-3">
-                <summary className="text-xs text-cyan-400 cursor-pointer hover:text-cyan-300">
-                  View more query examples by category →
-                </summary>
-                <div className="mt-3 space-y-3">
-                  {/* Glycemic Control */}
-                  <div className="p-3 bg-slate-900 rounded border border-slate-800">
-                    <p className="text-xs text-emerald-400 font-mono mb-2">📊 Glycemic Control</p>
-                    <div className="space-y-1">
-                      {[
-                        'What percentage of patients have time in range above 70%?',
-                        'Show average glucose levels by patient diagnosis',
-                        'How many readings were below 70 mg/dL today?',
-                        'What is the coefficient of variation across all patients?'
-                      ].map((q, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQueryText(q)}
-                          disabled={genieLoading}
-                          className="block w-full text-left text-xs text-slate-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-slate-950"
-                        >
-                          → {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Device Analytics */}
-                  <div className="p-3 bg-slate-900 rounded border border-slate-800">
-                    <p className="text-xs text-amber-400 font-mono mb-2">🔧 Device Analytics</p>
-                    <div className="space-y-1">
-                      {[
-                        'Which device models have the most out-of-range readings?',
-                        'Show device distribution by region',
-                        'How many patients are using firmware version greater than 2.0?',
-                        'What is the average sensor age by device model?'
-                      ].map((q, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQueryText(q)}
-                          disabled={genieLoading}
-                          className="block w-full text-left text-xs text-slate-400 hover:text-amber-400 px-2 py-1 rounded hover:bg-slate-950"
-                        >
-                          → {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Patient Insights */}
-                  <div className="p-3 bg-slate-900 rounded border border-slate-800">
-                    <p className="text-xs text-cyan-400 font-mono mb-2">👥 Patient Insights</p>
-                    <div className="space-y-1">
-                      {[
-                        'How many patients are in each region?',
-                        'Show patient count by diagnosis type',
-                        'What is the distribution of patient birth years?',
-                        'How many new patients were activated this month?'
-                      ].map((q, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQueryText(q)}
-                          disabled={genieLoading}
-                          className="block w-full text-left text-xs text-slate-400 hover:text-cyan-400 px-2 py-1 rounded hover:bg-slate-950"
-                        >
-                          → {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Insulin & Activity */}
-                  <div className="p-3 bg-slate-900 rounded border border-slate-800">
-                    <p className="text-xs text-purple-400 font-mono mb-2">💉 Insulin & Activity</p>
-                    <div className="space-y-1">
-                      {[
-                        'Show total bolus events in the last 24 hours',
-                        'What is the average basal rate for patients with good control?',
-                        'How many carb entries were logged today?',
-                        'Show correlation between activity and glucose levels'
-                      ].map((q, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQueryText(q)}
-                          disabled={genieLoading}
-                          className="block w-full text-left text-xs text-slate-400 hover:text-purple-400 px-2 py-1 rounded hover:bg-slate-950"
-                        >
-                          → {q}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </details>
-            </div>
-            
-            {/* Genie Response */}
-            {genieError && (
-              <div className="mt-4 p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg">
-                <p className="text-sm text-rose-400">❌ Error: {genieError}</p>
-              </div>
-            )}
-            
-            {genieResponse && !genieError && (
-              <div className="mt-4 p-4 bg-slate-950 border border-slate-700 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center flex-shrink-0">
-                    <MessageSquare className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-cyan-400 font-mono mb-2">CGM Genie Response:</p>
-                    
-                    {/* Display query results from attachments */}
-                    {genieResponse.attachments && genieResponse.attachments.length > 0 && (
-                      <div className="space-y-4">
-                        {genieResponse.attachments.map((attachment, idx) => (
-                          <div key={idx}>
-                            {/* Query results */}
-                            {attachment.query && attachment.query.statement_response && (
-                              <div className="mb-4">
-                                <div className="text-sm text-slate-300 mb-3">
-                                  {attachment.query.statement_response.result?.data_array?.length > 0 ? (
-                                    <div className="space-y-2">
-                                      <p className="font-medium text-emerald-400">
-                                        ✓ Found {attachment.query.statement_response.result.data_array.length} result(s):
-                                      </p>
-                                      <div className="overflow-x-auto">
-                                        <table className="w-full text-xs border border-slate-800 rounded">
-                                          <thead className="bg-slate-900">
-                                            <tr>
-                                              {attachment.query.statement_response.manifest.schema.columns.map((col, colIdx) => (
-                                                <th key={colIdx} className="px-3 py-2 text-left text-slate-400 border-b border-slate-800 font-mono">
-                                                  {col.name}
-                                                </th>
-                                              ))}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {attachment.query.statement_response.result.data_array.map((row, rowIdx) => (
-                                              <tr key={rowIdx} className="border-b border-slate-800 hover:bg-slate-900/50">
-                                                {row.map((cell, cellIdx) => (
-                                                  <td key={cellIdx} className="px-3 py-2 text-slate-300 font-mono">
-                                                    {typeof cell === 'number' ? cell.toFixed(2) : cell}
-                                                  </td>
-                                                ))}
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <p className="text-slate-400">Query executed successfully but returned no results.</p>
-                                  )}
-                                </div>
-                                
-                                {/* Show the SQL query used */}
-                                {attachment.query.query && (
-                                  <details className="mt-3">
-                                    <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400 flex items-center gap-2">
-                                      <span>View SQL Query</span>
-                                      {attachment.query.description && (
-                                        <span className="text-slate-600">- {attachment.query.description}</span>
-                                      )}
-                                    </summary>
-                                    <pre className="mt-2 p-3 bg-slate-900 rounded border border-slate-800 text-xs text-cyan-400 overflow-x-auto">
-                                      {attachment.query.query}
-                                    </pre>
-                                  </details>
-                                )}
-                              </div>
-                            )}
-                            
-                            {/* Suggested follow-up questions */}
-                            {attachment.suggested_questions && attachment.suggested_questions.questions && (
-                              <div className="mt-4 p-3 bg-cyan-500/5 border border-cyan-500/20 rounded">
-                                <p className="text-xs text-cyan-400 font-mono mb-2">💡 Suggested follow-up questions:</p>
-                                <div className="space-y-1">
-                                  {attachment.suggested_questions.questions.map((question, qIdx) => (
-                                    <button
-                                      key={qIdx}
-                                      onClick={() => setQueryText(question)}
-                                      className="block w-full text-left text-xs text-slate-400 hover:text-cyan-400 py-1 px-2 rounded hover:bg-slate-900 transition-colors"
-                                    >
-                                      → {question}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Text responses from Genie */}
-                            {attachment.text && attachment.text.content && (
-                              <div className="mt-3 p-3 bg-slate-900 rounded border border-slate-800">
-                                <p className="text-xs text-slate-400">{attachment.text.content}</p>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
       </main>
     </div>
   );
 }
-
