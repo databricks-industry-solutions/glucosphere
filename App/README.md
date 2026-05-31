@@ -8,7 +8,7 @@ This application provides:
 - **Real-time Device Monitoring**: Track device health, out-of-range events, and anomalies
 - **Landing Page Metrics**: Active patients, devices online, high-risk alerts
 - **Incident Analysis**: Visualize CGM device calibration incidents and their impact
-- **Multi-Agent Supervisor**: AI-powered device troubleshooting and analysis
+- **Switchable AI assistant**: a fast app-side router (Genie / Knowledge Assistant / foundation model) with a live ⚡ Fast / 🤖 MAS toggle to the Multi-Agent Supervisor — device troubleshooting + clinical Q&A
 - **Heatmap Analytics**: Device performance by model and firmware version
 
 ## Architecture
@@ -60,6 +60,45 @@ Examples of the routing in practice:
 - *"What's the WHO diagnostic threshold for type-2 diabetes?"* → MAS routes to **KA** → RAG over WHO PDF
 - *"Which device firmware has the highest out-of-range rate?"* → MAS routes to **Genie** → SQL aggregation
 - *"What does the WHO say about gestational diabetes screening?"* → MAS routes to **KA** → RAG over PDF
+
+### Assistant engine switch — Fast router vs Multi-Agent Supervisor
+
+The Device-support assistant + the per-device "Clinical Analysis" both flow through one
+backend route, `POST /api/assist`, with a **switchable engine** (live UI toggle in the
+assistant header, ⚡ Fast / 🤖 MAS; persisted in `localStorage`, default from the
+`ASSIST_ENGINE` env in `app.yaml`):
+
+| Engine | Path | Latency | Notes |
+|---|---|---|---|
+| **`direct`** (default, ⚡ Fast) | App-side router → calls **one** specialist directly: keyword-route to **KA** (WHO/clinical terms) else a **foundation model** (`databricks-claude-sonnet-4-6`) for device reasoning; `mode:'analysis'` adds fleet-stats enrichment | ~6–15s, reliable | One decision → one direct call |
+| **`mas`** (🤖) | The **Multi-Agent Supervisor** above (Genie + KA) | erratic 17s → >300s under load | Kept for live A/B; preserved/reversible |
+
+**Why the switch exists.** The Agent-Bricks MAS runs 5–7 sequential LLM calls
+(supervisor + sub-agents + their FMs); under shared-endpoint contention the per-call queue
+delay multiplies and the chain blows past the **~300s Databricks Apps gateway timeout** →
+`504 upstream request timeout`. The direct router makes one call (or two for routing), so it
+stays fast even under load — matching Databricks' own guidance that deterministic
+chains/routers have "typically lower latency (fewer LLM calls for orchestration)." The CGM-data
+(Genie) mode is unchanged and always calls Genie directly. Full root-cause analysis:
+[`ref_notes/2026-05-31_mas-latency-troubleshooting.md`](../ref_notes/2026-05-31_mas-latency-troubleshooting.md).
+
+```mermaid
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    U[Device-support question<br/>/api/assist]
+    SW{engine?}
+    KW{clinical / WHO<br/>keyword?}
+    FM[Foundation model<br/>databricks-claude-sonnet-4-6]
+    KA2[Knowledge Assistant<br/>RAG over WHO PDF]
+    MAS2[Multi-Agent Supervisor<br/>Genie + KA, 5–7 serial calls]
+    U --> SW
+    SW -->|direct ⚡| KW
+    SW -->|mas 🤖| MAS2
+    KW -->|yes| KA2
+    KW -->|no| FM
+    classDef sw fill:#ffffff,stroke:#666,stroke-width:1.5px;
+    class SW,KW sw;
+```
 
 ## Project Structure
 

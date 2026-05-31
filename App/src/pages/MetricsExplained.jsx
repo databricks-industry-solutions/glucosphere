@@ -66,7 +66,7 @@ export default function MetricsExplained() {
               About This Page
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
-              This page documents how each metric is calculated across the GlucoStream Intelligence Dashboard.
+              This page documents how each metric is calculated across the Glucosphere Dashboard.
               All metrics are derived from real-time data in the Databricks Unity Catalog using SQL queries
               via the DBSQL MCP (Model Context Protocol) server.
             </p>
@@ -306,9 +306,9 @@ WHERE glucose_out_of_range = 1
             </p>
             <p className="text-sm text-slate-300 leading-relaxed mt-3">
               The detection chain spans three views, each documented in detail below:
-              <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view). <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
+              <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view). <span className="text-xs text-slate-500">Lives on the Glucosphere landing page.</span></span>
               <span className="block ml-4">(2) <span className="text-cyan-300 font-medium">How MAE alerts are triggered</span> — distribution shift explains <em>why</em> MAE spiked. <span className="text-xs text-slate-500">Snapshot PNG from the most recent incident-simulation pipeline run (05_incident_inference_bidirectional notebook), embedded only in this Metrics Explained tab.</span></span>
-              <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted. <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
+              <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted. <span className="text-xs text-slate-500">Lives on the Glucosphere landing page.</span></span>
             </p>
           </div>
 
@@ -317,7 +317,7 @@ WHERE glucose_out_of_range = 1
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Incident Impact: MAE Timeline</h3>
-                <p className="text-xs text-slate-500 font-mono">Top chart on the GlucoStream landing page — Mean Absolute Error over time</p>
+                <p className="text-xs text-slate-500 font-mono">Top chart on the Glucosphere landing page — Mean Absolute Error over time</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">TIME SERIES</span>
             </div>
@@ -376,6 +376,9 @@ ORDER BY minute`}
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
                   <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window per cohort; two such windows total in the mirror simulation)</li>
                   <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy — dashed slate-400 reference line)</li>
+                  <li>• <span className="font-mono text-amber-300">Two MAEs — don't conflate:</span> the <em>model-monitoring</em> MAE is <span className="font-medium">forecast error</span> = |XGBoost prediction − actual future glucose| (computed in the inference notebook: clean ~3.8 mg/dL @15-min / ~5.9 @30-min → ~38 mg/dL during an incident — the headline degradation). <span className="font-medium">This landing chart</span> instead computes a fast <span className="font-medium">device-error proxy</span> = <span className="font-mono text-cyan-400">ABS(glucose_observed − glucose_true) + 5.0</span> directly in SQL (the dashboard doesn't re-run the model in the browser). The proxy is engineered to mirror the forecast-MAE spike — the +5.0 floor → ~5.8 baseline, the ±40 device bias → ~45 affected — and the dashed "Baseline (5.8)" line is the real forecast 30-min baseline.</li>
+                  <li>• <span className="font-mono text-slate-300">Derived, not stored:</span> neither MAE is a raw column — both are computed (the forecast MAE during model inference; this chart's proxy at query time from <span className="font-mono text-cyan-400">glucose_observed</span> / <span className="font-mono text-cyan-400">glucose_true</span>).</li>
+                  <li>• <span className="font-mono text-slate-300">Time granularity:</span> one point per reading timestamp — readings are 5-min spaced, so <span className="font-mono text-cyan-400">DATE_TRUNC('minute', time)</span> yields a per-5-min point, averaged across the patient population at that moment.</li>
                 </ul>
               </div>
               
@@ -414,7 +417,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why MAE spikes signal device drift:</p>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the GlucoStream Intelligence landing page) catches in real time and surfaces as an alert.
+                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) catches in real time and surfaces as an alert.
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL incident itself is a <span className="text-amber-300">simulated</span> calibration bug injected into the demo data for illustration — see _About This Page_ above for full provenance.)
@@ -454,7 +457,7 @@ ORDER BY minute`}
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Device Calibration Bias Over Time (±40 mg/dL Bidirectional)</h3>
-                <p className="text-xs text-slate-500 font-mono">Bottom chart on the GlucoStream landing page — Signed bias delta per direction cohort</p>
+                <p className="text-xs text-slate-500 font-mono">Bottom chart on the Glucosphere landing page — Signed bias delta per direction cohort</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">TIME SERIES</span>
             </div>
@@ -463,7 +466,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the GlucoStream Intelligence landing page).
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the Glucosphere landing page).
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL two-window incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see _About This Page_ above for full provenance.)
@@ -524,7 +527,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Clinical Significance:</p>
                 <p className="text-sm text-slate-400">
-                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the GlucoStream Intelligence landing page) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
+                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the Glucosphere landing page) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
                 </p>
               </div>
               

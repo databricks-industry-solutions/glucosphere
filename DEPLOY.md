@@ -154,6 +154,13 @@ Top-level bundle variables (defined in `databricks.yml`):
 on first deploy. `scripts/render_app_yaml.py` discovers it by deterministic
 name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 
+> **Assistant engine.** The Device-support assistant calls `/api/assist` with a switchable
+> engine — `ASSIST_ENGINE=direct` (default; a fast router → Genie / Knowledge Assistant /
+> foundation model `FM_ENDPOINT`) or `mas` (the Multi-Agent Supervisor). The app SP needs
+> `CAN_QUERY` on the FM endpoint too; `scripts/grant_app_sp.py` auto-discovers it from
+> `app.yaml`. Rationale + the latency root-cause: [`App/README.md`](App/README.md). Standalone
+> apps need the SP grant after `apps create` (see `scripts/grant_app_sp.py --help`).
+
 > **Deploying to a different workspace**: you do NOT need to edit
 > `databricks.yml`. The committed target stanzas have no hardcoded
 > `workspace.host` — DABs uses the host from the profile selected by
@@ -312,6 +319,19 @@ databricks bundle run glucosphere_app -t <target> --profile <profile>
 This single command does both `apps deploy` + `apps start` atomically and matches the bundle-managed pattern used by every other step here. Expected output ends with `App started successfully` and the App URL.
 
 Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows "App is unavailable" until you either run the command above OR click Deploy in the UI.)
+
+### Standalone (A/B) app instances — grant the service principal
+
+The bundle-managed app above gets its service-principal grants automatically from the setup job's `09_grant_app_permissions.py` task. A **standalone** app created outside the bundle for side-by-side comparison (e.g. `databricks apps create glucosphere-app-v0-N` → `databricks apps deploy …`) gets a **fresh SP with no grants** — so every data/agent call returns `403 PERMISSION_DENIED` (blank metrics, "no data", `403` from the MAS/Genie assistants) until you entitle it. After deploying such an instance, run the deploy-host helper once:
+
+```bash
+# Entitles the app SP exactly like notebook 09 (UC catalog/schema/SELECT + READ VOLUME,
+# warehouse CAN_USE, MAS+KA CAN_QUERY, Genie CAN_RUN). Idempotent; effective per-request.
+uv run python scripts/grant_app_sp.py --app glucosphere-app-v0-N --profile <profile>
+# --dry-run prints the planned grants (resolved SP + resource IDs from app.yaml) without applying
+```
+
+It reads the resource IDs from `App/databricks/app.yaml` (no hardcoding), so render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request.
 
 ---
 

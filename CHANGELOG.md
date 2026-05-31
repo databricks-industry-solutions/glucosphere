@@ -23,6 +23,21 @@ grouped by date rather than semver tags.
 
 Issue #2 — App UI: control-tower redesign. A front-door app shell + Device Support overhaul, built and validated on an **isolated standalone app** (`glucosphere-app-v0-2`) for side-by-side comparison against the existing app, which is left untouched. Shares the same live governed data; no backend/pipeline changes.
 
+### Added — v0-3 / v0-4 batch (real Coach · assistant engine switch · naming unification)
+
+Built + validated on further isolated standalone apps (`glucosphere-app-v0-3`, then `glucosphere-app-v0-4`); live app + v0-2 untouched. Same live governed data; no pipeline changes.
+
+- **Diabetes Coach — real per-patient view** (search, random/deep-link default, demographics/KPIs from `silver_patient_registry`, real near-term 15/30-min forecast from `fleet_forecast_incident`, masked-severity alert for under-read-during-hyper, 7-day observed-vs-true glucose timeseries with incident shading). Closes #5.
+- **Switchable assistant engine** (`/api/assist`) — a fast app-side **router** (default): one direct call to **Genie** (data) / **Knowledge Assistant** (clinical) / a **foundation model** (`databricks-claude-sonnet-4-6`, device reasoning + fleet-stats enrichment); with a live ⚡ Fast / 🤖 MAS header toggle (localStorage) to the Multi-Agent Supervisor for A/B. Reliable 6–15s vs the MAS's erratic 17s→>300s-under-load (which trips the ~300s Apps gateway → 502/504). MAS endpoint preserved/reversible. New `GlobalAssistant` reset-chat. SP-grant helper `scripts/grant_app_sp.py`.
+- **Chart hover read-outs** (`ChartTooltip.jsx`) on the Coach 24h/7-day profile, Firmware MAE, and Population cohort charts.
+- **Naming unified** → **Glucosphere** (one product name) · *CGM Stream Intelligence* (descriptor; "GlucoStream" = its contraction/feed nickname) · *fleet control tower* (one metaphor, was split with "command center"). Logo links home.
+
+### Fixed — v0-3 / v0-4 batch
+
+- **Data integrity:** `device_model`/`region` now read from `silver_patient_registry` as SSOT across roster + Device-Support heatmap/alerts (was disagreeing with gold for some patients); roster %hypo/%hyper computed over the incident window (was diluted over the whole 7-day window).
+- **Coach back button** returns to the originating page (Population Risk / rail / Home) via history, not always Home.
+- **Docs/correctness:** Metrics Explained now distinguishes the **two MAEs** — model-monitoring forecast error (`|pred − actual|`, the ~3.8/5.9 clean → ~38 incident headline) vs the landing chart's device-error proxy (`ABS(glucose_observed − glucose_true) + 5.0`); "what's simulated vs real" provenance made mode-agnostic (real-by-default; synthetic mode honest).
+
 ### Added
 
 - **Persistent left nav rail** (`App/src/components/AppShell.jsx` + `NavRail.jsx`) — collapsed icon strip that expands on hover and can be **pinned open** (choice persisted in `localStorage`); role entries (Device Support / Diabetes Coach) grouped under a "By role" label; replaces the old bottom persona cards. A "Take a tour" entry reprises the guided walkthrough.
@@ -38,13 +53,22 @@ Issue #2 — App UI: control-tower redesign. A front-door app shell + Device Sup
 - **Diabetes Coach icon** stethoscope → heart-handshake (coaching, not clinical); "Other Dashboards" placeholder removed from Metrics Explained; glucose-range readout spacing fixed.
 - **Device Support "Population Overview"** is now three equal-height, dynamically balanced panels: out-of-range **heatmap** (with a vertical colorbar) · **regional map** · ranked **device-pattern alerts**.
 
+### Added (v0-3 batch — live Roadmap views, real Coach, unified assistant)
+
+Built + validated on a second isolated standalone app (`glucosphere-app-v0-3`), leaving `v0-2` frozen as a stable demo anchor. Same live governed data; no backend/pipeline changes.
+
+- **Roadmap previews promoted to live views** — **Firmware Lifecycle** (`/firmware-lifecycle`, ② diagnose: device calibration MAE by firmware version over time) + **Population Risk** (`/population-risk`, ③ assess: hypo/hyper exposure by cohort) + an affected-patients/devices **outreach roster** with a "send to triage queue" handoff. All via the existing SQL path — no new backend, no Lakebase.
+- **Diabetes Coach — real per-patient view + working patient search** (`getPatientList` / `getPatientDetail` in `DiabetesCoachDashboard/queries.js`). Replaces the hardcoded "Sarah K." demo panel: live typeahead over the simulated `PSEUDO_*` cohort; per-patient demographics (age/diagnosis/device from `silver_patient_registry`), observed-window KPIs (avg glucose / TIR / hypo / CV), a real 24-hour glucose profile, and a derived-observations list — all from governed tables. **Closes #5.** Patient input is allow-listed before SQL interpolation (injection guard).
+- **Near-term glucose forecast** (Coach) — replaces the non-credible "72-Hour Risk Forecast" with the real XGBoost **15/30-min** predictions (`fleet_forecast_incident.pred_15m/pred_30m`), shown as predicted CGM value + Δ vs now + in-range/hypo/hyper classification. (60-min horizon is a logged modeling follow-up.)
+- **Unified global assistant** (`GlobalAssistant.jsx`, spec D4) — one shell-mounted assistant (FAB → slide-over) on every page, with two modes: **Device support** (Multi-Agent Supervisor, markdown answers) and **CGM data** (Genie, structured table + SQL + follow-ups preserved). Replaces and removes the two former page-local chats (Device Support inline panel + Coach inline Genie box); `AgentChatInterface.jsx` retired.
+
 ### Planned / follow-ups (not yet built)
 
-- Promote the Roadmap previews to live views — **Firmware Lifecycle** (diagnose) + **Population Risk** (assess) — via the existing SQL path (no new backend, no Lakebase).
-- **Unified global assistant** — one shell-mounted assistant (FAB → slide-out) on every page, folding the per-page agent/Genie chat panels into one (surfaces page content higher).
+- **Ongoing 5-min MAE monitoring** — continuous device-accuracy detection (rolling MAE → alert table); pairs with Lakebase alert state + the live-alert card.
 - **Regional distribution**: optional toggle to break the view down by device type.
 - **Light/dark theming** via semantic CSS tokens.
 - **Interactive brand mark** — the glucose ring's branches as navigation links to the different views.
+- **Guided Tour** — rework + extend the narrative to the new per-patient Coach view, the live Firmware/Population views, and the global assistant.
 
 ## [2026-05-30]
 
