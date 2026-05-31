@@ -361,9 +361,9 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             Population Overview
           </h2>
           
-          <div className="grid grid-cols-12 gap-6 items-start">
+          <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
-            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Events</h3>
                 <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
@@ -441,20 +441,22 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             </div>
 
             {/* Regional distribution (geo) */}
-            <div className="col-span-3 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div className="col-span-3 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Regional Distribution</h3>
                 <p className="text-xs text-slate-500 font-mono">Footprint × out-of-range volume</p>
               </div>
-              {regionsLoading ? (
-                <div className="flex items-center justify-center h-48 text-slate-500">Loading regions...</div>
-              ) : (
-                <RegionMap regions={regions} />
-              )}
+              <div className="flex-1 flex flex-col justify-center">
+                {regionsLoading ? (
+                  <div className="flex items-center justify-center h-48 text-slate-500">Loading regions...</div>
+                ) : (
+                  <RegionMap regions={regions} />
+                )}
+              </div>
             </div>
 
             {/* Device Pattern Alerts */}
-            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Pattern Alerts</h3>
                 <p className="text-xs text-slate-500 font-mono">Detected device performance patterns</p>
@@ -474,7 +476,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   // of echoing its colored bars. Top out-of-range patterns by event volume.
                   const dotColor = (s) => s === 'high' ? 'bg-rose-400' : s === 'medium' ? 'bg-amber-400' : 'bg-yellow-400';
                   return (
-                    <ol className="divide-y divide-slate-800/70">
+                    <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
                       {[...alerts].sort((a, b) => b.affected - a.affected).map((alert, idx) => (
                         <li key={idx} className="flex items-center gap-3 py-3">
                           <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
