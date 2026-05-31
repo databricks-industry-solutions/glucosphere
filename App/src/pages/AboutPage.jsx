@@ -51,6 +51,19 @@ export default function AboutPage() {
           </p>
         </section>
 
+        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex items-center gap-5">
+          <BrandMark className="w-12 h-12 text-cyan-400 shrink-0" />
+          <div>
+            <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>The mark</h2>
+            <p className="text-sm text-slate-400 leading-relaxed">
+              The Glucosphere mark is the <span className="text-slate-200">glucose ring</span> — the six-membered
+              pyranose form of the glucose molecule (5 carbons + 1 oxygen) that a CGM actually measures — drawn
+              Haworth-style with its <span className="text-slate-200">CH₂OH and hydroxyl branches</span>, plus a
+              <span className="text-cyan-400 font-medium"> live-reading sensor node</span> for the continuous monitoring.
+            </p>
+          </div>
+        </section>
+
         <section>
           <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>Jump to a view</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
