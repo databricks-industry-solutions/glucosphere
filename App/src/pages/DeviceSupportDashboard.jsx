@@ -354,7 +354,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   Loading heatmap data...
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {/* X-axis labels */}
                   <div className="flex items-center gap-3">
                     <div className="w-24" />
@@ -376,7 +376,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         return (
                           <div 
                             key={fw}
-                            className="flex-1 h-20 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
+                            className="flex-1 h-14 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
                             style={{
                               backgroundColor: getHeatmapColor(outOfRangeEvents)
                             }}

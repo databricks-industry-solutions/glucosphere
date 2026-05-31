@@ -64,7 +64,7 @@ export function IncidentImpactChart() {
 
   // Calculate chart dimensions and scales
   const chartWidth = 1400;
-  const chartHeight = 400;
+  const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
@@ -429,7 +429,7 @@ export function GlucoseTimelineChart() {
 
   // Calculate chart dimensions and scales
   const chartWidth = 1400;
-  const chartHeight = 400;
+  const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
@@ -794,7 +794,7 @@ export function GlucoseAbsoluteChart() {
 
   // Layout (same scale as the other charts)
   const chartWidth = 1400;
-  const chartHeight = 400;
+  const chartHeight = 320;
   const padding = { top: 60, right: 160, bottom: 80, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;

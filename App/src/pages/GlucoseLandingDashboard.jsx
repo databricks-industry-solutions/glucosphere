@@ -151,11 +151,11 @@ export default function GlucoseLandingDashboard() {
         </div>
 
         {/* Incident Analysis */}
-        <section data-tour="incident-charts" className="mb-12">
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+        <section data-tour="incident-charts" className="mb-8">
+          <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
             Recent Incident Analysis
           </h2>
-          <div className="space-y-6">
+          <div className="space-y-4">
             <IncidentImpactChart />
             <GlucoseAbsoluteChart />
             <GlucoseTimelineChart />
