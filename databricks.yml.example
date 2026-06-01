@@ -505,12 +505,28 @@ resources:
             pipeline_id: ${resources.pipelines.cgm_silver_gold.id}
             full_refresh: false
 
+        # ── Data sanity gate (clinical plausibility) ──────────────────────
+        # Fails the run if clinically-impossible records reached gold, so implausible
+        # data (9yo T2D, >55 gestational, glucose 0, no-forecast patients) can never
+        # silently reach the app/demo. Gates the intelligence + app layers below.
+        - task_key: data_sanity_checks
+          description: Clinical-plausibility gate — fail on T2D<13, implausible gestational age, glucose outside [40,400], or patients with no forecast row
+          max_retries: 0
+          depends_on:
+            - task_key: run_dlt_pipeline
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/data_sanity_checks.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
         # ── Intelligence Layer ────────────────────────────────────────────
         - task_key: create_genie_ka_mas
           description: Create WHO Knowledge Assistant, Genie room, and Multi-Agent Supervisor endpoint
           max_retries: 0
           depends_on:
-            - task_key: run_dlt_pipeline
+            - task_key: data_sanity_checks
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/08_genie_ka_mas.py
             base_parameters:

@@ -617,12 +617,12 @@ export default function DiabetesCoachDashboard() {
             {/* Near-term glucose forecast — real XGBoost 15/30-min model output */}
             <div data-tour="coach-risk" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <h3 className="text-sm font-medium text-slate-300 mb-1">Near-term glucose forecast</h3>
-              <p className="text-xs text-slate-500 font-mono mb-4">XGBoost · 15 / 30-min horizons</p>
+              <p className="text-xs text-slate-500 font-mono mb-4">XGBoost · 15 / 30-min horizons · from last batch run</p>
 
               {fc ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-slate-950 rounded border border-slate-800">
-                    <span className="text-xs text-slate-500 font-mono">Now (observed)</span>
+                    <span className="text-xs text-slate-500 font-mono">Forecast baseline</span>
                     <span className="text-lg font-mono font-bold text-slate-200">{fc.glucoseObserved != null ? Math.round(fc.glucoseObserved) : '—'} <span className="text-xs text-slate-500">mg/dL</span></span>
                   </div>
 
@@ -649,7 +649,9 @@ export default function DiabetesCoachDashboard() {
                   })}
 
                   <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Predicted CGM value vs the current reading. 60-min horizon is on the roadmap (requires a longer-horizon model).
+                    Predicted CGM value vs the forecast baseline — the reading the model scored from in the
+                    latest <span className="text-slate-500">batch</span> run (one row per patient, not a live tick).
+                    Near-real-time scoring and a 60-min horizon are on the roadmap.
                   </p>
                 </div>
               ) : (
