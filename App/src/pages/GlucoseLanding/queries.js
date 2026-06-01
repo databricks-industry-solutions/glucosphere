@@ -139,25 +139,27 @@ export async function getIncidentAffectedPatients() {
 }
 
 /**
- * Get count of out-of-range patients in the last 3-hour rolling window.
+ * Get count of patients in a CLINICALLY-CRITICAL glucose range in the last
+ * 3-hour rolling window — a device-reported reading in the level-2 danger
+ * bands: Very Low (<54 mg/dL) or Very High (>250 mg/dL), per the
+ * international Time-in-Ranges consensus (Battelino 2019).
  *
- * 3h matches an incident-window length so a live incident shifts the count
- * clearly above the natural baseline. With a 24h window the natural diabetic
- * OOR baseline dominates (~943 patients) and an incident only nudges it
- * slightly. 3h gives a baseline of ~495 patients during clean periods and
- * an expected ~800 (baseline + 300-patient cohort) during an active
- * incident — a usable signal-to-noise ratio for a fleet operator's
- * live monitoring tile.
+ * Deliberately NARROWER than "any out-of-range (<70 or >180)": for a type-1
+ * diabetic fleet, any-OOR is routine and overstates risk — measured live at
+ * ~517 of ~822 active patients in a 3h window (≈63%). The critical-band
+ * count is meaningful: ~176 of ~822 (≈21%, split ~85 very-low / ~91
+ * very-high in current data) — a believable "patients in a dangerous range
+ * right now" signal for a fleet operator's live tile.
  *
- * @returns {Promise<number>} Count of patients with at least one OOR
- *   reading in the last 3 hours of data
+ * @returns {Promise<number>} Count of distinct patients with at least one
+ *   Very-Low (<54) or Very-High (>250) reading in the last 3 hours of data
  */
 export async function getHighRiskAlerts() {
   const { catalog, schema } = await getConfig();
   const query = `
     SELECT COUNT(DISTINCT patient_id) as high_risk_patients
     FROM ${catalog}.${schema}.gold_patient_device_readings
-    WHERE glucose_out_of_range = 1
+    WHERE (glucose < 54 OR glucose > 250)
       AND time >= (
         SELECT MAX(time) - INTERVAL 3 HOUR
         FROM ${catalog}.${schema}.gold_patient_device_readings
