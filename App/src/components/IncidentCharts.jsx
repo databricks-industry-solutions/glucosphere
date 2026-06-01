@@ -150,10 +150,9 @@ export function IncidentImpactChart() {
     })
     .join(' ');
 
-  // Find incident periods by grouping consecutive incident_period=1 rows. The two
-  // windows now tile the firmware-4.0 era contiguously (over-read then under-read), so
-  // this typically yields ONE block spanning the whole era; the grouping still supports
-  // multiple blocks if the config ever separates the windows again.
+  // Find incident periods — there can be more than one contiguous block (two
+  // separate incidents at Day 2 and Day 5 in the mirror design). Group
+  // consecutive incident_period=1 rows so each one shades separately.
   const incidentBlocks = (() => {
     const blocks = [];
     let inBlock = false;
@@ -225,8 +224,9 @@ export function IncidentImpactChart() {
       <div className="flex-1 min-w-0">
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
           {/* Incident period highlights — one rectangle per contiguous incident block.
-              The two windows tile the firmware-4.0 era contiguously, so this is normally
-              one rect spanning the whole era (over-read phase + under-read phase). */}
+              With the two-window mirror design there are two separate incidents (Day 2
+              and Day 5); rendering each one separately avoids one big rect spanning
+              the gap between them. */}
           {incidentBlocks.map((blk, i) => (
             <rect
               key={`mae-incident-${i}`}
@@ -514,8 +514,8 @@ export function GlucoseTimelineChart() {
   const zeroY = yScale(0);
 
   // Find incident periods — same as the MAE chart: group consecutive incident_period=1
-  // rows. With the contiguous tiled windows this is normally one block spanning the whole
-  // firmware-4.0 era; the grouping still supports multiple if the windows are separated.
+  // rows so two-window incidents render as two separate shaded blocks (not one big
+  // box spanning the gap).
   const incidentBlocks = (() => {
     const blocks = [];
     let inBlock = false;
@@ -586,8 +586,8 @@ export function GlucoseTimelineChart() {
       {/* SVG Chart (right, responsive) */}
       <div className="flex-1 min-w-0">
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
-          {/* Incident period highlights — one rectangle per contiguous incident block;
-              the tiled windows render as one block over the whole firmware-4.0 era. */}
+          {/* Incident period highlights — one rectangle per contiguous incident block.
+              Two-window mirror design renders each incident (Day 2 + Day 5) separately. */}
           {incidentBlocks.map((blk, i) => (
             <rect
               key={`bias-incident-${i}`}
@@ -889,7 +889,7 @@ export function GlucoseAbsoluteChart() {
           Glucose Timeline: Actual vs Device Readings (per-cohort)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
-          Affected patients only. Green = true glucose, Red = over-read cohort device readings (+40 mg/dL, first half of the firmware-4.0 era), Blue = under-read cohort device readings (-40 mg/dL, second half — until the 4.1 recall).
+          Affected patients only. Green = true glucose, Red = positive-bias cohort device readings (+40 mg/dL at Day 2 incident), Blue = negative-bias cohort device readings (-40 mg/dL at Day 5 incident).
         </p>
         <Link to="/metrics-explained#me-bias-timeline" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
           How this is computed →

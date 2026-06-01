@@ -21,10 +21,10 @@ import { getConfig } from '../../api/config';
  * fleet-wide averaging masks the per-device severity, motivating
  * patient-level / direction-aware monitoring.
  *
- * The two windows tile the firmware-4.0 era contiguously, so this chart shows one
- * continuous elevated-MAE region: a +40 over-read phase (cohort 1) on the first half
- * of the era, then a -40 under-read phase (cohort 2) on the second half, recovering at
- * the 4.1 recall. MAE is direction-agnostic (ABS) so both phases sit at ~45 mg/dL.
+ * With the two-window mirror design (2026-05-18), this chart shows two
+ * distinct spike events: a +40 incident on Day 2 14:00-17:00 (cohort 1)
+ * and a -40 incident on Day 5 10:00-13:00 (cohort 2). MAE is direction-
+ * agnostic (ABS) so both spikes peak at the same ~45 mg/dL magnitude.
  */
 export async function getIncidentImpactData() {
   const { catalog, schema } = await getConfig();
@@ -43,10 +43,10 @@ export async function getIncidentImpactData() {
       minute as time,
       AVG(error_value) as mae_fleet,
       -- mae_affected uses incident_period (per-time-window) instead of has_incident
-      -- (per-patient). has_incident=1 includes BOTH cohorts at all times — averaging over
-      -- them dilutes the signal. incident_period=1 only fires while a patient's device is
-      -- actually drifting (its phase of the firmware-4.0 era), so this averages only the
-      -- currently-failing patients → ~+/-45 mg/dL across the elevated era.
+      -- (per-patient). With the two-window mirror design, has_incident=1 includes BOTH
+      -- cohorts at all times — averaging over them dilutes the spike. incident_period=1
+      -- only fires during each patient's OWN window, so this averages only patients
+      -- whose devices are currently failing → ~+/-45 mg/dL peaks at the two windows.
       AVG(CASE WHEN incident_period = 1 THEN error_value END) as mae_affected,
       MAX(incident_period) as incident_period,
       MAX(incident_label) as incident_label

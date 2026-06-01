@@ -370,11 +370,10 @@ WHERE (glucose < 54 OR glucose > 250)
                   (AVG across all patients — diluted because only the affected cohorts are drifting) vs{' '}
                   <span className="text-orange-400 font-medium">affected-only</span> MAE (AVG over just the patients
                   whose devices are currently in an incident window — shows the TRUE bias magnitude).
-                  The buggy firmware-4.0 era is one continuous fault window: the over-read cohort
-                  (Alpha/Gamma, +40 mg/dL) drifts through its first half, then the under-read cohort
-                  (Beta/Delta, -40 mg/dL) through the second half, until the 4.1 recall restores accuracy.
-                  Baseline sensor noise of 5.0 mg/dL is added to every reading to simulate realistic CGM
-                  accuracy (~5.8 mg/dL MARD).
+                  With the two-window mirror simulation (2026-05-18), TWO separate red-tinted dashed-border
+                  rectangles mark the two incident windows: Day 2 (+40 mg/dL bias on Alpha/Gamma cohort) and
+                  Day 5 (-40 mg/dL bias on Beta/Delta cohort). Baseline sensor noise of 5.0 mg/dL is added
+                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL MARD).
                 </p>
               </div>
 
@@ -394,10 +393,10 @@ WHERE (glucose < 54 OR glucose > 250)
 SELECT
   minute as time,
   AVG(error_value) as mae_fleet,
-  -- Dilution gotcha: mae_affected uses incident_period (per-time-window) NOT
-  -- has_incident (per-patient). has_incident=1 includes both cohorts at all times —
-  -- averaging over them dilutes the signal. incident_period=1 only fires while a
-  -- device is actually drifting (its phase of the FW-4.0 era) → clean ~+/-45 mg/dL.
+  -- Two-window mirror gotcha: mae_affected uses incident_period (per-time-window)
+  -- NOT has_incident (per-patient). has_incident=1 includes both cohorts at all
+  -- times — averaging over them dilutes the spike. incident_period=1 only fires
+  -- during each cohort's OWN window → clean ~+/-45 mg/dL peaks at the two windows.
   AVG(CASE WHEN incident_period = 1 THEN error_value END) as mae_affected,
   MAX(incident_period) as incident_period,
   MAX(incident_label) as incident_label
@@ -412,7 +411,7 @@ ORDER BY minute`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> <code className="font-mono text-cyan-300 bg-slate-800/60 px-1.5 py-0.5 rounded">ABS(glucose_observed − glucose_true) + 5.0</code> (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
                   <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only the active-window cohort drifts at any moment</li>
-                  <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the dilution trap where has_incident=1 includes both cohorts at all times.</li>
+                  <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the two-window-mirror dilution trap where has_incident=1 includes both cohorts at all times.</li>
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
                   <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window per cohort; two such windows total in the mirror simulation)</li>
                   <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy — dashed slate-400 reference line)</li>
@@ -427,7 +426,7 @@ ORDER BY minute`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="text-blue-400">Blue line:</span> MAE Fleet-wide (diluted across all patients — ~17 mg/dL peak)</li>
                   <li>• <span className="text-orange-400">Orange line:</span> MAE Affected-only (true bias magnitude — ~45 mg/dL peak)</li>
-                  <li>• <span style={{color: 'rgb(248 113 113)'}}>Light-red shaded region (dashed border):</span> the firmware-4.0 fault era — one continuous window: over-read cohort (+40) on its first half, then under-read cohort (−40) on the second, until the 4.1 recall</li>
+                  <li>• <span style={{color: 'rgb(248 113 113)'}}>Light-red shaded rectangles (dashed border):</span> Incident windows — TWO separate rectangles (3h each) for the two-window mirror simulation (Day 2 +40 cohort, Day 5 −40 cohort)</li>
                   <li>• <span className="text-slate-400">Dashed slate line:</span> Baseline MAE reference (~5.8 mg/dL)</li>
                 </ul>
               </div>
@@ -506,10 +505,10 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. Across the buggy firmware-4.0 era, the positive-bias cohort (Alpha/Gamma devices) holds at +40 mg/dL through the era's first half, while the negative-bias cohort (Beta/Delta devices) holds at −40 mg/dL through the second half — until the 4.1 recall. Outside the era, each cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the Glucosphere landing page).
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the Glucosphere landing page).
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
-                  (The ±40 mg/dL firmware-4.0 incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see _About This Page_ above for full provenance.)
+                  (The ±40 mg/dL two-window incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see _About This Page_ above for full provenance.)
                 </p>
               </div>
 
@@ -542,7 +541,7 @@ ORDER BY minute`}
                   <li>• <span className="font-mono text-slate-300">signed_bias:</span> <span className="font-mono">glucose_observed − glucose_true</span> at every reading. Positive = device over-reads, negative = device under-reads. Subtraction cancels the diurnal glucose component, leaving pure device error.</li>
                   <li>• <span className="font-mono text-red-400">bias_positive:</span> AVG(signed_bias) WHERE incident_direction = 'positive' — the cohort whose devices over-read by +40 mg/dL during incident. ≈ 0 outside incident, ≈ +40 inside.</li>
                   <li>• <span className="font-mono text-blue-400">bias_negative:</span> AVG(signed_bias) WHERE incident_direction = 'negative' — the cohort whose devices under-read by −40 mg/dL during incident. ≈ 0 outside incident, ≈ −40 inside.</li>
-                  <li>• <span className="font-mono text-amber-400">Direction mechanism:</span> the firmware-4.0 era is tiled by two contiguous phases — Window 1 injects +bias on the Alpha/Gamma device cohort (~300 patients) through the first half; Window 2 injects −bias on the Beta/Delta cohort (~300 patients) through the second half (= the 4.1 recall). The `calibration_bias_direction_split` setting is 1.0 (unidirectional per window) since direction is decided BY WINDOW, not within-cohort split.</li>
+                  <li>• <span className="font-mono text-amber-400">Direction mechanism:</span> two-window mirror design — Window 1 (Day 2) injects +bias on Alpha/Gamma device cohort (~300 patients); Window 2 (Day 5) injects -bias on Beta/Delta device cohort (~300 patients). The `calibration_bias_direction_split` setting is now 1.0 (unidirectional per window) since direction is decided BY WINDOW, not within-cohort split.</li>
                 </ul>
               </div>
 
