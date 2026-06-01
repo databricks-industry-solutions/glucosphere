@@ -27,11 +27,14 @@ export default function GuidedTour() {
     if (active && step && location.pathname !== step.route) navigate(step.route);
   }, [active, i, step, location.pathname, navigate]);
 
-  // Position the spotlight on the step's target. Retry until present (route change),
-  // then MEASURE AFTER the smooth scroll settles + keep re-measuring on scroll/resize
-  // so the box stays glued to the element (measuring too early lands it off-target).
+  // Position the spotlight on the step's target. CLEAR the prior step's rect first so a
+  // stale box never lingers at the previous target's coordinates during the search, then
+  // retry until the element is present (route change + async data-load guards can delay it),
+  // MEASURE AFTER the smooth scroll settles, and keep re-measuring on scroll/resize so the
+  // box stays glued to the element (measuring too early lands it off-target).
   useEffect(() => {
     if (!active || !step) return;
+    setRect(null);   // drop the previous step's highlight immediately (no stale box mid-transition)
     let tries = 0;
     let cleanup = () => {};
     const find = setInterval(() => {
@@ -55,7 +58,10 @@ export default function GuidedTour() {
           window.removeEventListener('scroll', measure, true);
           window.removeEventListener('resize', measure);
         };
-      } else if (++tries > 25) {
+      } else if (++tries > 100) {
+        // ~10s budget: a target can sit behind an async data-load guard (e.g. the Coach
+        // page renders coach-risk only after its live patient query returns) and appear
+        // well after the route transition — give it time before giving up.
         clearInterval(find);
         setRect(null);
       }
