@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
+import { useGoBack } from '../hooks/useGoBack';
 // fig4 PNG is served at runtime from UC Volume via Flask /uc-assets/ route
 // (App/databricks/app.py:serve_uc_asset). No vite-bundled static copy needed —
 // the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/pipeline_data/incident_inference_assets/
@@ -10,6 +11,18 @@ const FIG4_UC_PATH = '/uc-assets/incident_inference_assets/distribution_comparis
 
 export default function MetricsExplained() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const goBack = useGoBack();
+
+  // Deep-link support: the landing-page chart panels link here with a #anchor
+  // (e.g. /metrics-explained#me-mae-timeline). react-router v6 does NOT auto-scroll
+  // to a hash, so scroll the matching card into view (below the sticky header via
+  // scroll-mt on the targets). Defer a frame so layout is settled first.
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.querySelector(location.hash);
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [location.hash]);
 
   // Fetch catalog/schema from Flask /api/config so the SQL examples + display
   // text shown to users reflect the workspace this app is deployed to.
@@ -35,10 +48,10 @@ export default function MetricsExplained() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => navigate('/')}
+              onClick={goBack}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -48,7 +61,7 @@ export default function MetricsExplained() {
                 <BookOpen className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Metrics Explained
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">How metrics are calculated across dashboards</p>
@@ -58,11 +71,11 @@ export default function MetricsExplained() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Introduction */}
         <section className="mb-12">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+            <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               About This Page
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
@@ -116,7 +129,7 @@ export default function MetricsExplained() {
 
         {/* Landing Page Hero Metrics */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Landing Page: Hero Metrics
           </h2>
 
@@ -225,21 +238,23 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Number of unique patients who have had at least one out-of-range glucose reading in the
-                  last <span className="font-mono text-cyan-400">3 hours</span> of available data.
-                  Out-of-range means glucose levels are outside the clinically safe range.
+                  Number of unique patients with at least one reading in a <span className="text-slate-200">clinically-critical
+                  glucose range</span> — Very Low <span className="font-mono text-cyan-400">&lt;54 mg/dL</span> or Very High
+                  <span className="font-mono text-cyan-400"> &gt;250 mg/dL</span> — in the last
+                  <span className="font-mono text-cyan-400"> 3 hours</span> of available data. These are the level-2 danger
+                  bands, deliberately narrower than "any out-of-range (&lt;70 or &gt;180)," which is routine for a diabetic fleet.
                 </p>
               </div>
 
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why 3 hours (not 24)?</p>
                 <p className="text-sm text-slate-400">
-                  The 3-hour window matches a typical device-calibration incident window length so a live
-                  incident shifts the count clearly above the natural baseline. With a 24-hour window the
-                  natural diabetic OOR baseline (~943 patients) dominates and a live incident only nudges it
-                  slightly — bad signal-to-noise for a fleet operator's live tile. With 3 hours the baseline
-                  sits around ~495 patients during clean periods and rises to ~800 (baseline + ~300-patient
-                  incident cohort) during an active incident.
+                  The 3-hour window matches a typical device-calibration incident window so a live incident
+                  shifts the count clearly. For scale: in the current data ~822 patients have a reading in a 3h
+                  window; <span className="font-mono text-cyan-400">~517</span> have <em>any</em> out-of-range
+                  reading (&lt;70 or &gt;180) — routine for type-1 diabetes — while only
+                  <span className="font-mono text-cyan-400"> ~176</span> hit a critical band (&lt;54 or &gt;250).
+                  Counting the critical bands is what makes this a believable "high-risk" signal rather than half the fleet.
                 </p>
               </div>
 
@@ -248,7 +263,7 @@ WHERE time >= (
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT patient_id) as high_risk_patients
 FROM ${catalog}.${schema}.gold_patient_device_readings
-WHERE glucose_out_of_range = 1
+WHERE (glucose < 54 OR glucose > 250)
   AND time >= (
     SELECT MAX(time) - INTERVAL 3 HOUR
     FROM ${catalog}.${schema}.gold_patient_device_readings
@@ -257,10 +272,13 @@ WHERE glucose_out_of_range = 1
               </div>
               
               <div>
-                <p className="text-sm font-medium text-slate-300 mb-2">What is "out-of-range"?</p>
+                <p className="text-sm font-medium text-slate-300 mb-2">Why &lt;54 and &gt;250?</p>
                 <p className="text-sm text-slate-400">
-                  The <span className="font-mono text-amber-400">glucose_out_of_range</span> field is a binary flag (0 or 1) 
-                  indicating whether the glucose reading is outside the clinically safe range. This is pre-calculated in the data pipeline.
+                  These are the level-2 (clinically-significant) danger bands from the international Time-in-Ranges
+                  consensus (Battelino et al., 2019): <span className="font-mono text-cyan-400">Very Low &lt;54</span>,
+                  Low 54–69, Target 70–180, High 181–250, <span className="font-mono text-cyan-400">Very High &gt;250</span> mg/dL.
+                  Counted from the raw <span className="font-mono text-amber-400">glucose</span> column — not the broader
+                  <span className="font-mono text-amber-400"> glucose_out_of_range</span> flag, which fires on the routine &lt;70 / &gt;180 bands.
                 </p>
               </div>
               
@@ -276,7 +294,7 @@ WHERE glucose_out_of_range = 1
 
         {/* Landing Page: Recent Incident Analysis */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Landing Page: Recent Incident Analysis
           </h2>
 
@@ -313,7 +331,7 @@ WHERE glucose_out_of_range = 1
           </div>
 
           {/* Incident Impact Chart */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-mae-timeline" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Incident Impact: MAE Timeline</h3>
@@ -370,7 +388,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> ABS(glucose_observed - glucose_true) + 5.0 (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
+                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> <code className="font-mono text-cyan-300 bg-slate-800/60 px-1.5 py-0.5 rounded">ABS(glucose_observed − glucose_true) + 5.0</code> (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
                   <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only the active-window cohort drifts at any moment</li>
                   <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the two-window-mirror dilution trap where has_incident=1 includes both cohorts at all times.</li>
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
@@ -453,7 +471,7 @@ ORDER BY minute`}
           </div>
 
           {/* Glucose Timeline Chart */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-bias-timeline" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Device Calibration Bias Over Time (±40 mg/dL Bidirectional)</h3>
@@ -608,7 +626,7 @@ FROM error_data`}
 
         {/* Device Support Dashboard */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Device Support Dashboard
           </h2>
 
