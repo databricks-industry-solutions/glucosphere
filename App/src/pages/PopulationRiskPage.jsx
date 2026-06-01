@@ -139,7 +139,7 @@ export default function PopulationRiskPage() {
           </p>
         </section>
 
-        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+        <section data-tour="pop-risk" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           {loading
             ? <div className="flex items-center justify-center h-64 text-slate-500">Loading population risk…</div>
             : <div className="max-w-4xl mx-auto"><PopulationRiskChart data={data} /></div>}

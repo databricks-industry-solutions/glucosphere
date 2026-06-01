@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
-import RegionMap from '../components/RegionMap';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution } from '../api/databricksSQL';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getCalibrationDrift } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
+import { getConfig } from '../api/config';
 import ReactMarkdown from 'react-markdown';
 
 // Markdown styling for the Device Analysis (FM) output. The repo has no
@@ -42,8 +42,9 @@ export default function DeviceSupportDashboard() {
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
-  const [regions, setRegions] = useState([]);
-  const [regionsLoading, setRegionsLoading] = useState(true);
+  const [drift, setDrift] = useState([]);
+  const [driftLoading, setDriftLoading] = useState(true);
+  const [baselineSource, setBaselineSource] = useState('from_source'); // synthetic | from_source | from_table — drives the baseline/dilution note wording
   const [deviceAnalysis, setDeviceAnalysis] = useState({}); // Store analysis for each device
   const [analysisLoading, setAnalysisLoading] = useState({}); // Track loading state per device
 
@@ -238,21 +239,31 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     }
   };
 
-  // Fetch regional distribution (geo panel)
+  // Fetch per-device-model calibration drift during the firmware-4.0 incident windows.
+  // Drift = mean(observed − true) mg/dL; ~0 baseline, ≈±40 during the incident, so the
+  // fault pops where the whole-window OOR heatmap washes out (real baseline OOR ~33%).
   useEffect(() => {
-    const fetchRegions = async () => {
+    const fetchDrift = async () => {
       try {
-        setRegionsLoading(true);
-        const data = await getDeviceRegionalDistribution();
-        setRegions(Array.isArray(data) ? data : []);
+        setDriftLoading(true);
+        const data = await getCalibrationDrift();
+        setDrift(Array.isArray(data) ? data : []);
       } catch (error) {
-        console.error('Failed to fetch regional distribution:', error);
-        setRegions([]);
+        console.error('Failed to fetch calibration drift:', error);
+        setDrift([]);
       } finally {
-        setRegionsLoading(false);
+        setDriftLoading(false);
       }
     };
-    fetchRegions();
+    fetchDrift();
+  }, []);
+
+  // Fetch the deployment's baseline_source so the baseline/dilution note describes
+  // the data honestly (real HUPA-UCM vs synthetic generator vs provided table).
+  useEffect(() => {
+    getConfig()
+      .then(cfg => setBaselineSource(cfg.baseline_source || 'from_source'))
+      .catch(() => {});
   }, []);
 
   // Fetch device pattern alerts from database
@@ -338,6 +349,45 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     }
   };
 
+  // Diverging colour for calibration drift: under-read (negative) → blue,
+  // over-read (positive) → red, 0 (calibrated) → neutral slate. Magnitude scaled
+  // against the ±40 mg/dL injected bias so a full ±40 cell reads as saturated.
+  const getDriftColor = (signed) => {
+    const t = Math.min(Math.abs(signed) / 40, 1); // 0 (calibrated) .. 1 (full ±40 drift)
+    if (t < 0.02) return 'rgb(30 41 59)';          // slate-800 — calibrated / not in this window
+    const lerp = (a, b) => Math.round(a + (b - a) * t);
+    if (signed > 0) {
+      // neutral slate-800 → red-500 (over-read, reads HIGH)
+      return `rgb(${lerp(30, 239)} ${lerp(41, 68)} ${lerp(59, 68)})`;
+    }
+    // neutral slate-800 → blue-500 (under-read, reads LOW)
+    return `rgb(${lerp(30, 59)} ${lerp(41, 130)} ${lerp(59, 246)})`;
+  };
+
+  // Build the model × window grid for the calibration-drift strip. Window 1
+  // (positive/over-read) and Window 2 (negative/under-read) are mutually-exclusive
+  // cohorts; models with no cohort in a window (incl. clean Epsilon/Zeta) show 0.
+  const driftByKey = {};
+  drift.forEach(d => { driftByKey[`${d.device_model}|${d.direction}`] = d; });
+  const driftWindows = [
+    { dir: 'positive', label: 'Window 1', sub: 'over-read', start: drift.find(d => d.direction === 'positive')?.window_start },
+    { dir: 'negative', label: 'Window 2', sub: 'under-read', start: drift.find(d => d.direction === 'negative')?.window_start },
+  ];
+  const driftWindowDevices = (dir) => drift.filter(d => d.direction === dir).reduce((s, d) => s + d.devices, 0);
+  const driftFmtTime = (ts) => (ts ? String(ts).replace('T', ' ').slice(0, 16) + ' UTC' : ''); // "YYYY-MM-DD HH:MM UTC"
+
+  // Baseline / dilution note — DYNAMIC so it stays honest regardless of baseline_source.
+  // Number comes from the live heatmap OOR range (minOorPct/maxOorPct, same values the
+  // colorbar uses), so a synthetic deployment (~idealized, lower baseline) shows its own
+  // range, not a hardcoded real-data figure. Provenance wording switches on baseline_source.
+  const oorRangeKnown = heatmapData.length > 0;
+  const oorBaselineRange = oorRangeKnown ? `~${minOorPct}–${maxOorPct}%` : 'its baseline rate';
+  const baselineNote = baselineSource === 'synthetic'
+    ? { source: 'a synthetic textbook-phenotype + AR(1) generator (idealized, no external data)', why: 'so even calibrated devices report some readings outside 70–180 mg/dL' }
+    : baselineSource === 'from_table'
+    ? { source: 'a provided baseline table', why: 'so the out-of-range rate reflects that source population' }
+    : { source: 'real HUPA-UCM clinical data', why: 'where people with diabetes sit outside 70–180 mg/dL about a third of the time' };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
@@ -396,12 +446,12 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
             <div data-tour="anomaly-heatmap" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
-              <div className="mb-4">
+              <div className="mb-4 h-14">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Rate</h3>
                 <p className="text-xs text-slate-500 font-mono">% of readings out-of-range, by device type and firmware</p>
               </div>
               
-              <div className="flex gap-4 items-stretch">
+              <div className="flex flex-col gap-3">
                 {/* Heatmap grid */}
                 <div className="flex-1 min-w-0">
                   {heatmapLoading ? (
@@ -410,8 +460,9 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {/* X-axis labels */}
-                      <div className="flex items-center gap-3">
+                      {/* X-axis labels — fixed height + bottom-aligned so the
+                          device-model rows line up with the Calibration Drift panel. */}
+                      <div className="flex items-end gap-3 h-14">
                         <div className="w-24" />
                         {firmwareVersions.map(fw => (
                           <div key={fw} className="flex-1 text-center">
@@ -451,40 +502,114 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   )}
                 </div>
 
-                {/* Vertical legend (colorbar) — to the right of the grid */}
+                {/* Horizontal legend (colorbar) — below the grid (frees width in the
+                    narrow column); low→high left to right. */}
                 {!heatmapLoading && (
-                  <div className="flex flex-col items-center gap-1 pt-8 shrink-0">
-                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOorPct}%</span>
-                    <span className="text-[10px] font-mono text-slate-500 mb-0.5">High</span>
-                    <div className="flex flex-col rounded overflow-hidden">
-                      {[1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0].map((normalized, i) => (
+                  <div className="flex items-center gap-2 pl-24">
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOorPct}%</span>
+                    <span className="text-[10px] font-mono text-slate-500">Low</span>
+                    <div className="flex-1 flex flex-row rounded overflow-hidden">
+                      {[0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0].map((normalized, i) => (
                         <div
                           key={i}
-                          className="w-3.5 h-4"
+                          className="flex-1 h-5"
                           style={{ backgroundColor: getHeatmapColor(minOorPct + (normalized * (maxOorPct - minOorPct))) }}
                         />
                       ))}
                     </div>
-                    <span className="text-[10px] font-mono text-slate-500 mt-0.5">Low</span>
-                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOorPct}%</span>
+                    <span className="text-[10px] font-mono text-slate-500">High</span>
+                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOorPct}%</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Regional distribution (geo) */}
-            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-slate-300 mb-1">Regional Distribution</h3>
-                <p className="text-xs text-slate-500 font-mono">Footprint × out-of-range volume</p>
+            {/* Calibration Drift — top-right of the 2×2 overview, paired with the
+                OOR heatmap to its left. Measures the device fault directly
+                (|observed − true| mg/dL): ~0 at baseline, ≈±40 during the incident,
+                so the firmware-4.0 fault is glaring where the whole-window OOR rate
+                (real HUPA-UCM baseline ~33%) washes it out. Model rows × 2 incident
+                windows; diverging red (over-read) / blue (under-read). */}
+            <div data-tour="calibration-drift" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+              <div className="mb-4 h-14">
+                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Calibration Drift · FW 4.0 Incident</h3>
+                <p className="text-xs text-slate-500 font-mono">mean(observed − true) mg/dL, by model × incident window · ≈0 calibrated, ±40 faulted</p>
               </div>
-              <div className="flex-1 flex flex-col justify-center">
-                {regionsLoading ? (
-                  <div className="flex items-center justify-center h-48 text-slate-500">Loading regions...</div>
-                ) : (
-                  <RegionMap regions={regions} />
-                )}
-              </div>
+
+              {driftLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-500">Loading calibration drift...</div>
+              ) : drift.length === 0 ? (
+                <div className="flex items-center justify-center h-48 text-slate-500">No incident drift detected</div>
+              ) : (
+                (() => {
+                  const models = (deviceTypes && deviceTypes.length > 0)
+                    ? deviceTypes
+                    : [...new Set(drift.map(d => d.device_model))].sort();
+                  return (
+                    <div className="flex-1 flex flex-col">
+                      <div className="space-y-2">
+                        {/* Window column headers — fixed height + bottom-aligned to
+                            match the OOR heatmap's header so model rows line up. */}
+                        <div className="flex items-end gap-3 h-14">
+                          <div className="w-20 shrink-0" />
+                          {driftWindows.map(win => (
+                            <div key={win.dir} className="flex-1 text-center">
+                              <div className="text-xs font-mono text-slate-300">{win.label}</div>
+                              <div className="text-[10px] font-mono text-slate-500">{win.sub} · {driftWindowDevices(win.dir)} dev</div>
+                              {win.start && <div className="text-[10px] font-mono text-slate-600">{driftFmtTime(win.start)}</div>}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* One row per device model */}
+                        {models.map(m => (
+                          <div key={m} className="flex items-center gap-3">
+                            <div className="w-20 shrink-0 text-sm text-slate-300 font-mono">{m}</div>
+                            {driftWindows.map(win => {
+                              const cell = driftByKey[`${m}|${win.dir}`];
+                              const signed = cell ? cell.signed_drift : 0;
+                              const devs = cell ? cell.devices : 0;
+                              return (
+                                <div
+                                  key={win.dir}
+                                  className="flex-1 h-10 rounded-lg flex items-center justify-center group relative cursor-default transition-all hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900"
+                                  style={{ backgroundColor: getDriftColor(signed) }}
+                                >
+                                  <span className={`text-sm font-mono font-semibold ${Math.abs(signed) >= 8 ? 'text-white' : 'text-slate-500'}`}>
+                                    {signed > 0 ? '+' : ''}{signed === 0 ? '0' : signed.toFixed(0)}
+                                  </span>
+                                  {cell && (
+                                    <div className="absolute inset-x-0 -top-9 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                                      <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-xs font-mono whitespace-nowrap shadow-xl">
+                                        <span className="text-cyan-400 font-bold">{signed > 0 ? '+' : ''}{signed.toFixed(1)} mg/dL</span>
+                                        <span className="text-slate-400"> · {devs} dev</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Diverging legend — two left-aligned rows (swatches, then the
+                          clean-models note) so nothing floats or wraps raggedly. */}
+                      <div className="mt-auto pt-3 border-t border-slate-800/70 text-[10px] font-mono text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-4 h-3 rounded-sm" style={{ backgroundColor: getDriftColor(-40) }} />
+                          <span>−40 under</span>
+                          <span className="inline-block w-4 h-3 rounded-sm ml-2" style={{ backgroundColor: getDriftColor(0) }} />
+                          <span>0 calibrated</span>
+                          <span className="inline-block w-4 h-3 rounded-sm ml-2" style={{ backgroundColor: getDriftColor(40) }} />
+                          <span>+40 over</span>
+                        </div>
+                        <div className="mt-1.5 text-slate-600">Epsilon / Zeta clean — no incident</div>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
             </div>
 
             {/* Device Pattern Alerts */}
@@ -556,19 +681,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               )}
             </div>
           </div>
+
+          {/* Baseline / dilution note — bridges the OOR heatmap (left) and the
+              Calibration Drift panel (center). Explains WHY a 3-hour firmware fault
+              washes out in the whole-window OOR rate but is glaring in drift: the
+              ~31–39% baseline is real clinical variability (glucose synthesized from
+              HUPA-UCM), not device error. Keeps the "honest prominence" framing
+              defensible under review. */}
+          <div className="mt-6 bg-slate-900/30 border border-slate-800/70 rounded-lg px-5 py-3 text-[11px] font-mono text-slate-500 leading-relaxed">
+            <span className="text-slate-300">Why two views? </span>
+            The <span className="text-slate-400">Out-of-Range</span> heatmap reads <span className="text-slate-400">{oorBaselineRange} across models</span> — even healthy device/firmware — because patient glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why}. That <span className="text-slate-400">baseline</span> <span className="text-amber-400/80">dilutes</span> a 3-hour firmware fault in the whole-window OOR rate. <span className="text-slate-400">Calibration Drift</span> measures the device error directly (≈0&nbsp;mg/dL when calibrated, ±40 during the incident), so the same fault stands out cleanly — honest prominence, no data inflation.
+          </div>
         </section>
 
         {/* Device troubleshooting moved to the global assistant (FAB, bottom-right):
             ask the "Device support" mode for sensor/firmware/calibration help. */}
 
         {/* Device Detail Table */}
-        <section>
+        <section data-tour="out-of-range-table">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                 Out-of-Range Device Readings
               </h2>
-              <p className="text-xs text-slate-500 font-mono mt-1">Flagged readings outside the 70–180 mg/dL target — latest snapshot</p>
+              <p className="text-xs text-slate-500 font-mono mt-1">Flagged readings outside the 70–180 mg/dL target — latest snapshot · <span className="text-cyan-400/80">click any row</span> for reading details + AI device analysis</p>
             </div>
             <select 
               value={filterModel}

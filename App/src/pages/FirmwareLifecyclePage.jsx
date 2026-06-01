@@ -29,6 +29,9 @@ export default function FirmwareLifecyclePage() {
 
   // Faulty firmware = the version with the highest peak device error (MAE), derived
   // from the lifecycle data. Only treated as a fault when the peak clears baseline.
+  // getFirmwareLifecycle now reports the in-incident MAE, so the faulty firmware peaks
+  // at ~40 mg/dL while clean firmwares sit at ~0 — threshold 5 separates them with wide
+  // margin on both the real and synthetic baselines (verified).
   const peakByFw = {};
   data.forEach((d) => {
     if (!peakByFw[d.firmwareVersion] || d.mae > peakByFw[d.firmwareVersion].peak) {
@@ -66,13 +69,17 @@ export default function FirmwareLifecyclePage() {
           <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Calibration error (MAE) by firmware version</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             Once the fleet-wide monitor flags an accuracy spike, the next question is <span className="text-slate-200">which firmware</span>.
-            Each line is the mean device error — <span className="font-mono">|observed − true| glucose</span> — per firmware version per day.
+            Each line is the mean device error — <span className="font-mono">|observed − true| glucose</span> — per firmware version per day,
+            measured over the <span className="text-slate-300">affected readings</span> so the fault shows at full magnitude.
             Clean firmwares sit near <span className="text-emerald-300">0 mg/dL</span>; the <span className="text-rose-300">faulty version</span> spikes
-            during the incident, pointing at the exact rollout to roll back or patch.
+            to <span className="text-rose-300 font-mono">~40 mg/dL</span> during the incident, pointing at the exact rollout to roll back or patch.
+          </p>
+          <p className="text-xs text-slate-500 leading-relaxed mt-2">
+            Scoped to the in-incident readings (not a whole-day average, which would dilute the ~3-hour event to a few mg/dL) — the same <span className="font-mono">±40 mg/dL</span> fault the Device Support dashboard's <span className="text-slate-400">Calibration Drift</span> panel shows.
           </p>
         </section>
 
-        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+        <section data-tour="firmware-chart" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           {loading
             ? <div className="flex items-center justify-center h-64 text-slate-500">Loading firmware lifecycle…</div>
             : <FirmwareLifecycleChart data={data} />}
@@ -80,7 +87,7 @@ export default function FirmwareLifecyclePage() {
 
         {/* → ACT — name the culprit firmware + its recall fleet + the rollback handoff */}
         {!loading && faulty && (
-          <section className="bg-rose-500/5 border border-rose-500/30 rounded-lg p-6">
+          <section data-tour="firmware-act" className="bg-rose-500/5 border border-rose-500/30 rounded-lg p-6">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center shrink-0">

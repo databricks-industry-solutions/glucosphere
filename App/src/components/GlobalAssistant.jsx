@@ -224,6 +224,7 @@ export default function GlobalAssistant() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open assistant"
+          data-tour="assistant-fab"
           className="fixed bottom-6 right-6 z-50 flex items-center gap-2 pl-4 pr-5 py-3 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:scale-105 transition-all"
         >
           <Sparkles className="w-5 h-5" />

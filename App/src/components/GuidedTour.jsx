@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TOUR_STEPS } from '../tour/steps';
+import { TOUR_STEPS, TOUR_STEPS_FULL } from '../tour/steps';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
 // step's target element, and renders a Next/Back/Done card.
 export default function GuidedTour() {
   const [active, setActive] = useState(false);
+  const [variant, setVariant] = useState(null); // null → show Quick/Full chooser; 'quick' | 'full' once picked
   const [i, setI] = useState(0);
   const [rect, setRect] = useState(null);
   const [cardStyle, setCardStyle] = useState(null);
@@ -15,12 +16,15 @@ export default function GuidedTour() {
   const location = useLocation();
 
   useEffect(() => {
-    const start = () => { setI(0); setActive(true); };
+    // Start the tour. A launcher may preset the variant (e.g. {detail:{variant:'full'}})
+    // — used for A/B; with no variant we show the Quick/Full chooser first.
+    const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setActive(true); };
     window.addEventListener('glucosphere:start-tour', start);
     return () => window.removeEventListener('glucosphere:start-tour', start);
   }, []);
 
-  const step = TOUR_STEPS[i];
+  const steps = variant === 'full' ? TOUR_STEPS_FULL : TOUR_STEPS;
+  const step = variant ? steps[i] : null;
 
   // Ensure we're on the right route for this step.
   useEffect(() => {
@@ -95,8 +99,36 @@ export default function GuidedTour() {
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
 
-  const close = useCallback(() => { setActive(false); setRect(null); setCardStyle(null); }, []);
-  if (!active || !step) return null;
+  const close = useCallback(() => { setActive(false); setVariant(null); setRect(null); setCardStyle(null); }, []);
+  if (!active) return null;
+
+  // Quick/Full chooser (A/B) — shown when the tour starts without a preset variant.
+  if (!variant) {
+    return (
+      <div className="fixed inset-0 z-[110]">
+        <div className="absolute inset-0 bg-black/40" onClick={close} />
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-40 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
+          <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
+          <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => { setVariant('quick'); setI(0); }}
+              className="flex-1 px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
+              Quick overview
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess</span>
+            </button>
+            <button onClick={() => { setVariant('full'); setI(0); }}
+              className="flex-1 px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
+              Full walkthrough
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_FULL.length} steps · every panel + AI assistant</span>
+            </button>
+          </div>
+          <button onClick={close} className="mt-3 text-xs text-slate-500 hover:text-slate-300">Skip</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!step) return null;
 
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
@@ -108,16 +140,16 @@ export default function GuidedTour() {
       <div ref={cardRef}
         className="fixed w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl transition-all"
         style={cardStyle || { left: '50%', transform: 'translateX(-50%)', bottom: 40, pointerEvents: 'auto' }}>
-        <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {TOUR_STEPS.length}</p>
+        <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {steps.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
         <div className="flex justify-between items-center mt-4">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
             {i > 0 && <button onClick={() => setI(i - 1)} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}
-            {i < TOUR_STEPS.length - 1
+            {i < steps.length - 1
               ? <button onClick={() => setI(i + 1)} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Next</button>
-              : <button onClick={close} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
+              : <button onClick={() => { close(); navigate('/'); }} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
           </div>
         </div>
       </div>

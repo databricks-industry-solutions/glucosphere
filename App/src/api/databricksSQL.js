@@ -346,11 +346,22 @@ export async function getDeviceRegionalDistribution() {
 // chart. Clean firmwares sit near 0; the faulty version spikes during incident.
 export async function getFirmwareLifecycle() {
   const { catalog, schema } = await getConfig();
+  // MAE = mean |observed − true| device error per firmware per day, computed over the
+  // AFFECTED (in-incident) readings so the chart shows the true fault magnitude (~40 mg/dL)
+  // rather than a whole-day average that dilutes the ~3-hour incident to a few mg/dL.
+  // Fallback to the all-readings mean (~0) on days/firmwares with no fault, so clean
+  // firmwares stay flat at baseline. The COUNT(incident) > COUNT(DISTINCT incident device)
+  // guard ignores the single boundary reading each device carries when the firmware rollout
+  // flips mid-incident (else the prior firmware would falsely spike on the rollout day).
   const query = `
     SELECT
       DATE(g.time) as day,
       CAST(g.firmware_version AS STRING) as firmware_version,
-      ROUND(AVG(ABS(p.glucose_observed - p.glucose_true)), 1) as mae,
+      CASE WHEN COUNT(CASE WHEN p.incident_type IS NOT NULL THEN 1 END)
+              > COUNT(DISTINCT CASE WHEN p.incident_type IS NOT NULL THEN g.patient_id END)
+           THEN ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL THEN ABS(p.glucose_observed - p.glucose_true) END), 1)
+           ELSE ROUND(AVG(ABS(p.glucose_observed - p.glucose_true)), 1)
+      END as mae,
       COUNT(*) as readings
     FROM ${catalog}.${schema}.gold_patient_device_readings g
     JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
@@ -580,5 +591,81 @@ export async function getCohortAffectedBreakdown() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown };
+/**
+ * Get per-device-model calibration drift during the firmware-4.0 incident windows.
+ *
+ * WHY THIS METRIC: the Device Out-of-Range heatmap aggregates over the whole 7-day
+ * window, where the real HUPA-UCM baseline already sits at ~33% out-of-range — so a
+ * 3-hour calibration fault on 30% of the fleet is diluted into the background and the
+ * heatmap looks flat. Calibration drift (|observed − true|) instead measures the
+ * device fault DIRECTLY: it is ~0 mg/dL for calibrated devices and ≈±40 mg/dL during
+ * the incident, regardless of the underlying glucose distribution — so the fault pops
+ * cleanly AND honestly (it's the same signal as the model MAE-shift, just measured at
+ * the source rather than via residuals).
+ *
+ * The two incident windows are mutually-exclusive cohorts (see
+ * 05_incident_inference_bidirectional.py): Window 1 = over-read (+bias, Alpha/Gamma),
+ * Window 2 = under-read (−bias, Beta/Delta). incident_direction ('positive'/'negative')
+ * identifies the window; signed drift is rounded so over/under reads opposite signs.
+ * glucose_true / glucose_observed live in pseudo_incident_7d_labeled (NOT gold);
+ * device_model comes from silver_patient_registry (per-patient SSOT), matching the
+ * other device views. This is read-only — NO pipeline change.
+ *
+ * @returns {Promise<Array>} [{ device_model, direction, window_start, devices, signed_drift, abs_drift }]
+ */
+export async function getCalibrationDrift() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH cohort AS (
+      SELECT
+        p.patient_id,
+        p.incident_direction,
+        p.incident_start_time,
+        p.glucose_observed,
+        p.glucose_true
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      WHERE p.has_incident = 1
+        AND p.time >= p.incident_start_time
+        AND p.time <  p.incident_end_time
+    )
+    SELECT
+      r.device_model            AS device_model,
+      c.incident_direction      AS direction,
+      CAST(MIN(c.incident_start_time) AS STRING) AS window_start,
+      COUNT(DISTINCT c.patient_id) AS devices,
+      ROUND(AVG(c.glucose_observed - c.glucose_true), 1)      AS signed_drift,
+      ROUND(AVG(ABS(c.glucose_observed - c.glucose_true)), 1) AS abs_drift
+    FROM cohort c
+    JOIN ${catalog}.${schema}.silver_patient_registry r ON c.patient_id = r.patient_id
+    GROUP BY r.device_model, c.incident_direction
+    ORDER BY c.incident_direction, r.device_model
+  `;
+
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const drift = rows.map(row => {
+        const v = row.values || row;
+        return {
+          device_model: v[0]?.string_value ?? v[0],
+          direction: v[1]?.string_value ?? v[1],        // 'positive' (over-read) | 'negative' (under-read)
+          window_start: v[2]?.string_value ?? v[2],
+          devices: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
+          signed_drift: parseFloat(v[4]?.string_value ?? v[4]) || 0,
+          abs_drift: parseFloat(v[5]?.string_value ?? v[5]) || 0,
+        };
+      });
+      console.log('✅ Calibration drift from database:', drift.length, 'rows');
+      return drift;
+    }
+    console.warn('Could not parse calibration drift from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get calibration drift:', error);
+    return [];
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown, getCalibrationDrift };
 
