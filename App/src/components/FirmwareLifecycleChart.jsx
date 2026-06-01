@@ -7,7 +7,7 @@ import ChartTooltip from './ChartTooltip';
 // Responsive (viewBox), width-capped by the page for a compact footprint.
 const COLORS = ['#f43f5e', '#f59e0b', '#22c55e', '#22d3ee', '#a78bfa', '#ec4899'];
 
-export default function FirmwareLifecycleChart({ data = [] }) {
+export default function FirmwareLifecycleChart({ data = [], faultyFw = null }) {
   const [hover, setHover] = useState(null);
   if (!data.length) {
     return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">No firmware data</div>;
@@ -73,7 +73,7 @@ export default function FirmwareLifecycleChart({ data = [] }) {
             ))}
             {/* legend */}
             <line x1={pad.left + innerW + 12} y1={pad.top + 6 + vi * 20} x2={pad.left + innerW + 30} y2={pad.top + 6 + vi * 20} stroke={color} strokeWidth="2.5" />
-            <text x={pad.left + innerW + 35} y={pad.top + 9 + vi * 20} fontSize="11" fontFamily="monospace" fill="rgb(148 163 184)">FW {ver}</text>
+            <text x={pad.left + innerW + 35} y={pad.top + 9 + vi * 20} fontSize="11" fontFamily="monospace" fill={ver === faultyFw ? 'rgb(253 164 175)' : 'rgb(148 163 184)'}>FW {ver}{ver === faultyFw ? ' ⚠' : ''}</text>
           </g>
         );
       })}

@@ -16,6 +16,10 @@ export default function GlucoseLandingDashboard() {
   const [incidentAffected, setIncidentAffected] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
 
+  // Land at the top on mount so the hero alert tiles are in view — matters when
+  // arriving from a deep-scrolled page (e.g. the guided tour returning Home at the end).
+  useEffect(() => { window.scrollTo(0, 0); }, []);
+
   // Fetch real metrics from CGM schema
   useEffect(() => {
     const fetchMetrics = async () => {

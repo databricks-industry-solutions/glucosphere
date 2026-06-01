@@ -82,7 +82,7 @@ export default function FirmwareLifecyclePage() {
         <section data-tour="firmware-chart" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           {loading
             ? <div className="flex items-center justify-center h-64 text-slate-500">Loading firmware lifecycle…</div>
-            : <FirmwareLifecycleChart data={data} />}
+            : <FirmwareLifecycleChart data={data} faultyFw={faulty?.fw} />}
         </section>
 
         {/* → ACT — name the culprit firmware + its recall fleet + the rollback handoff */}
@@ -102,8 +102,7 @@ export default function FirmwareLifecyclePage() {
                     Peak device error <span className="text-rose-300 font-mono">{faulty.peak} mg/dL</span> on{' '}
                     <span className="font-mono">{(faulty.day || '').slice(5)}</span> vs <span className="text-emerald-300">~0</span> baseline.
                     {faultyImpact && (
-                      <> <span className="text-slate-200 font-mono">{faultyImpact.affectedDevices.toLocaleString()}</span> devices ·{' '}
-                      <span className="text-slate-200 font-mono">{faultyImpact.affectedPatients.toLocaleString()}</span> patients were faulted on this firmware — the recall / outreach list.</>
+                      <> <span className="text-slate-200 font-mono">{faultyImpact.affectedPatients.toLocaleString()}</span> patients <span className="text-slate-500">(1 device each)</span> were faulted on this firmware — the recall / outreach list.</>
                     )}
                   </p>
                 </div>
