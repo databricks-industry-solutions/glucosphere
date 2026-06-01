@@ -1741,18 +1741,26 @@ fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
 # Plot 1: Overlaid histograms — 4 classes
 ax1 = axes[0, 0]
-ax1.hist(baseline_glucose, bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='darkgray')
-ax1.hist(clean_glucose, bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='mediumturquoise')
+# Density view: exclude readings pinned to the [40, 400] device floor/ceiling. The
+# clamp (a real CGM reports "LO"<40 / "HI">400) makes the under-read cohort pile at 40
+# and the over-read cohort at 400; in a density histogram that boundary pile-up is a
+# tall spike that dominates the y-axis and squashes the distribution shape. Plotting
+# only the strictly-in-band values shows the real shift cleanly. (The rate bars at
+# top-right and the CDF below keep ALL readings — incl. the floor/ceiling ones — so the
+# clinical signal, e.g. the under-read cohort's hypo surge, is never hidden.)
+_band = lambda a: a[(a > 40) & (a < 400)] if len(a) else a
+ax1.hist(_band(baseline_glucose), bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='darkgray')
+ax1.hist(_band(clean_glucose), bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='mediumturquoise')
 if len(incident_pos_glucose):
-    ax1.hist(incident_pos_glucose, bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
+    ax1.hist(_band(incident_pos_glucose), bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
 if len(incident_neg_glucose):
-    ax1.hist(incident_neg_glucose, bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='blue')
+    ax1.hist(_band(incident_neg_glucose), bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='blue')
 ax1.axvspan(40, 70, alpha=0.15, color='lightcoral')   # hypo zone — red-family (medical danger convention)
 ax1.axvspan(70, 180, alpha=0.1, color='grey')          # normal range — neutral
 ax1.axvspan(180, 400, alpha=0.15, color='lightblue')  # hyper zone — blue-family (visually contrasts with red positive-cohort line)
 ax1.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
-ax1.set_xlabel('Glucose (mg/dL)', fontsize=12, fontweight='bold', color='#888888')
+ax1.set_xlabel('Glucose (mg/dL) — device floor/ceiling (40/400) excluded', fontsize=12, fontweight='bold', color='#888888')
 ax1.set_ylabel('Density', fontsize=12, fontweight='bold', color='#888888')
 ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold', color='#888888')
 # Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).

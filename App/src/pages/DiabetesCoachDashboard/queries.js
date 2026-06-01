@@ -291,6 +291,10 @@ const firstRowValues = (result) => {
  */
 export async function getPatientDetail(patientId) {
   const { catalog, schema } = await getConfig();
+  // SQL-injection guard: allow-list the id to [A-Za-z0-9_] BEFORE it is interpolated
+  // into the `WHERE patient_id = '${id}'` clauses below. safeToken strips quotes,
+  // semicolons, whitespace and comment markers, so the interpolations are safe even
+  // though they look like raw string-building. (catalog/schema come from server config.)
   const id = safeToken(patientId);
   if (!id) return null;
   const g = `${catalog}.${schema}.gold_patient_device_readings`;
