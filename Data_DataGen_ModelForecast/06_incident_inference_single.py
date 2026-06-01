@@ -450,14 +450,16 @@ pseudo_with_flag = pseudo_clean.drop("has_incident").join(
     "left"
 ).fillna({"has_incident": 0})
 
-# Inject bias: Add calibration_bias_mgdl to glucose_observed during incident window
+# Inject bias: Add calibration_bias_mgdl to glucose_observed during incident window.
+# Clamp to the physiological CGM range [40, 400] mg/dL (matches 01/04/05) so the biased
+# value can't exceed the device's reportable range.
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
     F.when(
         (F.col("has_incident") == 1) &
         (F.col("time") >= F.lit(incident_start_ts)) &
         (F.col("time") < F.lit(incident_end_ts)),
-        F.col("glucose_observed") + F.lit(cfg.calibration_bias_mgdl)
+        F.greatest(F.least(F.col("glucose_observed") + F.lit(cfg.calibration_bias_mgdl), F.lit(400.0)), F.lit(40.0))
     ).otherwise(F.col("glucose_observed"))
 ).withColumn(
     "incident_type",
