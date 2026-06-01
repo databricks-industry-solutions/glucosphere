@@ -136,14 +136,28 @@ export default function DiabetesCoachDashboard() {
   })();
   const fmtTick = (t) => new Date(t).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit' });
 
-  // Rule-based risk band from time-in-range + hypo exposure (not a trained classifier).
-  // NOTE: full static Tailwind class strings — interpolated class names (`bg-${x}-500`)
-  // get purged by the JIT compiler and would render unstyled.
+  // Rule-based risk band (not a trained classifier), built on the SYMMETRIC Battelino
+  // 2019 Time-in-Ranges bands: Very Low <54 / Low <70 / Target 70–180 / High >180 /
+  // Very High >250 (targets: <54 <1%, <70 <4%, >180 <25%, >250 <5%, CV <=36%, TIR >70%).
+  //   HIGH     — a level-2 DANGER band elevated to >=2x its target: Very Low (<54) >=2%
+  //              OR Very High (>250) >=10% OR poor overall control (TIR <50%).
+  //   LOW      — every consensus target met.
+  //   MODERATE — in between.
+  // Symmetric on both ends; the <54 band is what escalates dangerous hypo (e.g. a
+  // 78%-TIR / 13%-hypo patient with 4% very-low → HIGH). Data-agnostic: works on
+  // synthetic (idealized → mostly LOW) and real baselines alike — only the distribution
+  // shifts. Full static Tailwind classes so the JIT compiler doesn't purge them.
   const risk = kpis
-    ? (kpis.timeInRange >= 70 && kpis.pctHypo < 4 ? { label: 'LOW', box: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400' }
-      : kpis.timeInRange >= 50 ? { label: 'MODERATE', box: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400' }
-      : { label: 'HIGH', box: 'bg-rose-500/10 border-rose-500/30', text: 'text-rose-400' })
+    ? ((kpis.pctVeryLow >= 2 || kpis.pctVeryHigh >= 10 || kpis.timeInRange < 50) ? { label: 'HIGH', box: 'bg-rose-500/10 border-rose-500/30', text: 'text-rose-400' }
+      : (kpis.timeInRange >= 70 && kpis.pctHypo < 4 && kpis.pctHyper < 25 && kpis.cv <= 36) ? { label: 'LOW', box: 'bg-emerald-500/10 border-emerald-500/30', text: 'text-emerald-400' }
+      : { label: 'MODERATE', box: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-400' })
     : { label: '—', box: 'bg-slate-500/10 border-slate-500/30', text: 'text-slate-400' };
+
+  // Cautionary flags: an ELEVATED (level-1) band over its target but not yet HIGH —
+  // surfaced on MODERATE/LOW cards so neither end is silently under-read (over-cautious;
+  // HIGH cards already convey danger). Symmetric: hypo <70 >=4%, hyper >180 >=25%.
+  const hypoFlag = !!kpis && risk.label !== 'HIGH' && kpis.pctHypo >= 4;
+  const hyperFlag = !!kpis && risk.label !== 'HIGH' && kpis.pctHyper >= 25;
 
   // Honest, data-derived observations (replaces the old hardcoded pattern list).
   const observations = kpis ? [
@@ -407,6 +421,22 @@ export default function DiabetesCoachDashboard() {
                 <div className={`px-4 py-2 border rounded-lg ${risk.box}`}>
                   <p className={`text-xs font-mono mb-1 ${risk.text}`}>RISK LEVEL</p>
                   <p className={`text-xl font-mono font-bold ${risk.text}`}>{risk.label}</p>
+                  {(hypoFlag || hyperFlag) && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {hypoFlag && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30"
+                          title="Time-below-70 above the <4% consensus target — watch for hypoglycemia">
+                          ⚠ hypo {kpis.pctHypo}%
+                        </span>
+                      )}
+                      {hyperFlag && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                          title="Time-above-180 above the <25% consensus target — watch for hyperglycemia">
+                          ⚠ hyper {kpis.pctHyper}%
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
 

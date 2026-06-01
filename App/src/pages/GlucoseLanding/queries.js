@@ -148,8 +148,13 @@ export async function getIncidentAffectedPatients() {
  * diabetic fleet, any-OOR is routine and overstates risk — measured live at
  * ~517 of ~822 active patients in a 3h window (≈63%). The critical-band
  * count is meaningful: ~176 of ~822 (≈21%, split ~85 very-low / ~91
- * very-high in current data) — a believable "patients in a dangerous range
- * right now" signal for a fleet operator's live tile.
+ * very-high) — a believable "patients in a dangerous range right now" signal
+ * for a fleet operator's live tile.
+ *
+ * NOTE: those counts are for the REAL (from_source / HUPA-UCM) baseline, which
+ * runs hypo-heavy. A synthetic-baseline deployment is idealized and skews far
+ * healthier (far fewer in either band). The <54 / >250 thresholds are fixed
+ * clinical bands, so the metric is correct in either mode — only the counts shift.
  *
  * @returns {Promise<number>} Count of distinct patients with at least one
  *   Very-Low (<54) or Very-High (>250) reading in the last 3 hours of data

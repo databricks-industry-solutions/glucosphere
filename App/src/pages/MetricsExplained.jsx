@@ -250,11 +250,12 @@ WHERE time >= (
                 <p className="text-sm font-medium text-slate-300 mb-2">Why 3 hours (not 24)?</p>
                 <p className="text-sm text-slate-400">
                   The 3-hour window matches a typical device-calibration incident window so a live incident
-                  shifts the count clearly. For scale: in the current data ~822 patients have a reading in a 3h
-                  window; <span className="font-mono text-cyan-400">~517</span> have <em>any</em> out-of-range
-                  reading (&lt;70 or &gt;180) — routine for type-1 diabetes — while only
+                  shifts the count clearly. For scale, on this deployment's <span className="text-slate-300">real (HUPA-UCM) baseline</span>:
+                  ~822 patients have a reading in a 3h window; <span className="font-mono text-cyan-400">~517</span> have
+                  <em>any</em> out-of-range reading (&lt;70 or &gt;180) — routine for type-1 diabetes — while only
                   <span className="font-mono text-cyan-400"> ~176</span> hit a critical band (&lt;54 or &gt;250).
                   Counting the critical bands is what makes this a believable "high-risk" signal rather than half the fleet.
+                  <span className="text-slate-500">(A synthetic-baseline deployment is idealized and skews far healthier — fewer in either band; the &lt;54 / &gt;250 thresholds are fixed clinical bands regardless of data source.)</span>
                 </p>
               </div>
 

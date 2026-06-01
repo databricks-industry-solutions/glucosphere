@@ -311,7 +311,9 @@ export async function getPatientDetail(patientId) {
       COUNT(*) as readings,
       MIN(time) as first_time,
       MAX(time) as last_time,
-      MAX_BY(CAST(firmware_version AS STRING), time) as firmware
+      MAX_BY(CAST(firmware_version AS STRING), time) as firmware,
+      ROUND(AVG(CASE WHEN glucose < 54 THEN 1 ELSE 0 END) * 100, 0) as pct_very_low,
+      ROUND(AVG(CASE WHEN glucose > 250 THEN 1 ELSE 0 END) * 100, 0) as pct_very_high
     FROM ${g} WHERE patient_id = '${id}'`;
   const forecastQ = `
     SELECT glucose_observed, pred_15m, pred_30m, delta_15m, delta_30m
@@ -395,6 +397,8 @@ export async function getPatientDetail(patientId) {
         firstTime: kpi[6]?.string_value ?? kpi[6],
         lastTime: kpi[7]?.string_value ?? kpi[7],
         firmware: kpi[8]?.string_value ?? kpi[8],
+        pctVeryLow: num(kpi[9]),   // <54 mg/dL (level-2 Very Low, Battelino)
+        pctVeryHigh: num(kpi[10]), // >250 mg/dL (level-2 Very High)
       } : null,
       forecast: fcv ? {
         glucoseObserved: num(fcv[0]),
