@@ -16,24 +16,17 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back to home">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-3 min-w-0">
-              <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
-              <div className="min-w-0">
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
-                <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
-              </div>
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+          <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back to home">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-3 min-w-0">
+            <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
+              <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
             </div>
           </div>
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" title="View on GitHub"
-            className="flex items-center gap-2 px-3 py-2 border border-slate-700 rounded-lg hover:bg-slate-800/60 transition-colors shrink-0">
-            <Github className="w-4 h-4 text-slate-300" />
-            <span className="hidden sm:inline text-sm font-mono text-slate-300">industry-solutions/glucosphere</span>
-          </a>
         </div>
       </header>
 
@@ -47,6 +40,13 @@ export default function AboutPage() {
             live monitoring feed is nicknamed "GlucoStream" — the continuous stream of device readings the
             platform watches.)</span>
           </p>
+          <div className="flex justify-end mt-4">
+            <a href={REPO_URL} target="_blank" rel="noopener noreferrer" title="View on GitHub"
+              className="flex items-center gap-2 px-3 py-1.5 border border-slate-700 rounded-lg hover:bg-slate-800/60 transition-colors">
+              <Github className="w-4 h-4 text-slate-400" />
+              <span className="text-xs font-mono text-slate-400">industry-solutions/glucosphere</span>
+            </a>
+          </div>
         </section>
 
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-6">
@@ -89,12 +89,6 @@ export default function AboutPage() {
               </button>
             ))}
           </div>
-        </section>
-
-        <section className="border-t border-slate-800 pt-6">
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-cyan-400 hover:underline font-mono">
-            github.com/databricks-industry-solutions/glucosphere ↗
-          </a>
         </section>
       </main>
     </div>
