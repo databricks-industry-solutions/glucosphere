@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
+import BrandMark from '../components/BrandMark';
+import { useGoBack } from '../hooks/useGoBack';
 import RegionMap from '../components/RegionMap';
 import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
@@ -9,6 +11,7 @@ import ReactMarkdown from 'react-markdown';
 
 export default function DeviceSupportDashboard() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [expandedDevice, setExpandedDevice] = useState(null);
   const [filterModel, setFilterModel] = useState('all');
   const [deviceCount, setDeviceCount] = useState('...');
@@ -248,9 +251,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             firmware_version: d.firmware_version,
             region: d.region,
             rate_pct: d.avg_oor_rate_pct,
-            affected: d.total_oor_events,
-            days_tracked: d.days_tracked,
-            severity: d.avg_oor_rate_pct > 5.0 ? 'high' : d.avg_oor_rate_pct > 4.5 ? 'medium' : 'low'
+            oorEvents: d.total_oor_events,
+            days_tracked: d.days_tracked
           }));
           
           setAlerts(transformedAlerts);
@@ -322,10 +324,10 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/')}
+            <button
+              onClick={goBack}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -337,7 +339,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 <Wrench className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Device Support Dashboard
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">Biomedical Engineering & Device Health</p>
@@ -359,12 +361,15 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Population Overview */}
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-1 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
-            Population Overview
-          </h2>
+          <div className="flex items-center gap-3 mb-1">
+            <BrandMark className="w-5 h-5 text-amber-400" />
+            <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
+              Population Overview
+            </h2>
+          </div>
           <p className="text-xs font-mono text-slate-500 mb-6">
             Operational fleet view — for the <span className="text-slate-300">device / biomedical team</span> (which devices &amp; firmware to service). For the clinical blast radius (which patients to contact), see{' '}
             <button onClick={() => navigate('/population-risk')} className="text-cyan-400 hover:text-cyan-300">Population Risk →</button>.
@@ -372,7 +377,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
-            <div data-tour="anomaly-heatmap" className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+            <div data-tour="anomaly-heatmap" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Events</h3>
                 <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
@@ -450,7 +455,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             </div>
 
             {/* Regional distribution (geo) */}
-            <div className="col-span-3 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Regional Distribution</h3>
                 <p className="text-xs text-slate-500 font-mono">Footprint × out-of-range volume</p>
@@ -482,22 +487,52 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               ) : (
                 (() => {
                   // Compact ranked list (no bars) — complements the heatmap matrix instead
-                  // of echoing its colored bars. Top out-of-range patterns by event volume.
-                  const dotColor = (s) => s === 'high' ? 'bg-rose-400' : s === 'medium' ? 'bg-amber-400' : 'bg-yellow-400';
+                  // of echoing its colored bars. Top out-of-range patterns by reading volume.
+                  // Two-line rows so device·firmware (line 1) and region·tracking (line 2)
+                  // aren't truncated. The severity dot is sized + coloured by out-of-range
+                  // rate (bigger/redder = worse), scaled across the shown alerts so it reads
+                  // at a glance — orange→rose ramp (no green: even the lowest shown rate is high).
+                  const rates = alerts.map(a => a.rate_pct);
+                  const lo = Math.min(...rates), hi = Math.max(...rates);
+                  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+                  const dotStyle = (r) => {
+                    const t = hi > lo ? (r - lo) / (hi - lo) : 1;       // 0..1 across shown alerts
+                    const px = 8 + t * 6;                                // 8..14px
+                    return { width: `${px}px`, height: `${px}px`, backgroundColor: `rgb(${lerp(251, 244, t)} ${lerp(146, 63, t)} ${lerp(60, 94, t)})` };
+                  };
                   return (
-                    <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
-                      {[...alerts].sort((a, b) => b.affected - a.affected).map((alert, idx) => (
-                        <li key={idx} className="flex items-center gap-3 py-3">
-                          <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor(alert.severity)}`} title={alert.severity} />
-                          <span className="text-sm font-mono text-slate-200 truncate flex-1 min-w-0">
-                            {alert.device_type} {alert.firmware_version}<span className="text-slate-600"> · {alert.region} · {alert.days_tracked}d tracked</span>
-                          </span>
-                          <span className="text-sm font-mono text-amber-400 shrink-0">{alert.affected.toLocaleString()}</span>
-                          <span className="text-xs font-mono text-slate-500 shrink-0 w-14 text-right">{alert.rate_pct}%</span>
-                        </li>
-                      ))}
-                    </ol>
+                    <div className="flex-1 flex flex-col">
+                      {/* column key */}
+                      <div className="flex items-center gap-3 pb-2 mb-1 border-b border-slate-800/70 text-[10px] font-mono uppercase tracking-wide text-slate-500">
+                        <span className="w-4 shrink-0" />
+                        <span className="w-4 shrink-0" />
+                        <span className="flex-1 min-w-0">device · firmware · region</span>
+                        <span className="shrink-0 w-16 text-right text-amber-400/80">OOR reads</span>
+                        <span className="shrink-0 w-12 text-right">rate</span>
+                      </div>
+                      <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
+                        {[...alerts].sort((a, b) => b.oorEvents - a.oorEvents).map((alert, idx) => (
+                          <li key={idx} className="flex items-center gap-3 py-2.5">
+                            <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
+                            <span className="w-4 flex justify-center shrink-0">
+                              <span className="rounded-full" style={dotStyle(alert.rate_pct)} title={`out-of-range rate ${alert.rate_pct}%`} />
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-mono text-slate-200 truncate">{alert.device_type} {alert.firmware_version}</div>
+                              <div className="text-[11px] font-mono text-slate-500 truncate">{alert.region} · {alert.days_tracked}d tracked</div>
+                            </div>
+                            <span className="text-sm font-mono text-amber-400 shrink-0 w-16 text-right tabular-nums">{alert.oorEvents.toLocaleString()}</span>
+                            <span className="text-xs font-mono text-slate-500 shrink-0 w-12 text-right tabular-nums">{alert.rate_pct}%</span>
+                          </li>
+                        ))}
+                      </ol>
+                      {/* key — one line per item */}
+                      <div className="mt-3 pt-2 border-t border-slate-800/70 text-[10px] font-mono text-slate-500 leading-relaxed space-y-0.5">
+                        <div><span className="text-amber-400/80">OOR reads</span> = count of out-of-range device readings</div>
+                        <div><span className="text-slate-300">rate</span> = share of that group's readings out of range</div>
+                        <div>● dot — bigger / redder = higher out-of-range rate</div>
+                      </div>
+                    </div>
                   );
                 })()
               )}
@@ -512,7 +547,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         <section>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+              <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                 Out-of-Range Device Readings
               </h2>
               <p className="text-xs text-slate-500 font-mono mt-1">Real-time flagged readings from patient devices</p>
@@ -564,7 +599,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>
                       <td className="px-4 py-3">
-                        <span className="px-2 py-1 rounded-full text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                        <span className="inline-block px-2 py-1 rounded-full text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/30 whitespace-nowrap">
                           OUT-OF-RANGE
                         </span>
                       </td>
@@ -636,16 +671,16 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                               </div>
                             </div>
                             
-                            {/* Clinical Analysis */}
+                            {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}
                             <div>
-                              <h4 className="text-sm font-medium text-slate-300 mb-3">Clinical Analysis</h4>
+                              <h4 className="text-sm font-medium text-slate-300 mb-3">Device Analysis</h4>
                               
                               {!deviceAnalysis[device.id] && !analysisLoading[device.id] && (
                                 <div className="text-center py-8">
                                   <Brain className="w-12 h-12 text-cyan-400 mx-auto mb-3 opacity-50" />
                                   <p className="text-sm text-slate-400 mb-4">
-                                    Get AI-powered clinical analysis and recommendations<br/>
-                                    for this patient based on device readings and medical context.
+                                    Get an AI-powered device analysis and recommendations<br/>
+                                    for this unit — calibration, sensor, firmware, connectivity — from its readings and fleet context.
                                   </p>
                                   <button 
                                     onClick={() => handleDeeperAnalysis(device)}
