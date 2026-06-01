@@ -64,7 +64,7 @@ AS SELECT
   b.activation_date,
   b.birth_year,
   c.device_id,
-  c.device_model,
+  b.device_model,  -- registry SSOT: device_model is a fixed per-device property, so take it from the registry (one row/patient), NOT the time-fuzzy telemetry temporal join (which disagreed for ~82% of readings). firmware_version below stays from telemetry (it IS time-varying).
   c.firmware_version,
   a.glucose,
   a.glucose_out_of_range,
