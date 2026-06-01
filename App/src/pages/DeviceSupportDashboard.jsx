@@ -9,6 +9,24 @@ import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import ReactMarkdown from 'react-markdown';
 
+// Markdown styling for the Device Analysis (FM) output. The repo has no
+// @tailwindcss/typography plugin, so `prose` classes are no-ops — style each
+// element explicitly so the FM's section labels + key terms color-code and the
+// text stops reading as one undifferentiated block. (Render-only; does not touch
+// the FM call/prompt.)
+const mdComponents = {
+  p: (p) => <p className="mb-2.5 leading-relaxed" {...p} />,
+  strong: (p) => <strong className="text-cyan-300 font-semibold" {...p} />,
+  em: (p) => <em className="text-slate-200" {...p} />,
+  h1: (p) => <h4 className="text-sm text-cyan-400 font-semibold mt-3 mb-1" {...p} />,
+  h2: (p) => <h4 className="text-sm text-cyan-400 font-semibold mt-3 mb-1" {...p} />,
+  h3: (p) => <h4 className="text-sm text-cyan-400 font-semibold mt-3 mb-1" {...p} />,
+  ul: (p) => <ul className="list-disc ml-5 space-y-1 mb-2.5" {...p} />,
+  ol: (p) => <ol className="list-decimal ml-5 space-y-1 mb-2.5" {...p} />,
+  li: (p) => <li className="leading-relaxed" {...p} />,
+  code: (p) => <code className="font-mono text-amber-300 bg-slate-900/60 px-1 rounded" {...p} />,
+};
+
 export default function DeviceSupportDashboard() {
   const navigate = useNavigate();
   const goBack = useGoBack();
@@ -111,8 +129,7 @@ export default function DeviceSupportDashboard() {
             model: d.device_type,
             firmware: d.firmware_version,
             status: 'flagged', // All are out-of-range
-            lastReading: formatTimeSince(d.minutes_since_last_reading),
-            minutesSinceReading: d.minutes_since_last_reading,
+            lastReading: d.reading_time, // actual reading timestamp from data (dynamic; not wall-clock-relative)
             anomalyScore: calculateAnomalyScore(d.glucose_value),
             glucose_value: d.glucose_value
           }));
@@ -135,15 +152,6 @@ export default function DeviceSupportDashboard() {
     fetchDevices();
   }, []);
 
-  // Helper function to format time since last reading
-  const formatTimeSince = (minutes) => {
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  };
 
   // Helper function to calculate anomaly score based on glucose value
   // Normal range: 70-180 mg/dL
@@ -154,6 +162,16 @@ export default function DeviceSupportDashboard() {
     if (glucoseValue > 180) return 0.78; // High
     return 0.65; // Borderline
   };
+
+  // Directional severity band for an out-of-range reading (Battelino bands). Every row
+  // in this table is OOR (<70 or >180), so this is always one of four bands — turning
+  // the old constant "OUT-OF-RANGE" status into a real signal. rose = level-2 danger
+  // (Very Low / Very High), amber = level-1 (Low / High).
+  const glucoseBand = (g) =>
+    g < 54 ? { label: 'VERY LOW', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
+      : g < 70 ? { label: 'LOW', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+      : g > 250 ? { label: 'VERY HIGH', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
+      : { label: 'HIGH', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
 
   // Function to get deeper analysis for a specific device reading
   const handleDeeperAnalysis = async (device) => {
@@ -171,7 +189,7 @@ Device Model: ${device.model}
 Firmware Version: ${device.firmware}
 Patient ID: ${device.patient}
 Glucose Reading: ${device.glucose_value} mg/dL
-Time Since Last Reading: ${device.lastReading}
+Reading time: ${device.lastReading}
 Status: OUT-OF-RANGE
 
 As a biomedical equipment specialist, analyze:
@@ -550,7 +568,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                 Out-of-Range Device Readings
               </h2>
-              <p className="text-xs text-slate-500 font-mono mt-1">Real-time flagged readings from patient devices</p>
+              <p className="text-xs text-slate-500 font-mono mt-1">Flagged readings outside the 70–180 mg/dL target — latest snapshot</p>
             </div>
             <select 
               value={filterModel}
@@ -578,7 +596,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Patient</th>
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Model</th>
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Firmware</th>
-                      <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Range</th>
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Last Reading</th>
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Glucose</th>
                       <th className="px-4 py-3 text-left text-xs font-mono text-slate-500 uppercase">Risk Score</th>
@@ -599,9 +617,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-block px-2 py-1 rounded-full text-xs font-mono bg-rose-500/10 text-rose-400 border border-rose-500/30 whitespace-nowrap">
-                          OUT-OF-RANGE
-                        </span>
+                        {(() => {
+                          const b = glucoseBand(device.glucose_value);
+                          return (
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-mono border whitespace-nowrap ${b.cls}`}>
+                              {b.label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.lastReading}</td>
                       <td className="px-4 py-3">
@@ -650,14 +673,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Range Status:</span>
                                   <span className="text-slate-300">
-                                    {device.glucose_value < 54 ? 'Critically Low (<54)' :
-                                     device.glucose_value < 70 ? 'Low (54-70)' :
-                                     device.glucose_value > 250 ? 'Critically High (>250)' :
-                                     'High (180-250)'}
+                                    {device.glucose_value < 54 ? 'Very Low (<54)' :
+                                     device.glucose_value < 70 ? 'Low (54–69)' :
+                                     device.glucose_value > 250 ? 'Very High (>250)' :
+                                     'High (181–250)'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span className="text-slate-500">Time Since Reading:</span>
+                                  <span className="text-slate-500">Reading time:</span>
                                   <span className="text-slate-300 font-mono">{device.lastReading}</span>
                                 </div>
                                 <div className="flex justify-between">
@@ -704,8 +727,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                               
                               {deviceAnalysis[device.id] && !analysisLoading[device.id] && (
                                 <div>
-                                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 prose prose-invert prose-sm max-w-none">
-                                    <ReactMarkdown>{deviceAnalysis[device.id]}</ReactMarkdown>
+                                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 max-w-none">
+                                    <ReactMarkdown components={mdComponents}>{deviceAnalysis[device.id]}</ReactMarkdown>
                                   </div>
                                   <div className="mt-4 flex gap-2">
                                     <button 

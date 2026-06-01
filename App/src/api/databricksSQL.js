@@ -169,7 +169,7 @@ export async function getOutOfRangeDevices() {
   const query = `
     SELECT
       g.device_id,
-      TIMESTAMPDIFF(MINUTE, g.time, (SELECT MAX(time) FROM ${catalog}.${schema}.gold_patient_device_readings)) as minutes_since_last_reading,
+      DATE_FORMAT(g.time, 'yyyy-MM-dd HH:mm') as reading_time,
       g.patient_id,
       r.device_model as device_type,
       CAST(g.firmware_version AS STRING) as firmware_version,
@@ -202,7 +202,7 @@ export async function getOutOfRangeDevices() {
           if (row.values && row.values.length >= 6) {
             return {
               device_id: row.values[0].string_value,
-              minutes_since_last_reading: parseInt(row.values[1].string_value, 10),
+              reading_time: row.values[1].string_value,
               patient_id: row.values[2].string_value,
               device_type: row.values[3].string_value,
               firmware_version: row.values[4].string_value,
@@ -436,8 +436,12 @@ export async function getPopulationRisk() {
 //     and pseudo_incident.glucose_observed agree). A patient can be under-read AND hyper
 //     (e.g. true glucose ~236, under-read to ~196 → still hyper). The two are independent.
 // device_model/region from silver_patient_registry (SSOT). Simulated, no PHI.
-export async function getCohortAffected() {
+export async function getCohortAffected(limit = 40) {
   const { catalog, schema } = await getConfig();
+  // Severity-ranked outreach roster. `limit` = integer row cap; pass null/0 for
+  // "all" (no LIMIT). Int-coerced + clamped so it can't be SQL-injected.
+  const n = Number.isFinite(+limit) ? Math.max(0, Math.min(5000, Math.floor(+limit))) : 40;
+  const limitClause = n > 0 ? `LIMIT ${n}` : '';
   const query = `
     WITH affected AS (
       SELECT patient_id, incident_direction,
@@ -460,7 +464,7 @@ export async function getCohortAffected() {
     FROM affected a
     LEFT JOIN dev d ON a.patient_id = d.patient_id
     ORDER BY GREATEST(a.pct_hypo, a.pct_hyper) DESC
-    LIMIT 40
+    ${limitClause}
   `;
   try {
     const result = await executeSQLQuery(query);

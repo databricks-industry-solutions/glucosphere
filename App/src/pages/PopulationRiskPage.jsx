@@ -50,6 +50,7 @@ export default function PopulationRiskPage() {
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(true);
+  const [rosterLimit, setRosterLimit] = useState(40); // 40 | 100 | 250 | null(all) — severity-ranked
   const [breakdown, setBreakdown] = useState({ byRegion: [], byModel: [] });
 
   useEffect(() => {
@@ -59,15 +60,20 @@ export default function PopulationRiskPage() {
       finally { setLoading(false); }
     })();
     (async () => {
-      try { setRosterLoading(true); setRoster(await getCohortAffected()); }
-      catch (e) { console.error('Cohort roster fetch failed:', e); setRoster([]); }
-      finally { setRosterLoading(false); }
-    })();
-    (async () => {
       try { setBreakdown(await getCohortAffectedBreakdown()); }
       catch (e) { console.error('Cohort breakdown fetch failed:', e); }
     })();
   }, []);
+
+  // Roster re-fetches whenever the size selector changes (severity-ranked;
+  // rosterLimit null = "All" → no LIMIT). The breakdown/summary above stays full-cohort.
+  useEffect(() => {
+    (async () => {
+      try { setRosterLoading(true); setRoster(await getCohortAffected(rosterLimit)); }
+      catch (e) { console.error('Cohort roster fetch failed:', e); setRoster([]); }
+      finally { setRosterLoading(false); }
+    })();
+  }, [rosterLimit]);
 
   // Normalize bar widths within each group by its largest total.
   const regionMax = Math.max(1, ...breakdown.byRegion.map((r) => r.total));
@@ -194,7 +200,23 @@ export default function PopulationRiskPage() {
                 <button onClick={() => setFilter(null)} className="text-slate-500 hover:text-slate-300">clear ✕</button>
               </>
             )}
-            <span className="text-slate-600 ml-auto">{displayedRoster.length} of {roster.length} shown</span>
+            <div className="ml-auto flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-slate-500">
+                Show
+                <select
+                  value={rosterLimit === null ? 'all' : String(rosterLimit)}
+                  onChange={(e) => setRosterLimit(e.target.value === 'all' ? null : Number(e.target.value))}
+                  title="Roster size — severity-ranked (worst exposure first)"
+                  className="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-300 font-mono focus:outline-none focus:border-cyan-500/50"
+                >
+                  <option value="40">Top 40</option>
+                  <option value="100">Top 100</option>
+                  <option value="250">Top 250</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+              <span className="text-slate-600">{displayedRoster.length} of {roster.length} shown</span>
+            </div>
           </div>
           {rosterLoading ? (
             <div className="flex items-center justify-center h-32 text-slate-500">Loading roster…</div>
