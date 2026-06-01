@@ -19,6 +19,20 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-01]
+
+Clinical data-plausibility hardening + near-term-forecast coherence + a sanity gate, surfaced by a pre-demo audit. Fixes live in the data-gen notebooks (apply on the next pipeline run; re-run against the live `from_source` baseline). A full table backup is taken before any re-run.
+
+### Fixed — clinical data plausibility (latent since the buildathon)
+- **Glucose physiological floor:** the bidirectional incident sim (`05`) applied the ±40 calibration bias with no clamp, so under-read drove readings to 0/negative (on the real baseline: 32 readings ≤0, 346 <20 mg/dL — clinically impossible). Now clamps the biased value to the CGM range **[40, 400]** (matching the baseline `01:147` / forecast-modeling `04:1006` clamps that `05` never inherited); `06` clamped for parity.
+- **Demographics — diagnosis by age:** the patient-registry generator drew `patient_diagnosis` independently of `birth_year`, producing clinically-impossible combinations (Type 2 under 10, gestational over 55 / under 18). Now **age-conditioned**: T1D any age · T2D adult-onset (≥18) · gestational childbearing-age only (18–50). Population mix preserved (~T1D 41 / T2D 50 / gestational 8 — a CGM-monitored-fleet skew, since CGM is standard-of-care for T1D).
+- **Near-term forecast anchor:** `fleet_forecast_incident` was anchored on a random mid-timeline (day 3–5) point, so the Coach "Now (observed)" disagreed with the chart's latest reading (e.g. 94 vs ~40). Now anchored on each patient's **latest reading** — genuinely near-term and consistent with the 7-day chart. Predictions clamped to [40, 400]. Coach panel relabeled **"Forecast baseline"** + a "batch run, not a live tick" note (honest framing; pairs with the streaming roadmap).
+
+### Added — clinical-plausibility sanity gate
+- `Data_DataGen_ModelForecast/utils/data_sanity_checks.py`, wired into the setup-job DAG as `data_sanity_checks` (gates the intelligence/app layer). **Fails the run** if any clinically-impossible record reaches gold — T2D under 13, implausible gestational age, glucose outside [40, 400], or a patient with no forecast row — so implausible data can never silently reach the app/demo again.
+
+---
+
 ## [2026-05-31]
 
 Issue #2 — App UI: control-tower redesign. A front-door app shell + Device Support overhaul, built and validated on an **isolated standalone app** (`glucosphere-app-v0-2`) for side-by-side comparison against the existing app, which is left untouched. Shares the same live governed data; no backend/pipeline changes.
