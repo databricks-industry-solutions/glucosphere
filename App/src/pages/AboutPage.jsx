@@ -16,7 +16,7 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
           <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back to home">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -30,7 +30,7 @@ export default function AboutPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>What this is</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
@@ -89,6 +89,12 @@ export default function AboutPage() {
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="border-t border-slate-800 pt-6">
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-cyan-400 hover:underline font-mono">
+            github.com/databricks-industry-solutions/glucosphere ↗
+          </a>
         </section>
       </main>
     </div>
