@@ -41,28 +41,31 @@ export default function RoadmapPage() {
         {/* Planned enhancements — the textual backlog the in-app "on the roadmap"
             references (e.g. Coach forecast) point to. Kept honest: these are real
             logged items, not yet built. */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Planned next</h2>
-          <p className="text-xs font-mono text-slate-500 mb-4">Logged enhancements on the same governed data — not yet built.</p>
-          <ul className="space-y-3 text-sm text-slate-400">
+        {/* De-emphasized: collapsed disclosure so the backlog is present + honest
+            but doesn't compete with the live preview cards above. */}
+        <details className="bg-slate-900/40 border border-slate-800/60 rounded-lg px-6 py-4">
+          <summary className="cursor-pointer select-none text-sm font-mono text-slate-400 hover:text-slate-300">
+            Planned next — logged enhancements, not yet built (expand)
+          </summary>
+          <ul className="space-y-2 text-sm text-slate-500 mt-4">
             <li>
-              <span className="text-slate-200">60-minute glucose forecast</span> — extend the near-term model
+              <span className="text-slate-400">60-minute glucose forecast</span> — extend the near-term model
               (today <span className="font-mono">15 / 30-min</span>) to a longer horizon for the Diabetes Coach.
             </li>
             <li>
-              <span className="text-slate-200">Live 5-minute device-accuracy monitoring</span> — continuous rolling-MAE
+              <span className="text-slate-400">Live 5-minute device-accuracy monitoring</span> — continuous rolling-MAE
               detection so the "① Detect" signal is real-time rather than a batch snapshot.
             </li>
             <li>
-              <span className="text-slate-200">Lakebase-backed live alerts &amp; triage</span> — acknowledge / assign /
+              <span className="text-slate-400">Lakebase-backed live alerts &amp; triage</span> — acknowledge / assign /
               notes state behind the "Send to triage queue" and "Flag for rollback" actions (today previews).
             </li>
             <li>
-              <span className="text-slate-200">Real-time CGM streaming</span> — sub-minute dashboard updates as new
+              <span className="text-slate-400">Real-time CGM streaming</span> — sub-minute dashboard updates as new
               readings arrive, in place of periodic refreshes.
             </li>
           </ul>
-        </section>
+        </details>
       </main>
     </div>
   );
