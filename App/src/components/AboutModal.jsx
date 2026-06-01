@@ -10,7 +10,7 @@ export default function AboutModal({ open, onClose, onStartTour }) {
       <div onClick={(e) => e.stopPropagation()}
         className="max-w-md w-[92%] bg-slate-900 border border-slate-700 rounded-xl p-6 shadow-2xl">
         <div className="flex items-start justify-between mb-3">
-          <h2 className="text-lg font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>Welcome to Glucosphere</h2>
+          <h2 className="text-lg font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Welcome to Glucosphere</h2>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300" aria-label="Close"><X className="w-5 h-5" /></button>
         </div>
         <p className="text-sm text-slate-400 leading-relaxed">

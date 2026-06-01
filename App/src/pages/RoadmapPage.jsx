@@ -3,32 +3,34 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import SplashGallery from '../components/SplashGallery';
+import { useGoBack } from '../hooks/useGoBack';
 
 // "Where this goes" vision page — the pitch trio (detect · diagnose · assess) as
 // preview cards, off the operational landing. Today's app realizes ① Detect; these
 // preview the not-yet-built ② Diagnose + ③ Assess views on the same governed data.
 export default function RoadmapPage() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300" aria-label="Back to home">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center gap-4">
+          <button onClick={goBack} className="text-slate-500 hover:text-slate-300" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
             <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>Roadmap</h1>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Roadmap</h1>
               <p className="text-xs text-slate-500 font-mono">Where the control tower goes next — detect · diagnose · assess</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-[88rem] mx-auto px-6 py-8 space-y-6">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Fuller control-tower views</h2>
+          <h2 className="text-lg font-semibold mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Fuller control-tower views</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             Today the app realizes <span className="text-cyan-400 font-medium">① Detect</span> — the fleet
             and incident overview on the home page. These previews show where it goes next, completing the
@@ -39,13 +41,12 @@ export default function RoadmapPage() {
         <SplashGallery />
 
         {/* Planned enhancements — the textual backlog the in-app "on the roadmap"
-            references (e.g. Coach forecast) point to. Kept honest: these are real
-            logged items, not yet built. */}
+            references (e.g. Coach forecast) point to. Kept honest: real logged items. */}
         {/* De-emphasized: collapsed disclosure so the backlog is present + honest
             but doesn't compete with the live preview cards above. */}
         <details className="bg-slate-900/40 border border-slate-800/60 rounded-lg px-6 py-4">
           <summary className="cursor-pointer select-none text-sm font-mono text-slate-400 hover:text-slate-300">
-            Planned next — logged enhancements, not yet built (expand)
+            Planned next — logged enhancements (expand)
           </summary>
           <ul className="space-y-2 text-sm text-slate-500 mt-4">
             <li>

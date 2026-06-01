@@ -15,8 +15,10 @@ export default function BrandMark({ className = 'w-7 h-7' }) {
       <path d="M8 6 L8 2.6" />
       <path d="M17 11 L20.4 11" />
       <path d="M8 16 L8 19.4" />
-      {/* live-reading sensor node */}
-      <circle cx="14" cy="6" r="1.5" fill="currentColor" stroke="none" />
+      {/* live-reading sensor node — solid dot + halo ring so it reads as a sensor
+          taking a live reading, not just a thicker ring vertex */}
+      <circle cx="14" cy="6" r="3.4" fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      <circle cx="14" cy="6" r="2.3" fill="currentColor" stroke="none" />
     </svg>
   );
 }

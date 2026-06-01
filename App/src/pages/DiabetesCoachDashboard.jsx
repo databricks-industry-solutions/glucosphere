@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Activity, Loader2, ChevronRight } from 'lucide-react';
+import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Users, Loader2, ChevronRight } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics, getPatientList, getPatientDetail } from './DiabetesCoachDashboard/queries';
 import { getFirmwareLifecycle } from '../api/databricksSQL';
 
@@ -161,7 +161,7 @@ export default function DiabetesCoachDashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={goBack}
@@ -177,7 +177,7 @@ export default function DiabetesCoachDashboard() {
                 <HeartHandshake className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Diabetes Coach Dashboard
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">Provider Encounter Preparation</p>
@@ -191,12 +191,12 @@ export default function DiabetesCoachDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Population-Level Clinical Metrics */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-4">
-            <Activity className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+            <Users className="w-5 h-5 text-cyan-400" />
+            <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Population Clinical Metrics
             </h2>
             <span className="text-xs text-slate-500 font-mono">(Last 24 Hours)</span>
@@ -391,7 +391,7 @@ export default function DiabetesCoachDashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-2xl font-semibold font-mono" style={{ fontFamily: 'Georgia, serif' }}>
+                    <h2 className="text-2xl font-semibold font-mono" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                       {selectedPatientId}
                     </h2>
                     <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 rounded text-xs text-emerald-400 font-mono">Live</span>

@@ -103,7 +103,7 @@ export default function GuidedTour() {
         className="fixed w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl transition-all"
         style={cardStyle || { left: '50%', transform: 'translateX(-50%)', bottom: 40, pointerEvents: 'auto' }}>
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {TOUR_STEPS.length}</p>
-        <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>{step.title}</h3>
+        <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
         <div className="flex justify-between items-center mt-4">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>

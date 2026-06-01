@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import PopulationRiskChart from '../components/PopulationRiskChart';
 import { GlucoseAbsoluteChart } from '../components/IncidentCharts';
+import { useGoBack } from '../hooks/useGoBack';
 import { getPopulationRisk, getCohortAffected, getCohortAffectedBreakdown } from '../api/databricksSQL';
 
 // Stacked split bar: affected patients per label, segmented by DEVICE-bias direction —
@@ -44,6 +45,7 @@ function SplitBars({ title, dim, rows, max, activeLabel, onSelect }) {
 // ③ Assess — which patient cohorts a device fault pushed into hypo/hyper exposure.
 export default function PopulationRiskPage() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState([]);
@@ -101,24 +103,24 @@ export default function PopulationRiskPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/roadmap')} className="text-slate-500 hover:text-slate-300" aria-label="Back to roadmap">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center gap-4">
+          <button onClick={goBack} className="text-slate-500 hover:text-slate-300" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
             <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>Population Risk</h1>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Population Risk</h1>
               <p className="text-xs text-slate-500 font-mono">③ Assess — the clinical blast radius</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-[88rem] mx-auto px-6 py-8 space-y-6">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30">③ ASSESS</span>
-          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Hypo / hyper exposure by cohort</h2>
+          <span className="text-xs font-mono px-2.5 py-1 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30">③ ASSESS</span>
+          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Hypo / hyper exposure by cohort</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             The clinical question: <span className="text-slate-200">who got pushed into danger</span>. Share of device-reported readings in the
             <span className="text-blue-300"> hypoglycemic (&lt;70 mg/dL)</span> and <span className="text-rose-300">hyperglycemic (&gt;180 mg/dL)</span> ranges,
@@ -134,7 +136,7 @@ export default function PopulationRiskPage() {
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           {loading
             ? <div className="flex items-center justify-center h-64 text-slate-500">Loading population risk…</div>
-            : <PopulationRiskChart data={data} />}
+            : <div className="max-w-4xl mx-auto"><PopulationRiskChart data={data} /></div>}
         </section>
 
         {/* The full per-cohort actual-vs-device timeline lives on the landing (detect view) —
@@ -148,7 +150,7 @@ export default function PopulationRiskPage() {
             direction (over-read vs under-read) over the full affected population. */}
         {(breakdown.byRegion.length > 0 || breakdown.byModel.length > 0) && (
           <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>Affected-patient summary</h2>
+            <h2 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Affected-patient summary</h2>
             <p className="text-xs font-mono text-slate-500 mb-4">
               Distinct affected patients across all incident cohorts, by region and device model. Split by{' '}
               <span className="text-amber-300">device over-read</span> · <span className="text-slate-300">device under-read</span> —
@@ -171,7 +173,7 @@ export default function PopulationRiskPage() {
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
           <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
             <div>
-              <h2 className="text-lg font-semibold text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Affected patients &amp; devices</h2>
+              <h2 className="text-lg font-semibold text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Affected patients &amp; devices</h2>
               <p className="text-xs text-slate-500 font-mono mt-1">The outreach / recall roster — worst exposure first. <span className="text-cyan-400">Click a row to open the patient →</span> Identifiers simulated (no real PHI).</p>
               <p className="text-[11px] text-slate-600 font-mono mt-1">%hypo/%hyper span each patient's full observed window (~7 days) — same basis as the Coach.</p>
             </div>
@@ -247,7 +249,7 @@ export default function PopulationRiskPage() {
           <div className="absolute inset-0 bg-black/60" onClick={() => setOutreachOpen(false)} />
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-6">
             <div className="flex items-start justify-between mb-1">
-              <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>Patient outreach — calibration advisory</h3>
+              <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Patient outreach — calibration advisory</h3>
               <button onClick={() => setOutreachOpen(false)} className="text-slate-500 hover:text-slate-300 text-sm">✕</button>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">MOCKUP · not wired</span>

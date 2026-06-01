@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HeartHandshake, Wrench, BookOpen, ArrowLeft, Github } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
+import { useGoBack } from '../hooks/useGoBack';
 
 const REPO_URL = 'https://github.com/databricks-industry-solutions/glucosphere';
 
@@ -13,17 +14,18 @@ const ROLE_CARDS = [
 
 export default function AboutPage() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back to home">
+          <button onClick={goBack} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3 min-w-0">
             <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>About Glucosphere</h1>
               <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
             </div>
           </div>
@@ -32,7 +34,7 @@ export default function AboutPage() {
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>What this is</h2>
+          <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>What this is</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             <span className="text-cyan-400 font-medium">Glucosphere</span> is a control tower for a
             continuous-glucose-monitor (CGM) device fleet: detect device-accuracy drift, diagnose it to the
@@ -50,7 +52,7 @@ export default function AboutPage() {
         </section>
 
         <section className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-3 text-amber-300" style={{ fontFamily: 'Georgia, serif' }}>What's simulated vs real</h2>
+          <h2 className="text-lg font-semibold mb-3 text-amber-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>What's simulated vs real</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             The underlying ground-truth glucose signal (<span className="font-mono text-slate-300">glucose_true</span>) is
             <span className="text-slate-200"> real by default</span> — seeded from the HUPA-UCM type-1-diabetes dataset; a
@@ -67,7 +69,7 @@ export default function AboutPage() {
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex items-center gap-5">
           <BrandMark className="w-12 h-12 text-cyan-400 shrink-0" />
           <div>
-            <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>The mark</h2>
+            <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>The mark</h2>
             <p className="text-sm text-slate-400 leading-relaxed">
               The Glucosphere mark is the <span className="text-slate-200">glucose ring</span> — the six-membered
               pyranose form of the glucose molecule (5 carbons + 1 oxygen) that a CGM actually measures — drawn
@@ -78,23 +80,17 @@ export default function AboutPage() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>Jump to a view</h2>
+          <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Jump to a view</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {ROLE_CARDS.map((c) => (
               <button key={c.title} onClick={() => navigate(c.route)}
                 className="bg-slate-900/50 border border-slate-800 rounded-lg p-5 text-left hover:border-cyan-500/40 transition-colors group">
                 <c.icon className="w-6 h-6 text-cyan-400 mb-3" strokeWidth={2.5} />
-                <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>{c.title}</h3>
+                <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{c.title}</h3>
                 <p className="text-xs text-slate-500 mt-1 font-mono">{c.sub}</p>
               </button>
             ))}
           </div>
-        </section>
-
-        <section className="border-t border-slate-800 pt-6">
-          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="text-sm text-cyan-400 hover:underline font-mono">
-            github.com/databricks-industry-solutions/glucosphere ↗
-          </a>
         </section>
       </main>
     </div>

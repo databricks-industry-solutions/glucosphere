@@ -4,11 +4,13 @@ import { ArrowLeft, AlertTriangle, ChevronRight } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import FirmwareLifecycleChart from '../components/FirmwareLifecycleChart';
 import { getFirmwareLifecycle, getFirmwareImpact } from '../api/databricksSQL';
+import { useGoBack } from '../hooks/useGoBack';
 
 // ② Diagnose — trace a fleet-wide accuracy spike to the device firmware at fault,
 // then hand off to ACT: who was faulted on that firmware + flag it for rollback.
 export default function FirmwareLifecyclePage() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [data, setData] = useState([]);
   const [impact, setImpact] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,24 +46,24 @@ export default function FirmwareLifecyclePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/roadmap')} className="text-slate-500 hover:text-slate-300" aria-label="Back to roadmap">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center gap-4">
+          <button onClick={goBack} className="text-slate-500 hover:text-slate-300" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
             <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>Firmware Lifecycle</h1>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Firmware Lifecycle</h1>
               <p className="text-xs text-slate-500 font-mono">② Diagnose — trace the spike to the firmware at fault</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-[88rem] mx-auto px-6 py-8 space-y-6">
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">② DIAGNOSE</span>
-          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>Calibration error (MAE) by firmware version</h2>
+          <span className="text-xs font-mono px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">② DIAGNOSE</span>
+          <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Calibration error (MAE) by firmware version</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             Once the fleet-wide monitor flags an accuracy spike, the next question is <span className="text-slate-200">which firmware</span>.
             Each line is the mean device error — <span className="font-mono">|observed − true| glucose</span> — per firmware version per day.
@@ -85,8 +87,8 @@ export default function FirmwareLifecyclePage() {
                   <AlertTriangle className="w-5 h-5 text-rose-400" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">→ ACT</span>
-                  <h2 className="text-lg font-semibold mt-2 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">→ ACT</span>
+                  <h2 className="text-lg font-semibold mt-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                     FW {faulty.fw} is the faulty rollout
                   </h2>
                   <p className="text-sm text-slate-400 leading-relaxed mt-1">

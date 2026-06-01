@@ -43,7 +43,7 @@ export default function NavRail({ pinned = false, onTogglePin }) {
           <BrandMark className="w-7 h-7 text-cyan-400" />
         </NavLink>
         <div className={`${reveal} transition-opacity whitespace-nowrap flex-1 min-w-0`}>
-          <p className="text-sm font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>Glucosphere</p>
+          <p className="text-sm font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Glucosphere</p>
           <p className="text-[10px] text-slate-500 font-mono">CGM control tower</p>
         </div>
         <button onClick={onTogglePin} title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'} aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}

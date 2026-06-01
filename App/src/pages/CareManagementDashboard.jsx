@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clipboard, AlertCircle, Phone, MessageCircle, CheckCircle, Clock, Filter, ChevronDown } from 'lucide-react';
+import { useGoBack } from '../hooks/useGoBack';
 
 export default function CareManagementDashboard() {
   const navigate = useNavigate();
+  const goBack = useGoBack();
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [expandedPatient, setExpandedPatient] = useState(null);
   const [triageCount, setTriageCount] = useState(47);
@@ -152,10 +154,10 @@ export default function CareManagementDashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/')}
+            <button
+              onClick={goBack}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -167,7 +169,7 @@ export default function CareManagementDashboard() {
                 <Clipboard className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Care Management Dashboard
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">Remote Patient Monitoring - Triage Queue</p>
@@ -190,11 +192,11 @@ export default function CareManagementDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Priority Filters */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+            <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Priority Triage Queue
             </h2>
             <div className="flex items-center gap-3">
@@ -279,7 +281,7 @@ export default function CareManagementDashboard() {
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <div className="flex items-center gap-3 mb-1">
-                              <h3 className="text-lg font-semibold text-slate-100" style={{ fontFamily: 'Georgia, serif' }}>
+                              <h3 className="text-lg font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                                 {patient.name}
                               </h3>
                               <span className="text-sm font-mono text-slate-500">
