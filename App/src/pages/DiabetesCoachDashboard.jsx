@@ -392,7 +392,7 @@ export default function DiabetesCoachDashboard() {
                 <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                   This device <span className="text-rose-300">under-reported</span> by ~{Math.round(incident.biasGap)} mg/dL during the incident:
                   true glucose reached <span className="font-mono text-rose-300">~{Math.round(incident.trueMax)} mg/dL</span> but the device displayed
-                  <span className="font-mono"> ~{Math.round(incident.obsMean)} mg/dL</span> — hyperglycemia severity was <span className="text-rose-300">under-stated</span>.
+                  <span className="font-mono"> ~{Math.round(incident.obsAtPeak ?? incident.trueMax - incident.biasGap)} mg/dL</span> — hyperglycemia severity was <span className="text-rose-300">under-stated</span>.
                   Verify true status before acting on this device's readings.
                 </p>
               </div>

@@ -16,7 +16,7 @@ export default function AboutModal({ open, onClose, onStartTour }) {
         <p className="text-sm text-slate-400 leading-relaxed">
           A control tower for a CGM device fleet. Three moves: <span className="text-cyan-400">detect</span> drift,
           <span className="text-cyan-400"> diagnose</span> the firmware at fault, <span className="text-cyan-400">assess</span> patient risk.
-          The ground-truth CGM signal is real by default (HUPA-UCM; a synthetic mode is also available); device readings and the ±40 mg/dL calibration incidents are simulated.
+          The ground-truth CGM signal is real by default (<a href="https://data.mendeley.com/datasets/3hbcscwz44/1" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">HUPA-UCM</a>; a synthetic mode is also available); device readings and the ±40 mg/dL calibration incidents are simulated.
         </p>
         <div className="flex flex-wrap gap-3 mt-5">
           <button onClick={onStartTour}

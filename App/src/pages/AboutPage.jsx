@@ -55,7 +55,10 @@ export default function AboutPage() {
           <h2 className="text-lg font-semibold mb-3 text-amber-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>What's simulated vs real</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
             The underlying ground-truth glucose signal (<span className="font-mono text-slate-300">glucose_true</span>) is
-            <span className="text-slate-200"> real by default</span> — seeded from the HUPA-UCM type-1-diabetes dataset; a
+            <span className="text-slate-200"> real by default</span> — seeded from the{' '}
+            <a href="https://data.mendeley.com/datasets/3hbcscwz44/1" target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">HUPA-UCM type-1-diabetes dataset</a>{' '}
+            <span className="text-slate-500">(Universidad Complutense de Madrid)</span>; a
             fully-synthetic generator mode is also available for clean demos (chosen per deployment via{' '}
             <span className="font-mono text-cyan-400">baseline_source</span>). What the device <em>reports</em>{' '}
             (<span className="font-mono text-slate-300">glucose_observed</span>) is that signal with a{' '}

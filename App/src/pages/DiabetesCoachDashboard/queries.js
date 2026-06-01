@@ -342,7 +342,8 @@ export async function getPatientDetail(patientId) {
       ROUND(AVG(glucose_true), 0) as true_mean,
       ROUND(MAX(glucose_true), 0) as true_max,
       ROUND(AVG(glucose_observed), 0) as obs_mean,
-      ROUND(AVG(glucose_true - glucose_observed), 0) as bias_gap
+      ROUND(AVG(glucose_true - glucose_observed), 0) as bias_gap,
+      ROUND(MAX_BY(glucose_observed, glucose_true), 0) as obs_at_peak
     FROM ${inc}
     WHERE patient_id = '${id}' AND time >= incident_start_time AND time < incident_end_time
     GROUP BY incident_direction LIMIT 1`;
@@ -416,7 +417,8 @@ export async function getPatientDetail(patientId) {
         const trueMax = num(incv[2]);
         const obsMean = num(incv[3]);
         const biasGap = num(incv[4]);
-        return { direction, trueMean, trueMax, obsMean, biasGap, maskedSeverity: direction === 'negative' && trueMax != null && trueMax > 180 };
+        const obsAtPeak = num(incv[5]); // device reading at the true-glucose peak — the honest "what it displayed" for masked-severity (obsMean averages the whole window and understates it)
+        return { direction, trueMean, trueMax, obsMean, biasGap, obsAtPeak, maskedSeverity: direction === 'negative' && trueMax != null && trueMax > 180 };
       })() : null,
       series,
       incidentWindow,
