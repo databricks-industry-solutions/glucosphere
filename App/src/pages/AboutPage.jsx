@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HeartHandshake, Wrench, BookOpen, ArrowLeft } from 'lucide-react';
+import { HeartHandshake, Wrench, BookOpen, ArrowLeft, Github } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 
 const REPO_URL = 'https://github.com/databricks-industry-solutions/glucosphere';
@@ -16,17 +16,24 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300" aria-label="Back to home">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-3">
-            <BrandMark className="w-7 h-7 text-cyan-400" />
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
-              <p className="text-xs text-slate-500 font-mono">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
+        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <button onClick={() => navigate('/')} className="text-slate-500 hover:text-slate-300 shrink-0" aria-label="Back to home">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-3 min-w-0">
+              <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>About Glucosphere</h1>
+                <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>
+              </div>
             </div>
           </div>
+          <a href={REPO_URL} target="_blank" rel="noopener noreferrer" title="View on GitHub"
+            className="flex items-center gap-2 px-3 py-2 border border-slate-700 rounded-lg hover:bg-slate-800/60 transition-colors shrink-0">
+            <Github className="w-4 h-4 text-slate-300" />
+            <span className="hidden sm:inline text-sm font-mono text-slate-300">industry-solutions/glucosphere</span>
+          </a>
         </div>
       </header>
 
