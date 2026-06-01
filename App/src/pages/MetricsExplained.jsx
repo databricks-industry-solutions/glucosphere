@@ -686,12 +686,11 @@ FROM ${catalog}.${schema}.silver_patient_registry`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
-{`SELECT 
+{`SELECT
   device_model as device_type,
   CAST(firmware_version AS STRING) as firmware_version,
-  COUNT(*) as out_of_range_events
+  ROUND(AVG(glucose_out_of_range) * 100, 1) as out_of_range_pct
 FROM ${catalog}.${schema}.gold_patient_device_readings
-WHERE glucose_out_of_range = 1
 GROUP BY device_model, firmware_version
 ORDER BY device_model, firmware_version`}
                 </pre>
@@ -702,7 +701,7 @@ ORDER BY device_model, firmware_version`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-cyan-400">X-axis (top):</span> Unique firmware versions extracted from data</li>
                   <li>• <span className="font-mono text-cyan-400">Y-axis (left):</span> Unique device models extracted from data</li>
-                  <li>• <span className="font-mono text-amber-400">Cell values:</span> Count of readings where glucose_out_of_range = 1 for that combination</li>
+                  <li>• <span className="font-mono text-amber-400">Cell values:</span> % of readings out-of-range (AVG(glucose_out_of_range)*100) for that combination — a rate, so models with more patients aren't ranked worse just for having more readings</li>
                 </ul>
               </div>
               

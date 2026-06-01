@@ -94,10 +94,12 @@ export async function getDistinctDeviceCount() {
 
 /**
  * Get heatmap data for device anomalies by type and firmware version
- * @returns {Promise<Array>} Heatmap data with device_type, firmware_version, out_of_range_events
+ * @returns {Promise<Array>} Heatmap data with device_type, firmware_version, out_of_range_pct, out_of_range_events, total_readings
  */
 export async function getDeviceHeatmapData() {
-  // CGM schema: count ONLY out-of-range readings by device type and firmware.
+  // CGM schema: out-of-range RATE (%) by device type and firmware — a RATE
+  // (AVG(glucose_out_of_range)*100), NOT a raw count, so a device model/firmware
+  // with more patients isn't ranked "worse" purely for having more readings.
   // device_model comes from silver_patient_registry (per-patient SSOT) joined on
   // patient_id — NOT gold's per-reading device_model, which disagrees with the
   // registry for most patients and would make this heatmap inconsistent with the
@@ -107,10 +109,11 @@ export async function getDeviceHeatmapData() {
     SELECT
       r.device_model as device_type,
       CAST(g.firmware_version AS STRING) as firmware_version,
-      COUNT(*) as out_of_range_events
+      ROUND(AVG(g.glucose_out_of_range) * 100, 1) as out_of_range_pct,
+      SUM(g.glucose_out_of_range) as out_of_range_events,
+      COUNT(*) as total_readings
     FROM ${catalog}.${schema}.gold_patient_device_readings g
     JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
-    WHERE g.glucose_out_of_range = 1
     GROUP BY r.device_model, g.firmware_version
     ORDER BY r.device_model, g.firmware_version
   `;
@@ -128,11 +131,13 @@ export async function getDeviceHeatmapData() {
           structuredContent.result.data_array.length > 0) {
         
         const heatmapData = structuredContent.result.data_array.map(row => {
-          if (row.values && row.values.length >= 3) {
+          if (row.values && row.values.length >= 5) {
             return {
               device_type: row.values[0].string_value,
               firmware_version: row.values[1].string_value,
-              out_of_range_events: parseInt(row.values[2].string_value, 10)
+              out_of_range_pct: parseFloat(row.values[2].string_value),
+              out_of_range_events: parseInt(row.values[3].string_value, 10),
+              total_readings: parseInt(row.values[4].string_value, 10)
             };
           }
           return null;

@@ -291,45 +291,45 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     fetchAlerts();
   }, []);
 
-  // Calculate dynamic min/max values for heatmap scaling
-  const minOutOfRangeEvents = heatmapData.length > 0 
-    ? Math.min(...heatmapData.map(d => d.out_of_range_events))
+  // Calculate dynamic min/max values for heatmap scaling (out-of-range RATE %)
+  const minOorPct = heatmapData.length > 0
+    ? Math.min(...heatmapData.map(d => d.out_of_range_pct))
     : 0;
-  
-  const maxOutOfRangeEvents = heatmapData.length > 0 
-    ? Math.max(...heatmapData.map(d => d.out_of_range_events))
+
+  const maxOorPct = heatmapData.length > 0
+    ? Math.max(...heatmapData.map(d => d.out_of_range_pct))
     : 1;
 
-  const getHeatmapColor = (events) => {
-    if (events === 0) return 'rgb(51 65 85)'; // slate-700 for no data
-    
+  const getHeatmapColor = (pct) => {
+    if (pct === 0) return 'rgb(51 65 85)'; // slate-700 for empty cell (no data)
+
     // Normalize based on actual data range (min to max), not 0 to max
-    const normalized = (events - minOutOfRangeEvents) / (maxOutOfRangeEvents - minOutOfRangeEvents); // 0 to 1
+    const normalized = (pct - minOorPct) / (maxOorPct - minOorPct); // 0 to 1
     
     // Color spectrum: green → yellow → orange → red
     if (normalized < 0.25) {
-      // Green to Yellow-Green (low events)
+      // Green to Yellow-Green (low rate)
       const t = normalized / 0.25; // 0 to 1 within this range
       const r = Math.round(34 + (132 * t));   // 34 (emerald) → 166 (lime)
       const g = Math.round(197 + (23 * t));   // 197 → 220
       const b = Math.round(94 - (44 * t));    // 94 → 50
       return `rgb(${r} ${g} ${b})`;
     } else if (normalized < 0.5) {
-      // Yellow-Green to Yellow (medium-low events)
+      // Yellow-Green to Yellow (medium-low rate)
       const t = (normalized - 0.25) / 0.25;
       const r = Math.round(166 + (88 * t));   // 166 → 254 (yellow)
       const g = Math.round(220 + (4 * t));    // 220 → 224
       const b = Math.round(50 - (36 * t));    // 50 → 14
       return `rgb(${r} ${g} ${b})`;
     } else if (normalized < 0.75) {
-      // Yellow to Orange (medium-high events)
+      // Yellow to Orange (medium-high rate)
       const t = (normalized - 0.5) / 0.25;
       const r = Math.round(254 - (3 * t));    // 254 → 251 (orange)
       const g = Math.round(224 - (78 * t));   // 224 → 146
       const b = Math.round(14 - (5 * t));     // 14 → 9
       return `rgb(${r} ${g} ${b})`;
     } else {
-      // Orange to Red (high events)
+      // Orange to Red (high rate)
       const t = (normalized - 0.75) / 0.25;
       const r = Math.round(251 - (12 * t));   // 251 → 239 (rose/red)
       const g = Math.round(146 - (78 * t));   // 146 → 68
@@ -397,8 +397,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             {/* Heatmap */}
             <div data-tour="anomaly-heatmap" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
-                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Events</h3>
-                <p className="text-xs text-slate-500 font-mono">By device type and firmware version</p>
+                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Rate</h3>
+                <p className="text-xs text-slate-500 font-mono">% of readings out-of-range, by device type and firmware</p>
               </div>
               
               <div className="flex gap-4 items-stretch">
@@ -426,20 +426,20 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                           <div className="w-24 text-sm text-slate-300 font-mono">{deviceType}</div>
                           {firmwareVersions.map(fw => {
                             const data = heatmapData.find(d => d.device_type === deviceType && d.firmware_version === fw);
-                            const outOfRangeEvents = data ? data.out_of_range_events : 0;
+                            const oorPct = data ? data.out_of_range_pct : 0;
 
                             return (
                               <div
                                 key={fw}
                                 className="flex-1 h-10 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
                                 style={{
-                                  backgroundColor: getHeatmapColor(outOfRangeEvents)
+                                  backgroundColor: getHeatmapColor(oorPct)
                                 }}
                               >
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
                                   <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-sm font-mono whitespace-nowrap shadow-xl">
-                                    <span className="text-cyan-400 font-bold">{outOfRangeEvents}</span>
-                                    <span className="text-slate-400"> events</span>
+                                    <span className="text-cyan-400 font-bold">{oorPct}%</span>
+                                    <span className="text-slate-400"> out-of-range</span>
                                   </div>
                                 </div>
                               </div>
@@ -454,19 +454,19 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 {/* Vertical legend (colorbar) — to the right of the grid */}
                 {!heatmapLoading && (
                   <div className="flex flex-col items-center gap-1 pt-8 shrink-0">
-                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOutOfRangeEvents}</span>
+                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOorPct}%</span>
                     <span className="text-[10px] font-mono text-slate-500 mb-0.5">High</span>
                     <div className="flex flex-col rounded overflow-hidden">
                       {[1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0].map((normalized, i) => (
                         <div
                           key={i}
                           className="w-3.5 h-4"
-                          style={{ backgroundColor: getHeatmapColor(minOutOfRangeEvents + (normalized * (maxOutOfRangeEvents - minOutOfRangeEvents))) }}
+                          style={{ backgroundColor: getHeatmapColor(minOorPct + (normalized * (maxOorPct - minOorPct))) }}
                         />
                       ))}
                     </div>
                     <span className="text-[10px] font-mono text-slate-500 mt-0.5">Low</span>
-                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOutOfRangeEvents}</span>
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOorPct}%</span>
                   </div>
                 )}
               </div>
