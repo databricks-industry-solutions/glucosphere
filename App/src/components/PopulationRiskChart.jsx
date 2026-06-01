@@ -11,15 +11,19 @@ export default function PopulationRiskChart({ data = [] }) {
     return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">No population data</div>;
   }
 
-  const order = { 'Baseline': 0, 'Positive cohort': 1, 'Negative cohort': 2 };
+  // Diverging layout centred on Baseline: under-reading cohort LEFT (driven into
+  // apparent lows / hypo), Baseline centre (unaffected), over-reading cohort RIGHT
+  // (driven into apparent highs / hyper). Left→right reads low ← baseline → high.
+  const order = { 'Negative cohort': 0, 'Baseline': 1, 'Positive cohort': 2 };
+  const subLabel = { 'Negative cohort': 'under-reads · lows', 'Baseline': 'unaffected', 'Positive cohort': 'over-reads · highs' };
   const rows = [...data].sort((a, b) => (order[a.cohort] ?? 9) - (order[b.cohort] ?? 9));
 
-  const W = 760, H = 340, pad = { top: 20, right: 132, bottom: 56, left: 52 };
+  const W = 760, H = 244, pad = { top: 20, right: 132, bottom: 60, left: 52 };
   const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
   const maxY = Math.max(10, ...rows.flatMap(r => [r.pctHypo, r.pctHyper]));
 
   const groupW = innerW / rows.length;
-  const barW = Math.min(46, groupW / 3);
+  const barW = Math.min(32, groupW / 4);
   const y = (v) => pad.top + innerH - (v / maxY) * innerH;
 
   return (
@@ -57,7 +61,10 @@ export default function PopulationRiskChart({ data = [] }) {
               onMouseLeave={() => setHover(null)}
             />
             <text x={hyperX + barW / 2} y={y(r.pctHyper) - 4} textAnchor="middle" fontSize="9.5" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">{r.pctHyper}</text>
-            <text x={cx} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">{r.cohort.replace(' cohort', '')}</text>
+            <text x={cx} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(148 163 184)" pointerEvents="none">
+              {r.cohort.replace(' cohort', '')}
+              <tspan x={cx} dy="13" fontSize="8.5" fill="rgb(100 116 139)">{subLabel[r.cohort] || ''}</tspan>
+            </text>
           </g>
         );
       })}

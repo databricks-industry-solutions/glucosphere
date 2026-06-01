@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import {
   getIncidentImpactData,
@@ -6,6 +7,34 @@ import {
   getAbsoluteGlucoseTimelineData,
   getIncidentSummary,
 } from '../pages/GlucoseLanding/incidentQueries';
+
+// Shared HTML legend rendered in the left text column (OUTSIDE the plot) so the
+// legend no longer overlaps the data. The swatch mirrors the in-plot encoding:
+// a line (optional dash + marker) or a filled rect (incident windows).
+function Swatch({ type = 'line', stroke, fill, dash, marker }) {
+  return (
+    <svg width="24" height="12" viewBox="0 0 24 12" className="shrink-0">
+      {type === 'rect' ? (
+        <rect x="2" y="2" width="20" height="8" rx="1" fill={fill} stroke={stroke} />
+      ) : (
+        <>
+          <line x1="1" y1="6" x2="23" y2="6" stroke={stroke} strokeWidth="2.2" strokeDasharray={dash} />
+          {marker === 'circle' && <circle cx="12" cy="6" r="2.6" fill={stroke} />}
+          {marker === 'square' && <rect x="9.4" y="3.4" width="5.2" height="5.2" fill={stroke} />}
+          {marker === 'triangle' && <polygon points="12,3 9,9 15,9" fill={stroke} />}
+        </>
+      )}
+    </svg>
+  );
+}
+function LegendRow({ children, ...s }) {
+  return (
+    <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 leading-snug">
+      <Swatch {...s} />
+      <span>{children}</span>
+    </div>
+  );
+}
 
 /**
  * Incident Impact Chart - Shows MAE over time with incident period highlighted
@@ -65,7 +94,7 @@ export function IncidentImpactChart() {
   // Calculate chart dimensions and scales
   const chartWidth = 1000;
   const chartHeight = 320;
-  const padding = { top: 60, right: 160, bottom: 80, left: 80 };
+  const padding = { top: 24, right: 160, bottom: 60, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
@@ -173,13 +202,22 @@ export function IncidentImpactChart() {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
       {/* Chart Title (left column) */}
-      <div className="lg:w-48 lg:shrink-0">
-        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-60 lg:shrink-0">
+        <h3 className="text-base font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
           Incident Impact: {summary?.incident_description || 'Device Calibration Issue'}
         </h3>
         <p className="text-xs text-slate-500 font-mono">
           Mean Absolute Error (MAE) Timeline - 7 Day Window
         </p>
+        <Link to="/metrics-explained#me-mae-timeline" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+          How this is computed →
+        </Link>
+        <div className="mt-4 space-y-1.5">
+          <LegendRow stroke="rgb(59 130 246)">MAE — fleet-wide</LegendRow>
+          <LegendRow stroke="rgb(251 146 60)">MAE — affected patients</LegendRow>
+          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (3h)</LegendRow>
+          <LegendRow stroke="rgb(148 163 184)" dash="3 3">Baseline MAE ({summary?.baseline_mae_30m?.toFixed(1) || '5.8'})</LegendRow>
+        </div>
       </div>
 
       {/* SVG Chart (right, responsive) */}
@@ -318,7 +356,7 @@ export function IncidentImpactChart() {
             textAnchor="middle"
             fontFamily="monospace"
           >
-            Time
+            Date
           </text>
 
           {/* MAE Affected-only line (orange) — shows true device-error magnitude during incident (~45 mg/dL peak) */}
@@ -338,31 +376,6 @@ export function IncidentImpactChart() {
             strokeWidth="1.5"
             opacity="0.9"
           />
-
-
-          {/* Legend */}
-          <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
-            <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(59 130 246)" strokeWidth="2.5" />
-            <text x="35" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE — fleet-wide
-            </text>
-
-            <line x1="0" y1="20" x2="30" y2="20" stroke="rgb(251 146 60)" strokeWidth="2" />
-            <text x="35" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              MAE — affected patients
-            </text>
-
-            <rect x="0" y="35" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
-            <text x="35" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident (3h)
-            </text>
-
-            <line x1="0" y1="60" x2="30" y2="60" stroke="rgb(148 163 184)" strokeWidth="1" strokeDasharray="4 4" opacity="0.5" />
-            <text x="35" y="64" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Baseline MAE ({summary?.baseline_mae_30m?.toFixed(1) || '5.8'})
-            </text>
-          </g>
-
         </svg>
       </div>
     </div>
@@ -430,7 +443,7 @@ export function GlucoseTimelineChart() {
   // Calculate chart dimensions and scales
   const chartWidth = 1000;
   const chartHeight = 320;
-  const padding = { top: 60, right: 160, bottom: 80, left: 80 };
+  const padding = { top: 24, right: 160, bottom: 60, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
@@ -523,7 +536,7 @@ export function GlucoseTimelineChart() {
   // Format date for x-axis labels
   const formatDate = (date) => {
     const d = new Date(date);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
   // Generate x-axis ticks
@@ -552,13 +565,22 @@ export function GlucoseTimelineChart() {
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
       {/* Chart Title (left column) */}
-      <div className="lg:w-48 lg:shrink-0">
-        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-60 lg:shrink-0">
+        <h3 className="text-base font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
           Device Calibration Bias Over Time (±40 mg/dL Bidirectional)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
           Signed device bias (observed − true glucose) per direction cohort. Outside incident: both lines ≈ 0 (devices match true). Inside incident: positive cohort spikes to +40, negative drops to −40.
         </p>
+        <Link to="/metrics-explained#me-bias-timeline" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+          How this is computed →
+        </Link>
+        <div className="mt-4 space-y-1.5">
+          <LegendRow stroke="rgb(239 68 68)">Positive bias (+40)</LegendRow>
+          <LegendRow stroke="rgb(59 130 246)">Negative bias (−40)</LegendRow>
+          <LegendRow stroke="rgb(148 163 184)" dash="3 3">Zero bias</LegendRow>
+          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (3h)</LegendRow>
+        </div>
       </div>
 
       {/* SVG Chart (right, responsive) */}
@@ -670,7 +692,7 @@ export function GlucoseTimelineChart() {
             textAnchor="middle"
             fontFamily="monospace"
           >
-            Time
+            Date
           </text>
 
           {/* Zero baseline (no bias reference) */}
@@ -711,31 +733,6 @@ export function GlucoseTimelineChart() {
             strokeWidth="1.5"
             opacity="0.9"
           />
-
-
-          {/* Legend */}
-          <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
-            <line x1="0" y1="0" x2="40" y2="0" stroke="rgb(239 68 68)" strokeWidth="2" />
-            <text x="45" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Positive bias (+40)
-            </text>
-
-            <line x1="0" y1="20" x2="40" y2="20" stroke="rgb(59 130 246)" strokeWidth="2" />
-            <text x="45" y="24" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Negative bias (−40)
-            </text>
-
-            <line x1="0" y1="40" x2="40" y2="40" stroke="rgb(148 163 184)" strokeWidth="1" strokeDasharray="4 4" opacity="0.6" />
-            <text x="45" y="44" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Zero bias
-            </text>
-
-            <rect x="0" y="55" width="40" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
-            <text x="45" y="64" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident (3h)
-            </text>
-          </g>
-
         </svg>
       </div>
     </div>
@@ -795,7 +792,7 @@ export function GlucoseAbsoluteChart() {
   // Layout (same scale as the other charts)
   const chartWidth = 1000;
   const chartHeight = 320;
-  const padding = { top: 60, right: 160, bottom: 80, left: 80 };
+  const padding = { top: 24, right: 160, bottom: 60, left: 80 };
   const innerWidth = chartWidth - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
@@ -868,7 +865,7 @@ export function GlucoseAbsoluteChart() {
   // Date tick formatting
   const formatDate = (t) => {
     const d = new Date(t);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${d.getMonth() + 1}/${d.getDate()}`;
   };
   const xAxisTicks = [];
   for (let i = 0; i <= 5; i++) {
@@ -887,13 +884,22 @@ export function GlucoseAbsoluteChart() {
 
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col lg:flex-row gap-5">
-      <div className="lg:w-48 lg:shrink-0">
-        <h3 className="text-sm font-semibold text-slate-200 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
+      <div className="lg:w-60 lg:shrink-0">
+        <h3 className="text-base font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
           Glucose Timeline: Actual vs Device Readings (per-cohort)
         </h3>
         <p className="text-xs text-slate-500 font-mono">
           Affected patients only. Green = true glucose, Red = positive-bias cohort device readings (+40 mg/dL at Day 2 incident), Blue = negative-bias cohort device readings (-40 mg/dL at Day 5 incident).
         </p>
+        <Link to="/metrics-explained#me-bias-timeline" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+          How this is computed →
+        </Link>
+        <div className="mt-4 space-y-1.5">
+          <LegendRow stroke="rgb(169 169 169)" marker="circle">True glucose</LegendRow>
+          <LegendRow stroke="rgb(239 68 68)" marker="square">Device — positive cohort (+40)</LegendRow>
+          <LegendRow stroke="rgb(59 130 246)" marker="triangle">Device — negative cohort (−40)</LegendRow>
+          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident windows</LegendRow>
+        </div>
       </div>
       <div className="flex-1 min-w-0">
         <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
@@ -961,7 +967,7 @@ export function GlucoseAbsoluteChart() {
           ))}
           <text x={chartWidth / 2} y={chartHeight - 10} fill="rgb(148 163 184)"
                 fontSize="12" textAnchor="middle" fontFamily="monospace">
-            Time
+            Date
           </text>
 
           {/* Lines — thinner strokes than before for less bar-like appearance */}
@@ -988,32 +994,6 @@ export function GlucoseAbsoluteChart() {
               )}
             </g>
           ))}
-
-          {/* Legend */}
-          <g transform={`translate(${padding.left + 20}, ${padding.top + 10})`}>
-            <line x1="0" y1="0" x2="30" y2="0" stroke="rgb(169 169 169)" strokeWidth="2" />
-            <circle cx="15" cy="0" r="2.5" fill="rgb(169 169 169)" />
-            <text x="38" y="4" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              True glucose
-            </text>
-
-            <line x1="0" y1="18" x2="30" y2="18" stroke="rgb(239 68 68)" strokeWidth="2" />
-            <rect x="12.5" y="15.5" width="5" height="5" fill="rgb(239 68 68)" />
-            <text x="38" y="22" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — positive cohort (+40)
-            </text>
-
-            <line x1="0" y1="36" x2="30" y2="36" stroke="rgb(59 130 246)" strokeWidth="2" />
-            <polygon points="15,33 12,38 18,38" fill="rgb(59 130 246)" />
-            <text x="38" y="40" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Device — negative cohort (−40)
-            </text>
-
-            <rect x="0" y="50" width="30" height="10" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)" />
-            <text x="38" y="59" fill="rgb(148 163 184)" fontSize="11" fontFamily="monospace">
-              Incident windows
-            </text>
-          </g>
         </svg>
       </div>
     </div>

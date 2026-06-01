@@ -9,6 +9,14 @@ import React from 'react';
 // field; bubble size ∝ monitored footprint (patients), color ∝ out-of-range volume
 // (green→red). Honest to the coarse NA/EMEA/APAC region granularity in the data.
 
+// Expansions for the coarse region acronyms (business macro-regions, not codes).
+const REGION_NAMES = {
+  NA: 'North America', 'NORTH AMERICA': 'North America', AMERICAS: 'Americas',
+  LATAM: 'Latin America', 'SOUTH AMERICA': 'South America',
+  EMEA: 'Europe · Middle East · Africa', EUROPE: 'Europe', AFRICA: 'Africa', 'MIDDLE EAST': 'Middle East',
+  APAC: 'Asia-Pacific', ASIA: 'Asia', ANZ: 'Australia · New Zealand', OCEANIA: 'Oceania',
+};
+
 // Approximate positions in the 0..100 × 0..60 viewBox (relative geography, not precise).
 const POS = {
   NA: { x: 20, y: 24 }, 'NORTH AMERICA': { x: 20, y: 24 }, AMERICAS: { x: 22, y: 28 },
@@ -60,13 +68,22 @@ export default function RegionMap({ regions = [] }) {
           return (
             <g key={i}>
               <circle cx={r.x} cy={r.y} r={radius} fill={fill} fillOpacity="0.8" stroke="rgb(226 232 240 / 0.5)" strokeWidth="0.4" />
-              <text x={r.x} y={r.y + radius + 3.5} textAnchor="middle" fontSize="3.2" fontFamily="monospace" fill="rgb(203 213 225)">{r.region}</text>
+              <text x={r.x} y={r.y + radius + 4} textAnchor="middle" fontSize="4" fontFamily="monospace" fill="rgb(203 213 225)">{r.region}</text>
             </g>
           );
         })}
       </svg>
+      {/* region key — expand the coarse NA/EMEA/APAC acronyms (only those present) */}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-slate-400">
+        {placed.map((r, i) => {
+          const name = REGION_NAMES[(r.region || '').toUpperCase()];
+          return name ? (
+            <span key={i}><span className="text-slate-200">{r.region}</span> — {name}</span>
+          ) : null;
+        })}
+      </div>
       {/* encoding caption */}
-      <div className="mt-3 flex items-center justify-between text-[10px] font-mono text-slate-500">
+      <div className="mt-2 flex items-center justify-between text-[10px] font-mono text-slate-500">
         <span>● size = patients monitored</span>
         <span className="flex items-center gap-1">
           out-of-range
