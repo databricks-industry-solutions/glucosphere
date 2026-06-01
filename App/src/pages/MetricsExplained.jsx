@@ -127,6 +127,26 @@ export default function MetricsExplained() {
           </div>
         </section>
 
+        {/* Counts vs rates — data-agnostic principle (true on real OR synthetic baseline) */}
+        <section className="mb-12">
+          <div className="bg-slate-900/50 border border-amber-500/20 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-amber-300 mb-2" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
+              Why fleet comparisons use rates, not counts
+            </h2>
+            <p className="text-sm text-slate-400">
+              The gold table holds <span className="font-mono text-cyan-400">one row per reading</span> (~288/patient/day),
+              so a raw <span className="font-mono text-amber-400">COUNT</span> of out-of-range readings scales with how much
+              data a group has — not how unhealthy it is. Comparing device models, diagnoses, regions, or firmware by raw
+              count therefore ranks them by population/volume and can invert the real picture (the smallest cohort often has
+              the highest rate). So cross-group views — the firmware × model heatmap, the High-Risk tile, and the CGM Genie
+              assistant — report <span className="text-cyan-300">rates</span>{' '}
+              (<span className="font-mono text-cyan-400">AVG(glucose_out_of_range)*100</span>), and reserve the Battelino
+              level-2 danger bands (<span className="font-mono">&lt;54</span> / <span className="font-mono">&gt;250</span> mg/dL)
+              for "high risk". Device-health questions use data completeness (readings vs the expected ~288/day), not glucose excursions.
+            </p>
+          </div>
+        </section>
+
         {/* Landing Page Hero Metrics */}
         <section className="mb-12">
           <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>

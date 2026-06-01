@@ -38,6 +38,16 @@ Built + validated on further isolated standalone apps (`glucosphere-app-v0-3`, t
 - **Coach back button** returns to the originating page (Population Risk / rail / Home) via history, not always Home.
 - **Docs/correctness:** Metrics Explained now distinguishes the **two MAEs** — model-monitoring forecast error (`|pred − actual|`, the ~3.8/5.9 clean → ~38 incident headline) vs the landing chart's device-error proxy (`ABS(glucose_observed − glucose_true) + 5.0`); "what's simulated vs real" provenance made mode-agnostic (real-by-default; synthetic mode honest).
 
+### Fixed — metric honesty (counts → rates)
+
+Cross-group fleet comparisons now report **rates (% of readings out-of-range)** instead of raw **counts**. `gold_patient_device_readings` is one row per reading (~288/patient/day), so a raw `COUNT` ranks groups by data *volume*, not clinical severity or device quality — and can invert the picture (the smallest cohort often has the highest rate). The rate framing is **data-agnostic** (correct on the real *and* synthetic baselines); only the absolute numbers differ by baseline.
+
+- **Landing "High-Risk Alerts"** — was `COUNT(DISTINCT patient WHERE any <70/>180 in 3h)`; now the Battelino level-2 critical bands (`<54 OR >250`). *(On the real HUPA-UCM baseline this moved the tile from 517 → 176; synthetic skews far lower.)*
+- **Coach per-patient risk band** — symmetric Battelino scheme (very-low `<54` / very-high `>250` escalate to HIGH; ⚠ hypo/hyper flags) instead of TIR-only, which never escalated dangerous hypoglycemia.
+- **Firmware × model heatmap** (`getDeviceHeatmapData`) — `AVG(glucose_out_of_range)*100` rate per cell instead of a raw event count. *(On the real baseline this flipped the apparent "worst firmware" from 3.14 — a volume artifact at 1.59M readings — to 4.0, the actual fault: 66% out-of-range, and 100% of firmware-4.0 devices are the injected-incident cohort. The heatmap now agrees with the already-rate-based Device Pattern Alerts panel.)*
+- **Device-readings table** — glucose value colors by clinical severity (`<54`/`>250` → rose, mild out-of-range → amber), matching the Range badge + risk score (was `<70 ? amber : rose`, which mis-colored critical lows).
+- **CGM Genie space instructions** — steer cross-group questions to rates, Battelino bands for "high risk", and data-completeness (not glucose excursions) for device-health; corrected a stale column-name list in the space's data-context instruction.
+
 ### Added
 
 - **Persistent left nav rail** (`App/src/components/AppShell.jsx` + `NavRail.jsx`) — collapsed icon strip that expands on hover and can be **pinned open** (choice persisted in `localStorage`); role entries (Device Support / Diabetes Coach) grouped under a "By role" label; replaces the old bottom persona cards. A "Take a tour" entry reprises the guided walkthrough.
