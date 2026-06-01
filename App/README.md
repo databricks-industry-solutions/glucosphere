@@ -202,7 +202,7 @@ Key columns:
 - `device_id`, `patient_id`, `time`
 - `glucose`, `glucose_out_of_range`
 - `device_model`, `firmware_version`
-- `region`, `diabetes_type`
+- `region`, `patient_diagnosis`
 
 Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
@@ -243,7 +243,7 @@ Python runtime is provided by the Databricks Apps platform — no local Python p
 | Service | Where used | Why it's used |
 | --- | --- | --- |
 | **Databricks Statement Execution API** | `App/databricks/app.py` `/api/sql/query` | Routes SQL queries to the bundle-managed serverless warehouse |
-| **Foundation model** (`databricks-claude-sonnet-4-6`) | `app.py` `/api/assist` (engine=direct) | Device reasoning / Clinical-Analysis — the default fast router's reasoning path |
+| **Foundation model** (`databricks-claude-sonnet-4-6`) | `app.py` `/api/assist` (engine=direct) | Device reasoning / Device Analysis — the default fast router's reasoning path |
 | **Knowledge Assistant (KA) serving endpoint** | `app.py` `/api/assist` (called directly by the router for clinical Qs; or via MAS) | RAG over WHO clinical-guidelines PDF |
 | **Genie space** | `app.py` `/api/genie/query` (CGM-data mode, direct) and via the router/MAS | NL-to-SQL over gold device tables |
 | **Multi-Agent Supervisor (MAS) serving endpoint** | `app.py` `/api/assist` (engine=mas — the 🤖 toggle, not default) | Agentic multi-agent orchestration (Beta; slower) |

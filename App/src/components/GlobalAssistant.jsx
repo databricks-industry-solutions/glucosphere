@@ -37,7 +37,7 @@ const MODES = {
     label: 'CGM data (Genie)',
     icon: Database,
     greeting: "👋 I'm CGM Genie. Ask questions about the fleet data in natural language — I'll write the SQL and return the results.",
-    suggestions: ['How many patients had hypoglycemia in the last 24 hours?', 'Average glucose by region', 'Out-of-range readings grouped by device model', 'Average time in range for all patients'],
+    suggestions: ['How many patients had hypoglycemia in the last 24 hours?', 'Average glucose by region', 'Out-of-range rate by device model', 'Average time in range for all patients'],
   },
 };
 
@@ -303,7 +303,7 @@ export default function GlobalAssistant() {
                   {msg.role === 'assistant' && msg.kind === 'genie' ? (
                     <GenieResult payload={msg.payload} onFollowUp={(q) => send(q)} />
                   ) : msg.role === 'assistant' && !msg.isError ? (
-                    <div className="text-sm prose prose-invert prose-sm max-w-none">
+                    <div className="text-sm max-w-none">
                       <ReactMarkdown components={mdComponents}>{msg.content}</ReactMarkdown>
                     </div>
                   ) : (

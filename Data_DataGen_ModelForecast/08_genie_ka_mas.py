@@ -271,8 +271,20 @@ else:
 
 def _ensure_genie_instruction(space_id: str, title: str, content: str) -> None:
     existing = _api("GET", f"/api/2.0/data-rooms/{space_id}/instructions").get("instructions", []) or []
-    if any(i.get("title") == title for i in existing):
-        print(f"  → instruction {title!r} already present; skipping")
+    match = next((i for i in existing if i.get("title") == title), None)
+    if match:
+        # Dedupe is by title. On a FRESH space there is no match, so the POST below
+        # runs and seeds the instruction. On a RE-RUN against an existing space the
+        # title is already present and we skip — BUT if the desired content has since
+        # changed (e.g. a corrected column list), a silent skip would leave the old
+        # text in place. Surface that drift explicitly so it can be updated (the
+        # legacy /instructions surface seeds new entries; remove/update the existing
+        # one in the Genie space UI to apply a content change).
+        if (match.get("content") or "").strip() != content.strip():
+            print(f"  → [DRIFT] instruction {title!r} exists with DIFFERENT content; "
+                  f"remove/update the existing entry in the Genie space UI to apply this update")
+        else:
+            print(f"  → instruction {title!r} already present; skipping")
         return
     _api("POST", f"/api/2.0/data-rooms/{space_id}/instructions", {
         "title": title,
@@ -282,11 +294,16 @@ def _ensure_genie_instruction(space_id: str, title: str, content: str) -> None:
     print(f"  → instruction {title!r} added")
 
 _ensure_genie_instruction(GENIE_SPACE_ID, "CGM Data Context", (
-    "This space contains continuous glucose monitoring (CGM) data. "
-    "Key columns: patient_id, device_id, reading_timestamp, glucose_value_mg_dl, "
-    "is_incident (device calibration bug flag), forecast_15m, forecast_30m, "
-    "diabetes_type, bmi, hba1c_baseline, device_model, calibration_status. "
-    "Normal range: 70-180 mg/dL. Hypoglycemia: <70. Hyperglycemia: >180."
+    "This space contains continuous glucose monitoring (CGM) fleet data in one table, "
+    "gold_patient_device_readings, with ONE ROW PER READING (~5-min cadence, "
+    "~288 rows/patient/day). Key columns: patient_id, device_id, device_model, "
+    "firmware_version, time (reading timestamp), glucose (mg/dL), "
+    "glucose_out_of_range (1 = reading outside 70-180), region, "
+    "patient_diagnosis (T1D / T2D / gestational), event_type, steps, heart_rate, "
+    "basal_rate, bolus_volume_delivered, carb_input. "
+    "Normal range 70-180 mg/dL; hypoglycemia <70 (very low <54); "
+    "hyperglycemia >180 (very high >250). A COUNT of rows scales with fleet size and "
+    "monitoring duration, NOT clinical severity."
 ))
 
 # Time-window interpretation instruction. Demo data is a fixed
@@ -305,6 +322,27 @@ _ensure_genie_instruction(GENIE_SPACE_ID, "Time Window Interpretation", (
     "`WHERE time >= NOW() - INTERVAL 24 HOUR`, generate "
     "`WHERE time >= (SELECT MAX(time) - INTERVAL 24 HOUR FROM <table>)`. "
     "This avoids returning 0 results because the demo data is backdated."
+))
+
+# Metric guidance: rates over raw counts. Without this, Genie answers cross-group
+# questions ("out-of-range readings by device model / diagnosis / region") with a
+# raw COUNT(*), which just ranks groups by fleet size — and inverts the real picture
+# (the smallest cohort often has the HIGHEST out-of-range rate). Steer it to rates,
+# Battelino level-2 danger bands, and device-health signals that actually reflect the
+# device (completeness / gaps), not patient physiology.
+_ensure_genie_instruction(GENIE_SPACE_ID, "Metric Guidance - rates over counts", (
+    "For ANY comparison across groups (device_model, patient_diagnosis, region, "
+    "firmware_version), ALWAYS report a RATE or PERCENTAGE, never a raw COUNT of "
+    "readings — a raw count just ranks groups by how many patients/readings they have. "
+    "Use ROUND(AVG(glucose_out_of_range)*100,1) AS out_of_range_pct, not COUNT(*). "
+    "For 'high risk', prefer the Battelino level-2 danger bands very low <54 and very "
+    "high >250 mg/dL (AVG(CASE WHEN glucose<54 OR glucose>250 THEN 1 ELSE 0 END)*100) "
+    "rather than the routine <70/>180 flag. For DEVICE-HEALTH or fault questions, do "
+    "NOT use glucose excursions — a failing CGM reports FEWER or biased readings, not "
+    "more out-of-range glucose; use data completeness (readings vs the expected "
+    "~288/day at 5-min cadence), missing-reading gaps, or calibration bias. If a user "
+    "asks for the 'number' or 'total' of out-of-range readings by a group, answer with "
+    "the RATE and note briefly that raw counts mostly reflect group size."
 ))
 print(f"Genie Space ID: {GENIE_SPACE_ID}")
 
