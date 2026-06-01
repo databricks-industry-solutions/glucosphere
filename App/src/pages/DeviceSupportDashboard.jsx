@@ -629,7 +629,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.lastReading}</td>
                       <td className="px-4 py-3">
                         <span className={`text-sm font-mono font-bold ${
-                          device.glucose_value < 70 ? 'text-amber-400' : 'text-rose-400'
+                          (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
                         }`}>
                           {device.glucose_value ? `${device.glucose_value} mg/dL` : 'N/A'}
                         </span>
@@ -665,7 +665,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
                                   <span className={`font-mono font-bold ${
-                                    device.glucose_value < 70 ? 'text-amber-400' : 'text-rose-400'
+                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
                                   }`}>
                                     {device.glucose_value} mg/dL
                                   </span>
