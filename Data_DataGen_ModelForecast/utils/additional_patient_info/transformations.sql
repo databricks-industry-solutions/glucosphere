@@ -39,7 +39,7 @@ AS SELECT
   time,
   case when glucose_observed < 70 then 'hypoglycemia' when glucose_observed > 180 then 'hyperglycemia' else 'in_range' end as event_type,
   case when glucose_observed < 70 then 1 when glucose_observed > 180 then 1 when incident_type is null then 0 else 1 end as glucose_out_of_range,
-  glucose_observed as glucose,
+  greatest(least(glucose_observed, 400), 40) as glucose,  -- CGM ceiling/floor (HI>400, LO<40); gold-layer backstop so device-observed glucose is always physiological regardless of source
   steps,
   basal_rate,
   bolus_volume_delivered,

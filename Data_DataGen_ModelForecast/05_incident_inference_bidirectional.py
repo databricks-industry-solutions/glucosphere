@@ -631,15 +631,19 @@ _in_window = _in_window_1 | _in_window_2
 # Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the patient's incident
 # window. signed_bias_mgdl is +magnitude for cohort 1 (window 1), -magnitude for cohort 2
 # (window 2 mirror) — set at cohort selection time above.
-# Clamp the biased value to the physiological CGM range [40, 400] mg/dL — matches the
-# baseline (01_synthetic_baseline.py:147) and forecast-modeling (04:1006) clamps. Without
-# this, the -magnitude (under-read) bias on a reading near the 40 floor drives glucose to
-# 0 or below — clinically impossible (real CGMs report "LO" below 40, never 0).
+# Clamp glucose_observed to the physiological CGM range [40, 400] mg/dL for EVERY reading
+# (not just the incident window): real CGMs report "LO" below 40 and "HI" above 400, so the
+# device-observed value never falls outside [40,400] — under-read bias must not drive it to
+# 0, AND baseline hyperglycemia (true glucose can exceed 400) must read as the 400 ceiling.
+# (glucose_true is left unclamped — it's the real underlying value, which can exceed 400.)
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
-    F.when(_in_window,
-           F.greatest(F.least(F.col("glucose_observed") + F.col("signed_bias_mgdl"), F.lit(400.0)), F.lit(40.0)))
-     .otherwise(F.col("glucose_observed"))
+    F.greatest(
+        F.least(
+            F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
+             .otherwise(F.col("glucose_observed")),
+            F.lit(400.0)),
+        F.lit(40.0))
 ).withColumn(
     "incident_type",
     F.when(_in_window, F.lit("calibration_bias")).otherwise(F.lit(None).cast("string"))
