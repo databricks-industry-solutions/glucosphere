@@ -22,7 +22,21 @@ SCHEMA_NAME = dbutils.widgets.get("SCHEMA_NAME")
 G = f"{CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings"
 R = f"{CATALOG_NAME}.{SCHEMA_NAME}.silver_patient_registry"
 F = f"{CATALOG_NAME}.{SCHEMA_NAME}.fleet_forecast_incident"
+P = f"{CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled"
 print(f"Sanity-checking {CATALOG_NAME}.{SCHEMA_NAME}")
+
+# COMMAND ----------
+
+# MAGIC %run ./additional_patient_info/_device_model_spec
+
+# COMMAND ----------
+
+# device_model cohort gating uses the SAME shared spec the generators use, so the gate
+# auto-tracks the single source of truth and FAILS the run if a future change ever
+# decouples device_model from bias direction again (e.g. the old random fallback that
+# biased all six models). POS_BIAS_MODELS / NEG_BIAS_MODELS / CLEAN_MODELS come from the
+# %run above.
+_in = lambda ms: ",".join(f"'{m}'" for m in ms)
 
 # COMMAND ----------
 
@@ -50,6 +64,15 @@ checks = [
     ("patients_without_forecast",
      f"SELECT COUNT(*) FROM (SELECT DISTINCT patient_id FROM {G}) g LEFT ANTI JOIN {F} f ON g.patient_id = f.patient_id",
      "Patient in gold with no forecast row (would render '—')"),
+    ("clean_models_in_incident",
+     f"SELECT COUNT(*) FROM (SELECT DISTINCT p.patient_id FROM {P} p JOIN {R} r ON p.patient_id=r.patient_id WHERE p.has_incident=1 AND r.device_model IN ({_in(CLEAN_MODELS)}))",
+     f"Control device model ({'/'.join(CLEAN_MODELS)}) assigned to an incident cohort — must stay clean"),
+    ("positive_cohort_wrong_model",
+     f"SELECT COUNT(*) FROM (SELECT DISTINCT p.patient_id FROM {P} p JOIN {R} r ON p.patient_id=r.patient_id WHERE p.has_incident=1 AND p.incident_direction='positive' AND r.device_model NOT IN ({_in(POS_BIAS_MODELS)}))",
+     f"Over-read (positive) incident on a device that is not {'/'.join(POS_BIAS_MODELS)}"),
+    ("negative_cohort_wrong_model",
+     f"SELECT COUNT(*) FROM (SELECT DISTINCT p.patient_id FROM {P} p JOIN {R} r ON p.patient_id=r.patient_id WHERE p.has_incident=1 AND p.incident_direction='negative' AND r.device_model NOT IN ({_in(NEG_BIAS_MODELS)}))",
+     f"Under-read (negative) incident on a device that is not {'/'.join(NEG_BIAS_MODELS)}"),
 ]
 
 violations = []
@@ -65,8 +88,11 @@ for name, sql, desc in checks:
 if violations:
     lines = "\n".join(f"  - {name}: {n} rows — {desc}" for name, n, desc in violations)
     raise RuntimeError(
-        "Data sanity checks FAILED — clinically-impossible records present:\n" + lines +
-        "\n\nFix the data-gen (notebooks 04/05/06 for glucose; the registry generator for "
-        "diagnosis-by-age) and re-run. This gate exists so implausible data never reaches the demo."
+        "Data sanity checks FAILED — implausible or inconsistent records present:\n" + lines +
+        "\n\nFix the data-gen and re-run: notebooks 04/05/06 for glucose; the registry generator "
+        "for diagnosis-by-age; the shared utils/additional_patient_info/_device_model_spec for any "
+        "device_model cohort-gating failure (device_model must be a deterministic function of "
+        "patient_id, identical across 05 + the registry + the telemetry generator). This gate "
+        "exists so implausible/inconsistent data never reaches the demo."
     )
 print("\n[SUCCESS] All data sanity checks passed — no clinically-impossible records.")

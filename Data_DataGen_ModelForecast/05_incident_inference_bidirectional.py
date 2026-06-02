@@ -374,6 +374,10 @@ import numpy as np
 
 # COMMAND ----------
 
+# MAGIC %run ./utils/additional_patient_info/_device_model_spec
+
+# COMMAND ----------
+
 # DBTITLE 1,Load clean pseudo data
 # ------------------------
 # Load clean pseudo data (from baseline notebook)
@@ -497,70 +501,41 @@ bias_magnitude = getattr(cfg, 'calibration_bias_magnitude_mgdl', cfg.calibration
 window1_signed_bias = +bias_magnitude
 window2_signed_bias = -bias_magnitude if window2_direction == 'negative' else +bias_magnitude
 
-# Pull patient → device_model mapping from raw_patient_registry (source of
-# truth — the same parquet that silver_patient_registry reads from). Falls
-# back to a deterministic random shuffle if the volume path isn't available
-# at runtime (e.g., on a fresh workspace where raw data hasn't landed yet).
-POS_POOL_MODELS = ['Alpha', 'Gamma']
-NEG_POOL_MODELS = ['Beta', 'Delta']
-_RAW_REGISTRY_PATH = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/raw_patient_registry/"
-_device_model_join_available = False
-try:
-    _patient_models = (spark.read.format("parquet").load(_RAW_REGISTRY_PATH)
-        .select("patient_id", "device_model").distinct())
-    _patient_models.count()  # force materialization to surface read errors here
-    _device_model_join_available = True
-    print(f"\n✅ Loaded device_model mapping from {_RAW_REGISTRY_PATH}")
-except Exception as _e:
-    print(f"\n⚠️  Could not load device_model from raw_patient_registry ({type(_e).__name__}: {str(_e)[:120]})")
-    print(f"   → Falling back to random cohort assignment (device_model uncorrelated with bias direction)")
+# device_model is a DETERMINISTIC function of patient_id (md5 hash bucket) defined
+# once in _device_model_spec (%run'd above) and shared identically by the registry +
+# telemetry generators. So 05 needs NO registry read, NO fallback, and the cohorts are
+# fully reproducible across every run and workspace. The positive cohort is drawn from
+# the over-read models (POS_BIAS_MODELS), the negative from the under-read models
+# (NEG_BIAS_MODELS); CLEAN_MODELS (Epsilon/Zeta) never enter an incident cohort.
+POS_POOL_MODELS = POS_BIAS_MODELS
+NEG_POOL_MODELS = NEG_BIAS_MODELS
+_all_with_model = all_patients.withColumn(
+    "device_model", F.expr(device_model_case_sql("patient_id")))
+_pos_pool = _all_with_model.where(F.col("device_model").isin(POS_POOL_MODELS))
+_neg_pool = _all_with_model.where(F.col("device_model").isin(NEG_POOL_MODELS))
 
-if _device_model_join_available:
-    _all_with_model = all_patients.join(_patient_models, "patient_id", "left")
-    _pos_pool = _all_with_model.where(F.col("device_model").isin(POS_POOL_MODELS))
-    _neg_pool = _all_with_model.where(F.col("device_model").isin(NEG_POOL_MODELS))
-
-    cohort1 = (_pos_pool
-      .orderBy(F.rand(seed=cfg.seed))
-      .limit(n1)
-      .select("patient_id")
-      .withColumn("incident_direction", F.lit(window1_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
-      .withColumn("incident_window_idx", F.lit(1))
-      .withColumn("has_incident", F.lit(1))
-    )
-    cohort2 = (_neg_pool
-      .orderBy(F.rand(seed=cfg.seed + 1))
-      .limit(n2)
-      .select("patient_id")
-      .withColumn("incident_direction", F.lit(window2_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
-      .withColumn("incident_window_idx", F.lit(2))
-      .withColumn("has_incident", F.lit(1))
-    )
-    incident_patients = cohort1.unionByName(cohort2)
-    print(f"   Positive cohort drawn from {POS_POOL_MODELS}")
-    print(f"   Negative cohort drawn from {NEG_POOL_MODELS}")
-else:
-    # Fallback: original deterministic shuffle, mutually exclusive cohorts
-    from pyspark.sql import Window as _W
-    _shuffle_window = _W.orderBy(F.rand(seed=cfg.seed))
-    _ranked = all_patients.withColumn("_rank", F.row_number().over(_shuffle_window))
-    cohort1 = (_ranked.filter(F.col("_rank") <= F.lit(n1))
-      .withColumn("incident_direction", F.lit(window1_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
-      .withColumn("incident_window_idx", F.lit(1))
-      .withColumn("has_incident", F.lit(1))
-      .drop("_rank")
-    )
-    cohort2 = (_ranked.filter((F.col("_rank") > F.lit(n1)) & (F.col("_rank") <= F.lit(n1 + n2)))
-      .withColumn("incident_direction", F.lit(window2_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
-      .withColumn("incident_window_idx", F.lit(2))
-      .withColumn("has_incident", F.lit(1))
-      .drop("_rank")
-    )
-    incident_patients = cohort1.unionByName(cohort2)
+cohort1 = (_pos_pool
+  .orderBy(F.rand(seed=cfg.seed))
+  .limit(n1)
+  .select("patient_id")
+  .withColumn("incident_direction", F.lit(window1_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
+  .withColumn("incident_window_idx", F.lit(1))
+  .withColumn("has_incident", F.lit(1))
+)
+cohort2 = (_neg_pool
+  .orderBy(F.rand(seed=cfg.seed + 1))
+  .limit(n2)
+  .select("patient_id")
+  .withColumn("incident_direction", F.lit(window2_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
+  .withColumn("incident_window_idx", F.lit(2))
+  .withColumn("has_incident", F.lit(1))
+)
+incident_patients = cohort1.unionByName(cohort2)
+print(f"   device_model assigned deterministically from patient_id (md5 bucket)")
+print(f"   Positive cohort drawn from {POS_POOL_MODELS} (over-read)")
+print(f"   Negative cohort drawn from {NEG_POOL_MODELS} (under-read)")
 
 # Legacy variable for back-compat with downstream prints/expected-impact math
 n_incident_patients = n1 + n2

@@ -64,7 +64,7 @@ AS SELECT
   b.activation_date,
   b.birth_year,
   c.device_id,
-  b.device_model,  -- registry SSOT: device_model is a fixed per-device property, so take it from the registry (one row/patient), NOT the time-fuzzy telemetry temporal join (which disagreed for ~82% of readings). firmware_version below stays from telemetry (it IS time-varying).
+  b.device_model,  -- registry SSOT: device_model is a fixed per-device property, so take it from the registry (one row/patient), NOT a time-fuzzy telemetry temporal join. device_model is now a deterministic function of patient_id (shared _device_model_spec), so registry, telemetry, and 05's incident cohorts all carry the IDENTICAL value — the historical ~82% registry-vs-telemetry disagreement is gone. firmware_version below stays from telemetry (it IS time-varying).
   c.firmware_version,
   a.glucose,
   a.glucose_out_of_range,
