@@ -19,6 +19,22 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-02]
+
+Deploy-tooling ergonomics for side-by-side sandbox deployments, plus an end-to-end `from_source` validation of the whole Issue-#2 branch ahead of the PR to `main`.
+
+### Changed — free-name harness Apps via `${var.app_name}`
+- The three harness targets (`gsphere_synth_e2e`, `gsphere_from_table_e2e`, `gsphere_from_source_e2e`) previously hardcoded the App resource `name:` to a composed string (`${var.app_basename}-<mode>-e2e-${var.dev_initials}`, e.g. `glucosphere-source-e2e-mmt`), so `BUNDLE_VAR_app_name` was silently ignored on the sandbox targets. Each harness `resources.apps.glucosphere_app.name` now references **`${var.app_name}`** (matching the production `gsphere` target, which already did). The per-target `variables.app_name` keeps the old composed string as its **default**, so:
+  - **unset** → identical name to before (back-compat);
+  - **`export BUNDLE_VAR_app_name=gsphere-v0-1`** → App deploys under that free name, enabling multiple independent sandbox copies (`gsphere-v0-1`, `-v0-2`, …) to coexist. This works because env-var `BUNDLE_VAR_*` outranks a per-target `variables:` default in [DABs variable precedence](https://docs.databricks.com/aws/en/dev-tools/bundles/variables) (command-line `--var` > `BUNDLE_VAR_*` env > `variable-overrides.json` > target default > top-level default).
+- Mirrored in `databricks.yml`, `databricks.yml.example`, and an updated `.env.bundle.example` example line. App names remain 2–30 chars, lowercase/digits/hyphens. Production `glucosphere-app` is untouched (`${var.app_name}` default).
+
+### Changed — App UI copy
+- First-visit welcome modal CTA relabeled **"Take the 60-second tour" → "Take a guided tour"** (`AboutModal.jsx`). The button opens the guided tour's **Quick (4-step) / Full (10-step) chooser** (no preset variant), so the old "60-second" label under-described what it launches; the new copy matches the sibling "Take a tour" launchers in the nav rail + landing header. Static bundle rebuilt.
+
+### Validated — end-to-end `from_source` (PR pre-merge)
+- Full setup-job run on an **isolated sandbox** (`gsphere_from_source_e2e` → `mmt_aws_usw2_catalog.glucosphere_from_source_e2e`, app `gsphere-v0-1` via the free-naming above) — all 16 active tasks **SUCCESS** (synthetic branch correctly EXCLUDED), incl. the `data_sanity_checks` gate passing on the real HUPA-UCM path. Gold `gold_patient_device_readings`: glucose range exactly **[40.0, 400.0]**, **1,000** patients, ~1.98M readings. App came up **HTTP 200**, `/api/config` reporting the correct `from_source` provenance + sandbox catalog/schema + resolved Genie space. Confirms the whole Issue-#2 branch deploys, runs, and serves on a fresh workspace. *(Note: device→bias cohorts are random in this run — the known determinism follow-up, not a blocker.)*
+
 ## [2026-06-01]
 
 Clinical data-plausibility hardening + near-term-forecast coherence + a sanity gate, surfaced by a pre-demo audit. Fixes live in the data-gen notebooks (apply on the next pipeline run; re-run against the live `from_source` baseline). A full table backup is taken before any re-run.
