@@ -1,0 +1,86 @@
+# AGENTS.md — operating principles for this repo
+
+Guidance for AI coding agents (and humans) working in Glucosphere. This complements
+`CONTRIBUTING.md` (human workflow) and the per-area `README.md` files. It captures
+project-specific principles that are easy to get wrong and expensive to discover late.
+
+> Tool-general Databricks-notebook editing gotchas (e.g. `%run` must be the only content
+> of its cell; notebook cell edits are position-fragile) are **not** repo-specific — keep
+> those in a reusable agent skill, not here. This file is for **Glucosphere** facts.
+
+## 1. Data-gen is the source of truth — make synthetic attributes deterministic
+
+Per-patient synthetic attributes must be a **deterministic function of `patient_id`**, not
+a random draw, a positional zip onto a non-deterministic Spark order, or a seed that only
+holds within one notebook. Otherwise the same patient gets different values across runs and
+across the notebooks that each "invent" the attribute, and the demo's story silently breaks
+on a fresh deploy.
+
+- `device_model` is `md5(patient_id)` → weighted bucket, defined **once** in
+  `Data_DataGen_ModelForecast/utils/additional_patient_info/_device_model_spec.py` and
+  `%run`-shared by the incident simulation (`05`), the patient registry, and the device
+  telemetry generator — so all three carry the identical value with no read-ordering
+  dependency and **no random fallback**.
+- The calibration-bias cohorts (over-read `Alpha/Gamma`, under-read `Beta/Delta`, clean
+  `Epsilon/Zeta`) follow from that deterministic `device_model`.
+- If you add a new synthetic attribute, follow the same pattern (derive from `patient_id`,
+  define once, share). Do not reach for `np.random.choice` zipped to `distinct().toPandas()`.
+
+## 2. Enforce data invariants in the sanity gate, not by inspection
+
+`Data_DataGen_ModelForecast/utils/data_sanity_checks.py` runs after the pipeline and
+**fails the job** on clinically-impossible or story-breaking data (glucose outside the CGM
+range, implausible diagnosis-by-age, a clean device model appearing in an incident cohort,
+etc.). When you add a load-bearing invariant, add a check here so a regression breaks the
+run loudly instead of shipping silently.
+
+## 3. Fix data issues at the source; a column's definition must match its docs
+
+A derived column is consumed by many panels. Fix the **definition** once rather than
+patching each consumer. And a metric must mean what its documentation says — e.g.
+`glucose_out_of_range` is *purely* `glucose < 70 OR glucose > 180` (matching the Genie /
+Metrics-Explained docs); it must not fold in unrelated state like incident membership,
+which would inflate every out-of-range panel.
+
+## 4. A visualization that doesn't "pop" is an app/query fix — never a data mutation
+
+If a chart reads muddy, change the **query or the panel**, not the shared pipeline data.
+Never re-run the pipeline against the shared schema to make a visual look better — that
+rewrites the dataset every other view reads. Pick the metric that actually carries the
+signal (e.g. device-error / calibration drift reads cleanly where a whole-window
+out-of-range *rate* is diluted by the real-data baseline).
+
+## 5. Validate on a sandbox, never the frozen demo
+
+Data-gen changes take effect on a pipeline re-run. Run them against an **isolated sandbox**
+catalog/schema (the `*_e2e` harness targets), never the live/frozen demo schema. Verify the
+result (query the gold tables, check the sanity gate passed) before declaring success.
+
+## 6. App deploy hygiene — pin the app name; render before deploy
+
+The Databricks App resource is named `${var.app_name}`. **Always pass the same
+`BUNDLE_VAR_app_name` on every deploy** — deploying with a different (or default) name
+renames/recreates the app resource, which tears down its endpoint (DNS) and service
+principal grants. For sandbox deploys: render `app.yaml` for the target *before*
+`bundle deploy`, deploy + run the app, then revert the rendered `app.yaml` (it carries
+production defaults in git). New App service principals need UC + warehouse + endpoint
+grants (`scripts/grant_app_sp.py`).
+
+## 7. Clinical honesty
+
+Report **rates, not raw counts** (a model with more patients isn't "worse" for having more
+readings). Remember the real CGM baseline: people with diabetes sit out-of-range ~⅓ of the
+time, so a transient device fault is invisible in a whole-window OOR rate — surface it with
+a direct device-error view instead. Keep clinical thresholds data-agnostic and honest.
+
+## 8. Leave it better — and keep this file living (the campsite rule)
+
+Leave every artifact you touch a little better than you found it: a stale comment, a broken
+link, a misleading doc, a redundant query you noticed while doing something else — fix it in
+the same pass, don't file it for "later." That applies to code, config, docs, and assets.
+
+This file (and the per-area READMEs, and any reusable agent skills) is **living** — when you
+learn a new gotcha or land an improvement worth remembering, **add it here** so the next
+contributor (agent or human) inherits it instead of rediscovering it the hard way. A lesson
+that only lives in one person's head or one session's memory will be re-learned expensively.
+Project-specific lessons → this file; reusable tool-general lessons → the relevant skill.

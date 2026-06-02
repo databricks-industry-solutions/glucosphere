@@ -374,6 +374,10 @@ import numpy as np
 
 # COMMAND ----------
 
+# MAGIC %run ./utils/additional_patient_info/_device_model_spec
+
+# COMMAND ----------
+
 # DBTITLE 1,Load clean pseudo data
 # ------------------------
 # Load clean pseudo data (from baseline notebook)
@@ -497,70 +501,41 @@ bias_magnitude = getattr(cfg, 'calibration_bias_magnitude_mgdl', cfg.calibration
 window1_signed_bias = +bias_magnitude
 window2_signed_bias = -bias_magnitude if window2_direction == 'negative' else +bias_magnitude
 
-# Pull patient → device_model mapping from raw_patient_registry (source of
-# truth — the same parquet that silver_patient_registry reads from). Falls
-# back to a deterministic random shuffle if the volume path isn't available
-# at runtime (e.g., on a fresh workspace where raw data hasn't landed yet).
-POS_POOL_MODELS = ['Alpha', 'Gamma']
-NEG_POOL_MODELS = ['Beta', 'Delta']
-_RAW_REGISTRY_PATH = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/raw_patient_registry/"
-_device_model_join_available = False
-try:
-    _patient_models = (spark.read.format("parquet").load(_RAW_REGISTRY_PATH)
-        .select("patient_id", "device_model").distinct())
-    _patient_models.count()  # force materialization to surface read errors here
-    _device_model_join_available = True
-    print(f"\n✅ Loaded device_model mapping from {_RAW_REGISTRY_PATH}")
-except Exception as _e:
-    print(f"\n⚠️  Could not load device_model from raw_patient_registry ({type(_e).__name__}: {str(_e)[:120]})")
-    print(f"   → Falling back to random cohort assignment (device_model uncorrelated with bias direction)")
+# device_model is a DETERMINISTIC function of patient_id (md5 hash bucket) defined
+# once in _device_model_spec (%run'd above) and shared identically by the registry +
+# telemetry generators. So 05 needs NO registry read, NO fallback, and the cohorts are
+# fully reproducible across every run and workspace. The positive cohort is drawn from
+# the over-read models (POS_BIAS_MODELS), the negative from the under-read models
+# (NEG_BIAS_MODELS); CLEAN_MODELS (Epsilon/Zeta) never enter an incident cohort.
+POS_POOL_MODELS = POS_BIAS_MODELS
+NEG_POOL_MODELS = NEG_BIAS_MODELS
+_all_with_model = all_patients.withColumn(
+    "device_model", F.expr(device_model_case_sql("patient_id")))
+_pos_pool = _all_with_model.where(F.col("device_model").isin(POS_POOL_MODELS))
+_neg_pool = _all_with_model.where(F.col("device_model").isin(NEG_POOL_MODELS))
 
-if _device_model_join_available:
-    _all_with_model = all_patients.join(_patient_models, "patient_id", "left")
-    _pos_pool = _all_with_model.where(F.col("device_model").isin(POS_POOL_MODELS))
-    _neg_pool = _all_with_model.where(F.col("device_model").isin(NEG_POOL_MODELS))
-
-    cohort1 = (_pos_pool
-      .orderBy(F.rand(seed=cfg.seed))
-      .limit(n1)
-      .select("patient_id")
-      .withColumn("incident_direction", F.lit(window1_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
-      .withColumn("incident_window_idx", F.lit(1))
-      .withColumn("has_incident", F.lit(1))
-    )
-    cohort2 = (_neg_pool
-      .orderBy(F.rand(seed=cfg.seed + 1))
-      .limit(n2)
-      .select("patient_id")
-      .withColumn("incident_direction", F.lit(window2_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
-      .withColumn("incident_window_idx", F.lit(2))
-      .withColumn("has_incident", F.lit(1))
-    )
-    incident_patients = cohort1.unionByName(cohort2)
-    print(f"   Positive cohort drawn from {POS_POOL_MODELS}")
-    print(f"   Negative cohort drawn from {NEG_POOL_MODELS}")
-else:
-    # Fallback: original deterministic shuffle, mutually exclusive cohorts
-    from pyspark.sql import Window as _W
-    _shuffle_window = _W.orderBy(F.rand(seed=cfg.seed))
-    _ranked = all_patients.withColumn("_rank", F.row_number().over(_shuffle_window))
-    cohort1 = (_ranked.filter(F.col("_rank") <= F.lit(n1))
-      .withColumn("incident_direction", F.lit(window1_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
-      .withColumn("incident_window_idx", F.lit(1))
-      .withColumn("has_incident", F.lit(1))
-      .drop("_rank")
-    )
-    cohort2 = (_ranked.filter((F.col("_rank") > F.lit(n1)) & (F.col("_rank") <= F.lit(n1 + n2)))
-      .withColumn("incident_direction", F.lit(window2_direction))
-      .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
-      .withColumn("incident_window_idx", F.lit(2))
-      .withColumn("has_incident", F.lit(1))
-      .drop("_rank")
-    )
-    incident_patients = cohort1.unionByName(cohort2)
+cohort1 = (_pos_pool
+  .orderBy(F.rand(seed=cfg.seed))
+  .limit(n1)
+  .select("patient_id")
+  .withColumn("incident_direction", F.lit(window1_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window1_signed_bias))
+  .withColumn("incident_window_idx", F.lit(1))
+  .withColumn("has_incident", F.lit(1))
+)
+cohort2 = (_neg_pool
+  .orderBy(F.rand(seed=cfg.seed + 1))
+  .limit(n2)
+  .select("patient_id")
+  .withColumn("incident_direction", F.lit(window2_direction))
+  .withColumn("signed_bias_mgdl", F.lit(window2_signed_bias))
+  .withColumn("incident_window_idx", F.lit(2))
+  .withColumn("has_incident", F.lit(1))
+)
+incident_patients = cohort1.unionByName(cohort2)
+print(f"   device_model assigned deterministically from patient_id (md5 bucket)")
+print(f"   Positive cohort drawn from {POS_POOL_MODELS} (over-read)")
+print(f"   Negative cohort drawn from {NEG_POOL_MODELS} (under-read)")
 
 # Legacy variable for back-compat with downstream prints/expected-impact math
 n_incident_patients = n1 + n2
@@ -631,10 +606,19 @@ _in_window = _in_window_1 | _in_window_2
 # Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the patient's incident
 # window. signed_bias_mgdl is +magnitude for cohort 1 (window 1), -magnitude for cohort 2
 # (window 2 mirror) — set at cohort selection time above.
+# Clamp glucose_observed to the physiological CGM range [40, 400] mg/dL for EVERY reading
+# (not just the incident window): real CGMs report "LO" below 40 and "HI" above 400, so the
+# device-observed value never falls outside [40,400] — under-read bias must not drive it to
+# 0, AND baseline hyperglycemia (true glucose can exceed 400) must read as the 400 ceiling.
+# (glucose_true is left unclamped — it's the real underlying value, which can exceed 400.)
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
-    F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
-     .otherwise(F.col("glucose_observed"))
+    F.greatest(
+        F.least(
+            F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
+             .otherwise(F.col("glucose_observed")),
+            F.lit(400.0)),
+        F.lit(40.0))
 ).withColumn(
     "incident_type",
     F.when(_in_window, F.lit("calibration_bias")).otherwise(F.lit(None).cast("string"))
@@ -1732,18 +1716,26 @@ fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
 # Plot 1: Overlaid histograms — 4 classes
 ax1 = axes[0, 0]
-ax1.hist(baseline_glucose, bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='darkgray')
-ax1.hist(clean_glucose, bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='mediumturquoise')
+# Density view: exclude readings pinned to the [40, 400] device floor/ceiling. The
+# clamp (a real CGM reports "LO"<40 / "HI">400) makes the under-read cohort pile at 40
+# and the over-read cohort at 400; in a density histogram that boundary pile-up is a
+# tall spike that dominates the y-axis and squashes the distribution shape. Plotting
+# only the strictly-in-band values shows the real shift cleanly. (The rate bars at
+# top-right and the CDF below keep ALL readings — incl. the floor/ceiling ones — so the
+# clinical signal, e.g. the under-read cohort's hypo surge, is never hidden.)
+_band = lambda a: a[(a > 40) & (a < 400)] if len(a) else a
+ax1.hist(_band(baseline_glucose), bins=80, alpha=0.4, label='Baseline (Real)', density=True, range=(40, 400), color='darkgray')
+ax1.hist(_band(clean_glucose), bins=80, alpha=0.4, label='Clean Period', density=True, range=(40, 400), color='mediumturquoise')
 if len(incident_pos_glucose):
-    ax1.hist(incident_pos_glucose, bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
+    ax1.hist(_band(incident_pos_glucose), bins=80, alpha=0.5, label='Incident — + cohort (+40)', density=True, range=(40, 400), color='red')
 if len(incident_neg_glucose):
-    ax1.hist(incident_neg_glucose, bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='blue')
+    ax1.hist(_band(incident_neg_glucose), bins=80, alpha=0.5, label='Incident — − cohort (-40)', density=True, range=(40, 400), color='blue')
 ax1.axvspan(40, 70, alpha=0.15, color='lightcoral')   # hypo zone — red-family (medical danger convention)
 ax1.axvspan(70, 180, alpha=0.1, color='grey')          # normal range — neutral
 ax1.axvspan(180, 400, alpha=0.15, color='lightblue')  # hyper zone — blue-family (visually contrasts with red positive-cohort line)
 ax1.axvline(70, color='red', linestyle='--', linewidth=1, alpha=0.5)
 ax1.axvline(180, color='orange', linestyle='--', linewidth=1, alpha=0.5)
-ax1.set_xlabel('Glucose (mg/dL)', fontsize=12, fontweight='bold', color='#888888')
+ax1.set_xlabel('Glucose (mg/dL) — device floor/ceiling (40/400) excluded', fontsize=12, fontweight='bold', color='#888888')
 ax1.set_ylabel('Density', fontsize=12, fontweight='bold', color='#888888')
 ax1.set_title('Glucose Distribution: Baseline vs Clean vs Incident (split by cohort)', fontsize=12, fontweight='bold', color='#888888')
 # Per-axis legend removed — single combined legend lives on ax3 (CDF lower-right empty quadrant).
@@ -2158,9 +2150,9 @@ else:
 
 # DBTITLE 1,Fleet Forecast Table (Demo Output)
 # ------------------------
-# Fleet forecast NOW using registered models
-# Use RANDOM timepoint from middle days (3-5) to avoid edge effects
-# Filter out clipped floor values (glucose_observed <= 40)
+# Fleet forecast using registered models
+# Anchor at each patient's LATEST reading (genuinely near-term; agrees with the Coach 7-day chart end)
+# Filter out clamped floor values (glucose_observed <= 40)
 # ------------------------
 import mlflow.xgboost
 
@@ -2186,13 +2178,15 @@ df_with_day = (df
   .drop("t0")
 )
 
-# Select ONE random timepoint per patient from days 3-5 (middle of timeline)
-# Filter out clipped floor values (glucose_observed <= 40) - these are data artifacts
-w_random = Window.partitionBy("patient_id").orderBy(F.rand(seed=cfg.seed))
+# Forecast anchor = each patient's LATEST reading, so the near-term forecast is genuinely
+# "from now" and agrees with the Coach 7-day chart's last point. (Was: a random day-3-5
+# mid-timeline point, which disagreed with the chart end by ~2 days and wasn't actually
+# near-term.) Exclude clamped-floor readings (glucose_observed <= 40) as the anchor — they
+# are floor artifacts, not a meaningful "current" value to forecast from.
+w_latest = Window.partitionBy("patient_id").orderBy(F.col("time").desc())
 fleet_sample = (df_with_day
-  .filter((F.col("day_idx") >= 3) & (F.col("day_idx") <= 5))  # Middle days
-  .filter(F.col("glucose_observed") > 40)  # Exclude clipped floor values
-  .withColumn("rn", F.row_number().over(w_random))
+  .filter(F.col("glucose_observed") > 40)  # skip clamped-floor artifacts as the anchor
+  .withColumn("rn", F.row_number().over(w_latest))
   .filter("rn=1")
   .drop("rn", "day_idx")
 )
@@ -2201,8 +2195,10 @@ fleet_pd = fleet_sample.toPandas()
 X_fleet = fleet_pd[feature_cols].to_numpy(dtype=np.float32)
 dfleet = xgb.DMatrix(X_fleet, feature_names=feature_cols)
 
-fleet_pd["pred_15m"] = bst15.predict(dfleet)
-fleet_pd["pred_30m"] = bst30.predict(dfleet)
+# Clamp model predictions to the physiological CGM range [40, 400] (matches the observed
+# clamp) so a rare tail prediction can't surface a sub-40 / >400 forecast value.
+fleet_pd["pred_15m"] = np.clip(bst15.predict(dfleet), 40, 400)
+fleet_pd["pred_30m"] = np.clip(bst30.predict(dfleet), 40, 400)
 fleet_pd["delta_15m"] = fleet_pd["pred_15m"] - fleet_pd["glucose_observed"]
 fleet_pd["delta_30m"] = fleet_pd["pred_30m"] - fleet_pd["glucose_observed"]
 
@@ -2216,8 +2212,8 @@ print(f"   Patients: {len(fleet_output):,}")
 print(f"   Glucose range: [{fleet_output['glucose_observed'].min():.0f}, {fleet_output['glucose_observed'].max():.0f}] mg/dL")
 print(f"   Average glucose: {fleet_output['glucose_observed'].mean():.1f} mg/dL")
 print(f"   Patients at 40 mg/dL: {(fleet_output['glucose_observed'] == 40).sum()} (should be 0)")
-print(f"\nSampling: Random timepoint from days 3-5, glucose > 40 mg/dL")
-print(f"   * Avoids edge effects (timeline start/end)")
+print(f"\nAnchor: each patient's LATEST reading, glucose > 40 mg/dL")
+print(f"   * Near-term forecast from the most recent point (matches the Coach 7-day chart end)")
 print(f"   * Excludes clipped floor values (data artifacts)")
 
 display(spark.table(fleet_forecast_tbl).orderBy(F.desc("delta_30m")).limit(20))

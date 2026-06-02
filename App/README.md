@@ -8,7 +8,7 @@ This application provides:
 - **Real-time Device Monitoring**: Track device health, out-of-range events, and anomalies
 - **Landing Page Metrics**: Active patients, devices online, high-risk alerts
 - **Incident Analysis**: Visualize CGM device calibration incidents and their impact
-- **Multi-Agent Supervisor**: AI-powered device troubleshooting and analysis
+- **Switchable AI assistant**: a fast app-side router (Genie / Knowledge Assistant / foundation model) with a live ⚡ Fast / 🤖 MAS toggle to the Multi-Agent Supervisor — device troubleshooting + clinical Q&A
 - **Heatmap Analytics**: Device performance by model and firmware version
 
 ## Architecture
@@ -16,7 +16,7 @@ This application provides:
 - **Frontend**: React + Vite + Tailwind CSS
 - **Backend**: Flask (proxy server for Databricks APIs)
 - **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
-- **AI Agent**: Databricks Multi-Agent Supervisor
+- **AI assistant**: switchable — a fast app-side **router** (Genie / Knowledge Assistant / foundation model, called directly; default) or the Databricks **Multi-Agent Supervisor** (toggle). See *Assistant engine switch* below.
 
 ### Agent endpoints — Genie / KA / MAS (often confused)
 
@@ -26,7 +26,7 @@ The App's natural-language query experience is powered by **three native Databri
 |---|---|---|
 | **Genie** | Gold table `<catalog>.<schema>.gold_patient_device_readings` | Natural-language → SQL over **structured CGM data** (patient readings, device incidents, fleet stats, trends) |
 | **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
-| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type | The endpoint the App's chat UI actually calls — operator never invokes Genie or KA directly. Branded as "GlucoScope" in `08_genie_ka_mas.py` |
+| **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type (5–7 serial LLM calls) | Available as the **🤖 MAS** engine toggle. Branded "GlucoScope" in `08_genie_ka_mas.py`. **Not** the default — the app's **default fast router calls Genie / KA / a foundation model directly** (see *Assistant engine switch* below). |
 
 The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
 
@@ -60,6 +60,45 @@ Examples of the routing in practice:
 - *"What's the WHO diagnostic threshold for type-2 diabetes?"* → MAS routes to **KA** → RAG over WHO PDF
 - *"Which device firmware has the highest out-of-range rate?"* → MAS routes to **Genie** → SQL aggregation
 - *"What does the WHO say about gestational diabetes screening?"* → MAS routes to **KA** → RAG over PDF
+
+### Assistant engine switch — Fast router vs Multi-Agent Supervisor
+
+The Device-support assistant + the per-device "Clinical Analysis" both flow through one
+backend route, `POST /api/assist`, with a **switchable engine** (live UI toggle in the
+assistant header, ⚡ Fast / 🤖 MAS; persisted in `localStorage`, default from the
+`ASSIST_ENGINE` env in `app.yaml`):
+
+| Engine | Path | Latency | Notes |
+|---|---|---|---|
+| **`direct`** (default, ⚡ Fast) | App-side router → calls **one** specialist directly: keyword-route to **KA** (WHO/clinical terms) else a **foundation model** (`databricks-claude-sonnet-4-6`) for device reasoning; `mode:'analysis'` adds fleet-stats enrichment | ~6–15s, reliable | One decision → one direct call |
+| **`mas`** (🤖) | The **Multi-Agent Supervisor** above (Genie + KA) | erratic 17s → >300s under load | Kept for live A/B; preserved/reversible |
+
+**Why the switch exists.** The Agent-Bricks MAS runs 5–7 sequential LLM calls
+(supervisor + sub-agents + their FMs); under shared-endpoint contention the per-call queue
+delay multiplies and the chain blows past the **~300s Databricks Apps gateway timeout** →
+`504 upstream request timeout`. The direct router makes one call (or two for routing), so it
+stays fast even under load — matching Databricks' own guidance that deterministic
+chains/routers have "typically lower latency (fewer LLM calls for orchestration)." The CGM-data
+(Genie) mode is unchanged and always calls Genie directly. Full root-cause analysis:
+[`ref_notes/2026-05-31_mas-latency-troubleshooting.md`](../ref_notes/2026-05-31_mas-latency-troubleshooting.md).
+
+```mermaid
+%%{init: {'theme': 'neutral'}}%%
+flowchart LR
+    U[Device-support question<br/>/api/assist]
+    SW{engine?}
+    KW{clinical / WHO<br/>keyword?}
+    FM[Foundation model<br/>databricks-claude-sonnet-4-6]
+    KA2[Knowledge Assistant<br/>RAG over WHO PDF]
+    MAS2[Multi-Agent Supervisor<br/>Genie + KA, 5–7 serial calls]
+    U --> SW
+    SW -->|direct ⚡| KW
+    SW -->|mas 🤖| MAS2
+    KW -->|yes| KA2
+    KW -->|no| FM
+    classDef sw fill:#ffffff,stroke:#666,stroke-width:1.5px;
+    class SW,KW sw;
+```
 
 ## Project Structure
 
@@ -146,12 +185,12 @@ This will:
 - **Heatmap**: Out-of-range events by device type and firmware
 - **Device Details**: Expandable table with device information
 - **Pattern Alerts**: Emerging anomalies across device cohorts
-- **AI Troubleshooting**: Multi-agent supervisor for device analysis
+- **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
-### Multi-Agent Supervisor
-- Chat interface for device troubleshooting
-- Deeper analysis for specific devices
-- Integration with CGM analytics and clinical knowledge
+### Assistant (fast router · MAS toggle)
+- Chat interface for device troubleshooting (`/api/assist`)
+- Deeper per-device Clinical Analysis (fast FM + fleet-stats enrichment by default)
+- Integration with CGM analytics (Genie) and clinical knowledge (KA) — called directly by the router, or via the MAS supervisor when toggled. See *Assistant engine switch* above.
 
 ## Data Schema
 
@@ -163,7 +202,7 @@ Key columns:
 - `device_id`, `patient_id`, `time`
 - `glucose`, `glucose_out_of_range`
 - `device_model`, `firmware_version`
-- `region`, `diabetes_type`
+- `region`, `patient_diagnosis`
 
 Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
@@ -204,9 +243,10 @@ Python runtime is provided by the Databricks Apps platform — no local Python p
 | Service | Where used | Why it's used |
 | --- | --- | --- |
 | **Databricks Statement Execution API** | `App/databricks/app.py` `/api/sql/query` | Routes SQL queries to the bundle-managed serverless warehouse |
-| **Multi-Agent Supervisor (MAS) serving endpoint** | `App/databricks/app.py` `/api/clinician-summary` | Clinical reasoning queries |
-| **Knowledge Assistant (KA) serving endpoint** | Routed through MAS | RAG over WHO clinical-guidelines PDF |
-| **Genie space** | Routed through MAS | NL-to-SQL over gold device tables |
+| **Foundation model** (`databricks-claude-sonnet-4-6`) | `app.py` `/api/assist` (engine=direct) | Device reasoning / Device Analysis — the default fast router's reasoning path |
+| **Knowledge Assistant (KA) serving endpoint** | `app.py` `/api/assist` (called directly by the router for clinical Qs; or via MAS) | RAG over WHO clinical-guidelines PDF |
+| **Genie space** | `app.py` `/api/genie/query` (CGM-data mode, direct) and via the router/MAS | NL-to-SQL over gold device tables |
+| **Multi-Agent Supervisor (MAS) serving endpoint** | `app.py` `/api/assist` (engine=mas — the 🤖 toggle, not default) | Agentic multi-agent orchestration (Beta; slower) |
 | **Databricks Apps Platform** | Deployment target | Hosts Flask + React static build |
 
 ## License + support

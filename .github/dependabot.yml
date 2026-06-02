@@ -1,0 +1,31 @@
+# Dependabot — automated dependency-update PRs (review + merge).
+# NOTE: Dependabot only activates from the repository's DEFAULT branch (main);
+# on a feature branch this file is inert until merged.
+version: 2
+updates:
+  # React / Vite frontend
+  - package-ecosystem: "npm"
+    directory: "/App"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      frontend:
+        patterns: ["*"]
+    labels: ["dependencies", "frontend"]
+
+  # Flask app backend
+  - package-ecosystem: "pip"
+    directory: "/App/databricks"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "backend"]
+
+  # Project Python (notebooks / tooling)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]

@@ -42,6 +42,7 @@ These `.py` files start with `# Databricks notebook source` and are intended to 
 | `utils/sanity_summary.py` | Post-ingest summary metrics — verifies `diabetes_data` populated correctly regardless of which baseline_source path produced it. |
 | `utils/check_post_endpoint_grants.py` | Post-deploy verification that serving endpoints are queryable + permissions set correctly. |
 | `utils/validate_diabetes_data.py` | Data-quality assertions used by `sanity_summary.py` + as a standalone QC notebook. |
+| `utils/data_sanity_checks.py` | **Clinical-plausibility gate** (runs post-DLT, gates `create_genie_ka_mas`) — fails the job if gold/registry contain impossible records: T2D under 13, gestational age outside 15–55, glucose outside [40,400], or a patient with no forecast row. So implausible data can't reach the app. |
 | `utils/additional_patient_info/transformations.sql` | **SDP / DLT pipeline source** — bronze → silver → gold transforms for the `cgm_silver_gold` Spark Declarative Pipeline. |
 | `utils/additional_patient_info/Create *.ipynb` | 3 setup notebooks: raw patient registry, raw device telemetry, patient-device link table. Wired into `glucosphere_full_setup` between `incident_inference` and `run_dlt_pipeline`. |
 
@@ -49,7 +50,7 @@ These `.py` files start with `# Databricks notebook source` and are intended to 
 
 ### Suggested run order (Databricks)
 
-The `glucosphere_full_setup` job orchestrates this DAG automatically — `databricks bundle run glucosphere_full_setup -t <target>` runs the whole flow. The full task DAG (16 tasks) is in [`REPO_LAYOUT.md`](../REPO_LAYOUT.md#workflow-dag--glucosphere_full_setup). Per-notebook ordering:
+The `glucosphere_full_setup` job orchestrates this DAG automatically — `databricks bundle run glucosphere_full_setup -t <target>` runs the whole flow. The full task DAG (17 tasks) is in [`REPO_LAYOUT.md`](../REPO_LAYOUT.md#workflow-dag--glucosphere_full_setup). Per-notebook ordering:
 
 1. **Validate + grants preflight**: `utils/validate_baseline_source.py` → `utils/check_pre_baseline_grants.py`
 2. **Baseline ingest (one of, via condition_task dispatch on `baseline_source`)**:
@@ -62,8 +63,9 @@ The `glucosphere_full_setup` job orchestrates this DAG automatically — `databr
    - `07_deploy_serving_endpoints.py` (creates 15m + 30m serving endpoints)
 6. **Patient/device data setup**: 3 setup notebooks in `utils/additional_patient_info/` (registry → device telemetry → link table)
 7. **SDP pipeline**: `run_dlt_pipeline` task invokes `cgm_silver_gold` pipeline (silver_* + gold_patient_device_readings tables)
-8. **Agent endpoints**: `08_genie_ka_mas.py` (Genie + KA + MAS)
-9. **Grant chain**: `utils/check_post_endpoint_grants.py` → `09_grant_app_permissions.py`
+8. **Data sanity gate**: `utils/data_sanity_checks.py` — fails the run on clinically-impossible records (T2D<13, implausible gestational age, glucose outside [40,400], no-forecast patients); gates the agent/app layer
+9. **Agent endpoints**: `08_genie_ka_mas.py` (Genie + KA + MAS)
+10. **Grant chain**: `utils/check_post_endpoint_grants.py` → `09_grant_app_permissions.py`
 
 Standalone job (NOT in `glucosphere_full_setup`): `glucosphere_distribution_comparison` runs `03_compare_baseline_modes.py` for side-by-side baseline-mode statistical comparison.
 

@@ -8,6 +8,15 @@ env:
   # render_app_yaml.py rewrites these per-target.
   - name: ENDPOINT_NAME
     value: "mas-bae6759d-endpoint"
+  # Direct-engine router (/api/assist) — bypasses the slow MAS supervisor. KA = WHO
+  # Knowledge Assistant; FM = foundation model for device reasoning. ASSIST_ENGINE is
+  # the default ('direct' | 'mas'); the UI can override per-request to A/B them live.
+  - name: KA_ENDPOINT_NAME
+    value: "ka-4cd8c014-endpoint"
+  - name: FM_ENDPOINT
+    value: "databricks-claude-sonnet-4-6"
+  - name: ASSIST_ENGINE
+    value: "direct"
   - name: GENIE_SPACE_ID
     value: "01f15c24270e10e98a4c45cd605e6301"
   - name: CATALOG_NAME
@@ -38,6 +47,11 @@ resources:
     description: "WHO Knowledge Assistant serving endpoint"
     serving_endpoint:
       name: ka-4cd8c014-endpoint
+      permission: CAN_QUERY
+  - name: fm-endpoint
+    description: "Foundation model for the direct-engine router (device reasoning)"
+    serving_endpoint:
+      name: databricks-claude-sonnet-4-6
       permission: CAN_QUERY
   - name: sql-warehouse
     description: "SQL warehouse for CGM data queries"

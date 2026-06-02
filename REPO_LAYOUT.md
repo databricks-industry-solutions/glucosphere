@@ -75,7 +75,7 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 | Path | Stack | What it does |
 |---|---|---|
 | [`App/src/`](App/src/) | React (Vite) | frontend root — `App.jsx`, `main.jsx`, `index.css`, `ErrorBoundary.jsx` |
-| [`App/src/pages/GlucoseLandingDashboard.jsx`](App/src/pages/GlucoseLandingDashboard.jsx) | React | landing page ("GlucoStream Intelligence") |
+| [`App/src/pages/GlucoseLandingDashboard.jsx`](App/src/pages/GlucoseLandingDashboard.jsx) | React | landing page ("Glucosphere") |
 | [`App/src/pages/DiabetesCoachDashboard.jsx`](App/src/pages/DiabetesCoachDashboard.jsx) | React | patient-facing coach dashboard |
 | [`App/src/pages/CareManagementDashboard.jsx`](App/src/pages/CareManagementDashboard.jsx) | React | clinician dashboard |
 | [`App/src/pages/DeviceSupportDashboard.jsx`](App/src/pages/DeviceSupportDashboard.jsx) | React | device-team dashboard |
@@ -102,7 +102,7 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 
 ## Workflow DAG — `glucosphere_full_setup`
 
-16 tasks defined in [`databricks.yml`](databricks.yml) `resources.jobs.glucosphere_full_setup.tasks`. Branching at `dispatch_baseline_source` (condition_task on `baseline_source`); merge at `sanity_summary`; fan-out from `datagen_modeling`; converge again at `run_dlt_pipeline`.
+17 tasks defined in [`databricks.yml`](databricks.yml) `resources.jobs.glucosphere_full_setup.tasks`. Branching at `dispatch_baseline_source` (condition_task on `baseline_source`); merge at `sanity_summary`; fan-out from `datagen_modeling`; converge again at `run_dlt_pipeline`; clinical-plausibility gate (`data_sanity_checks`) before `create_genie_ka_mas`.
 
 ```mermaid
 flowchart TD
@@ -121,6 +121,7 @@ flowchart TD
     I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
     I2[create_device_telemetry<br/><i>utils/additional_patient_info/Create Raw Device Data.ipynb</i>]
     J[run_dlt_pipeline<br/><i>invokes cgm_silver_gold SDP</i>]
+    SC[data_sanity_checks<br/><i>clinical-plausibility gate</i>]
     K[create_genie_ka_mas<br/><i>08_genie_ka_mas.py</i>]
     L[check_post_endpoint_grants<br/><i>utils/check_post_endpoint_grants.py</i>]
     M[grant_app_permissions<br/><i>09_grant_app_permissions.py</i>]
@@ -139,7 +140,7 @@ flowchart TD
     I1 --> J
     I2 --> J
     G2 --> J
-    J --> K --> L --> M
+    J --> SC --> K --> L --> M
 
     class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
 ```
@@ -164,7 +165,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 
 ### Workflow job orchestration
 
-- `databricks.yml` → `resources.jobs.glucosphere_full_setup` — main DAG (16 tasks, see Mermaid above)
+- `databricks.yml` → `resources.jobs.glucosphere_full_setup` — main DAG (17 tasks, see Mermaid above)
 - `databricks.yml` → `resources.jobs.glucosphere_distribution_comparison` — standalone baseline-comparison job
 - `Data_DataGen_ModelForecast/01_*` through `09_*` + `utils/*.py` — task implementation notebooks
 
