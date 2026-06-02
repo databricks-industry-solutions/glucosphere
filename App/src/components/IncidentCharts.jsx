@@ -891,7 +891,7 @@ export function GlucoseAbsoluteChart() {
         <p className="text-xs text-slate-500 font-mono">
           Affected patients only. Green = true glucose, Red = positive-bias cohort device readings (+40 mg/dL at Day 2 incident), Blue = negative-bias cohort device readings (-40 mg/dL at Day 5 incident).
         </p>
-        <Link to="/metrics-explained#me-bias-timeline" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+        <Link to="/metrics-explained#me-distribution-shift" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
           How this is computed →
         </Link>
         <div className="mt-4 space-y-1.5">

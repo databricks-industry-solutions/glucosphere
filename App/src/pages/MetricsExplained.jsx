@@ -444,11 +444,11 @@ ORDER BY minute`}
           </div>
 
           {/* How MAE alerts are triggered — distribution shift view (4-panel snapshot from 05_incident_inference_bidirectional notebook) */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-distribution-shift" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">How MAE alerts are triggered</h3>
-                <p className="text-xs text-slate-500 font-mono">Distribution shift view — why MAE spikes signal device drift</p>
+                <p className="text-xs text-slate-500 font-mono">Distribution shift view — why MAE spikes signal device drift. Companion explainer for the "Actual vs Device Readings (per-cohort)" landing chart.</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">DISTRIBUTION</span>
             </div>
