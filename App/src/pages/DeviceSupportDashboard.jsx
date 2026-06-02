@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getCalibrationDrift } from '../api/databricksSQL';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getCalibrationDrift, getFirmwareLifecycle } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import { getConfig } from '../api/config';
@@ -38,6 +38,12 @@ export default function DeviceSupportDashboard() {
   const [heatmapLoading, setHeatmapLoading] = useState(true);
   const [deviceTypes, setDeviceTypes] = useState([]);
   const [firmwareVersions, setFirmwareVersions] = useState([]);
+  // Firmware × day device-error (MAE) for the date×firmware heatmap (reuses the same
+  // getFirmwareLifecycle data as the Firmware Lifecycle line chart).
+  const [fwHeat, setFwHeat] = useState([]);          // [{ day, firmware_version, mae }]
+  const [fwDays, setFwDays] = useState([]);          // sorted unique days (columns)
+  const [fwRows, setFwRows] = useState([]);          // sorted unique firmware versions (rows)
+  const [fwHeatLoading, setFwHeatLoading] = useState(true);
   const [devices, setDevices] = useState([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
@@ -113,6 +119,30 @@ export default function DeviceSupportDashboard() {
     };
 
     fetchHeatmapData();
+  }, []);
+
+  // Fetch firmware × day device error (MAE) for the date×firmware heatmap.
+  useEffect(() => {
+    const fetchFwHeat = async () => {
+      try {
+        setFwHeatLoading(true);
+        const data = await getFirmwareLifecycle();  // [{ day, firmwareVersion, mae, readings }]
+        if (data && data.length > 0) {
+          const rows = data.map(d => ({ day: d.day, firmware_version: d.firmwareVersion, mae: d.mae }));
+          setFwHeat(rows);
+          setFwDays([...new Set(rows.map(r => r.day))].sort());                 // dates ascending
+          setFwRows([...new Set(rows.map(r => r.firmware_version))].sort());    // 3.14 < 4.0 < 4.0.3 < 4.1
+        } else {
+          setFwHeat([]); setFwDays([]); setFwRows([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch firmware lifecycle heatmap:', error);
+        setFwHeat([]); setFwDays([]); setFwRows([]);
+      } finally {
+        setFwHeatLoading(false);
+      }
+    };
+    fetchFwHeat();
   }, []);
 
   // Fetch out-of-range device readings from database
@@ -364,6 +394,25 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     return `rgb(${lerp(30, 59)} ${lerp(41, 130)} ${lerp(59, 246)})`;
   };
 
+  // Device-error (MAE mg/dL) colour for the firmware × day heatmap: ~0 → neutral slate
+  // (clean), scaling green → amber → red toward the injected ~40 mg/dL fault. Gradiated,
+  // scaled against the larger of 40 or the observed max so a full fault reads saturated.
+  const fwMaeMax = fwHeat.length ? Math.max(40, ...fwHeat.map(d => d.mae)) : 40;
+  const getMaeColor = (mae) => {
+    // Clean (≈0) renders EMERALD (matching the legend's "0 clean" end), scaling
+    // amber → red toward the ~40 mg/dL fault — so an active firmware-day is always a
+    // filled green→red cell. Only firmware-days with NO data (firmware not deployed
+    // then) stay dark/N-A, handled by the grid (`has ? getMaeColor(...) : darkNA`).
+    const t = Math.min(Math.max(mae || 0, 0) / fwMaeMax, 1);
+    const mix = (a, b, u) => Math.round(a + (b - a) * u);
+    if (t < 0.5) {                                          // emerald → amber
+      const u = t / 0.5;
+      return `rgb(${mix(34, 234, u)} ${mix(197, 179, u)} ${mix(94, 8, u)})`;
+    }
+    const u = (t - 0.5) / 0.5;                              // amber → red
+    return `rgb(${mix(234, 239, u)} ${mix(179, 68, u)} ${mix(8, 68, u)})`;
+  };
+
   // Build the model × window grid for the calibration-drift strip. Window 1
   // (positive/over-read) and Window 2 (negative/under-read) are mutually-exclusive
   // cohorts; models with no cohort in a window (incl. clean Epsilon/Zeta) show 0.
@@ -447,50 +496,51 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             {/* Heatmap */}
             <div data-tour="anomaly-heatmap" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4 h-14">
-                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Out-of-Range Rate</h3>
-                <p className="text-xs text-slate-500 font-mono">% of readings out-of-range, by device type and firmware</p>
+                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Error by Firmware × Day</h3>
+                <p className="text-xs text-slate-500 font-mono">mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted</p>
               </div>
               
-              <div className="flex flex-col gap-3">
-                {/* Heatmap grid */}
-                <div className="flex-1 min-w-0">
-                  {heatmapLoading ? (
+              <div className="flex-1 flex flex-col gap-3">
+                {/* Heatmap grid: firmware (rows) × day (cols); cell = device-error MAE. */}
+                <div className="flex-1 min-w-0 flex flex-col">
+                  {fwHeatLoading ? (
                     <div className="flex items-center justify-center h-48 text-slate-500">
-                      Loading heatmap data...
+                      Loading device-error data...
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {/* X-axis labels — fixed height + bottom-aligned so the
-                          device-model rows line up with the Calibration Drift panel. */}
-                      <div className="flex items-end gap-3 h-14">
-                        <div className="w-24" />
-                        {firmwareVersions.map(fw => (
-                          <div key={fw} className="flex-1 text-center">
-                            <span className="text-sm font-mono text-slate-400">{fw}</span>
+                    <div className="h-full flex flex-col gap-2">
+                      {/* X-axis: days (MM-DD) */}
+                      <div className="flex items-end gap-2 h-14 shrink-0">
+                        <div className="w-16" />
+                        {fwDays.map(day => (
+                          <div key={day} className="flex-1 text-center">
+                            <span className="text-[11px] font-mono text-slate-400">{String(day).slice(5)}</span>
                           </div>
                         ))}
                       </div>
 
-                      {/* Heatmap cells */}
-                      {deviceTypes.map(deviceType => (
-                        <div key={deviceType} className="flex items-center gap-3">
-                          <div className="w-24 text-sm text-slate-300 font-mono">{deviceType}</div>
-                          {firmwareVersions.map(fw => {
-                            const data = heatmapData.find(d => d.device_type === deviceType && d.firmware_version === fw);
-                            const oorPct = data ? data.out_of_range_pct : 0;
+                      {/* Rows: firmware versions — flex-fill the panel height so the
+                          (few) firmware rows balance the taller model×window panel beside
+                          them instead of leaving white space below. */}
+                      <div className="flex-1 flex flex-col gap-2">
+                      {fwRows.map(fw => (
+                        <div key={fw} className="flex items-stretch gap-2 flex-1">
+                          <div className="w-16 text-sm text-slate-300 font-mono flex items-center">{fw}</div>
+                          {fwDays.map(day => {
+                            const cell = fwHeat.find(d => d.firmware_version === fw && d.day === day);
+                            const has = !!cell;
+                            const mae = has ? cell.mae : 0;
 
                             return (
                               <div
-                                key={fw}
-                                className="flex-1 h-10 rounded-lg cursor-pointer hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
-                                style={{
-                                  backgroundColor: getHeatmapColor(oorPct)
-                                }}
+                                key={day}
+                                className="flex-1 min-h-[2.25rem] rounded-lg hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
+                                style={{ backgroundColor: has ? getMaeColor(mae) : 'rgb(15 23 42)' }}
                               >
                                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
                                   <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-sm font-mono whitespace-nowrap shadow-xl">
-                                    <span className="text-cyan-400 font-bold">{oorPct}%</span>
-                                    <span className="text-slate-400"> out-of-range</span>
+                                    <span className="text-cyan-400 font-bold">{has ? mae : '—'}</span>
+                                    <span className="text-slate-400"> mg/dL · FW {fw} · {String(day).slice(5)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -498,28 +548,37 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                           })}
                         </div>
                       ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Horizontal legend (colorbar) — below the grid (frees width in the
-                    narrow column); low→high left to right. */}
-                {!heatmapLoading && (
-                  <div className="flex items-center gap-2 pl-24">
-                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{minOorPct}%</span>
-                    <span className="text-[10px] font-mono text-slate-500">Low</span>
+                {/* Legend (colorbar) — device error mg/dL, clean→fault left to right. */}
+                {!fwHeatLoading && fwHeat.length > 0 && (
+                  <div className="flex items-center gap-2 pl-16">
+                    <span className="text-[10px] font-mono text-emerald-400 font-bold">0</span>
+                    <span className="text-[10px] font-mono text-slate-500">clean</span>
                     <div className="flex-1 flex flex-row rounded overflow-hidden">
-                      {[0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0].map((normalized, i) => (
+                      {Array.from({ length: 21 }, (_, i) => i / 20).map((n, i) => (
                         <div
                           key={i}
                           className="flex-1 h-5"
-                          style={{ backgroundColor: getHeatmapColor(minOorPct + (normalized * (maxOorPct - minOorPct))) }}
+                          style={{ backgroundColor: getMaeColor(n * fwMaeMax) }}
                         />
                       ))}
                     </div>
-                    <span className="text-[10px] font-mono text-slate-500">High</span>
-                    <span className="text-[10px] font-mono text-rose-400 font-bold">{maxOorPct}%</span>
+                    <span className="text-[10px] font-mono text-slate-500">fault</span>
+                    <span className="text-[10px] font-mono text-rose-400 font-bold">~{Math.round(fwMaeMax)}</span>
                   </div>
+                )}
+                {/* Roadmap note — the current fault is bimodal (clean ≈0 / acute ±40), so
+                    clean firmware-days read uniform green. The richer per-firmware DRIFT
+                    gradient (devices degrade gradually over a firmware's life) lands when
+                    the data-gen models that — see CHANGELOG / PR. Honest now, denser later. */}
+                {!fwHeatLoading && fwHeat.length > 0 && (
+                  <p className="text-[10px] font-mono text-slate-600 mt-2 pl-16 leading-relaxed">
+                    Roadmap: a per-firmware <span className="text-slate-500">drift gradient</span> (devices degrade gradually over a firmware's life) — more cells will shade green→amber→red as the data-gen models device degradation.
+                  </p>
                 )}
               </div>
             </div>
@@ -682,15 +741,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             </div>
           </div>
 
-          {/* Baseline / dilution note — bridges the OOR heatmap (left) and the
-              Calibration Drift panel (center). Explains WHY a 3-hour firmware fault
-              washes out in the whole-window OOR rate but is glaring in drift: the
-              ~31–39% baseline is real clinical variability (glucose synthesized from
-              HUPA-UCM), not device error. Keeps the "honest prominence" framing
-              defensible under review. */}
+          {/* Why-two-views note — both panels measure device error DIRECTLY; this explains
+              the metric choice (why NOT a whole-window out-of-range rate): the real HUPA-UCM
+              baseline (~31–39% OOR even on healthy firmware) would dilute a 3-hour fault.
+              Keeps oorBaselineRange/baselineNote (computed from the live OOR data) in use. */}
           <div className="mt-6 bg-slate-900/30 border border-slate-800/70 rounded-lg px-5 py-3 text-[11px] font-mono text-slate-500 leading-relaxed">
             <span className="text-slate-300">Why two views? </span>
-            The <span className="text-slate-400">Out-of-Range</span> heatmap reads <span className="text-slate-400">{oorBaselineRange} across models</span> — even healthy device/firmware — because patient glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why}. That <span className="text-slate-400">baseline</span> <span className="text-amber-400/80">dilutes</span> a 3-hour firmware fault in the whole-window OOR rate. <span className="text-slate-400">Calibration Drift</span> measures the device error directly (≈0&nbsp;mg/dL when calibrated, ±40 during the incident), so the same fault stands out cleanly — honest prominence, no data inflation.
+            Both read <span className="text-slate-400">device error</span> directly (|observed − true|, ≈0 calibrated / ±40 faulted): the <span className="text-slate-400">Firmware × Day</span> heatmap shows <span className="text-slate-400">which firmware drifts and when</span> (FW 4.0 lights up on the incident days; 3.14 before and 4.1 after stay ~0), and <span className="text-slate-400">Calibration Drift</span> shows <span className="text-slate-400">which models and which direction</span> (over- vs under-read). We measure error directly because a whole-window <span className="text-slate-400">out-of-range rate</span> reads <span className="text-slate-400">{oorBaselineRange}</span> even on healthy firmware — glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why} — so that baseline would <span className="text-amber-400/80">dilute</span> a 3-hour fault. Honest signal, no data inflation.
           </div>
         </section>
 

@@ -689,39 +689,48 @@ FROM ${catalog}.${schema}.silver_patient_registry`}
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Anomaly Heatmap</h3>
-                <p className="text-xs text-slate-500 font-mono">Device type vs. Firmware version</p>
+                <p className="text-xs text-slate-500 font-mono">Device error (MAE) · Firmware × Day</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">AGGREGATION</span>
             </div>
-            
+
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Total out-of-range glucose events for each combination of device model and firmware version. 
-                  Color intensity indicates severity (green = low, red = high).
+                  Mean device error (|observed − true|, mg/dL) for each firmware version on each day.
+                  Faulty firmware lights up on its incident days (~40 mg/dL); clean firmware (before the
+                  rollout / after the recall) sits near 0. Color scales with the error (slate = clean,
+                  green → amber → red). Device error is used here — not a whole-window out-of-range
+                  rate, which the real-data baseline (~⅓ of readings) would dilute.
                 </p>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT
-  device_model as device_type,
-  CAST(firmware_version AS STRING) as firmware_version,
-  ROUND(AVG(glucose_out_of_range) * 100, 1) as out_of_range_pct
-FROM ${catalog}.${schema}.gold_patient_device_readings
-GROUP BY device_model, firmware_version
-ORDER BY device_model, firmware_version`}
+  DATE(g.time) as day,
+  CAST(g.firmware_version AS STRING) as firmware_version,
+  -- MAE over the affected (in-incident) readings, so a fault day shows its true
+  -- ~40 mg/dL magnitude instead of a whole-day average that dilutes the 3-hour fault
+  ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL
+                 THEN ABS(p.glucose_observed - p.glucose_true) END), 1) as device_error_mae
+FROM ${catalog}.${schema}.gold_patient_device_readings g
+JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+  ON g.patient_id = p.patient_id AND g.time = p.time
+WHERE g.firmware_version IS NOT NULL
+GROUP BY DATE(g.time), CAST(g.firmware_version AS STRING)
+ORDER BY day, firmware_version`}
                 </pre>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Axes (Dynamic):</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-cyan-400">X-axis (top):</span> Unique firmware versions extracted from data</li>
-                  <li>• <span className="font-mono text-cyan-400">Y-axis (left):</span> Unique device models extracted from data</li>
-                  <li>• <span className="font-mono text-amber-400">Cell values:</span> % of readings out-of-range (AVG(glucose_out_of_range)*100) for that combination — a rate, so models with more patients aren't ranked worse just for having more readings</li>
+                  <li>• <span className="font-mono text-cyan-400">X-axis (top):</span> Day (the rolling demo week)</li>
+                  <li>• <span className="font-mono text-cyan-400">Y-axis (left):</span> Firmware version (3.14 → 4.0 → 4.1)</li>
+                  <li>• <span className="font-mono text-amber-400">Cell values:</span> mean device error |observed − true| mg/dL for that firmware on that day — ≈0 when calibrated, ~40 during a fault</li>
                 </ul>
               </div>
               
