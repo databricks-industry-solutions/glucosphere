@@ -21,7 +21,7 @@ export default function AboutModal({ open, onClose, onStartTour }) {
         <div className="flex flex-wrap gap-3 mt-5">
           <button onClick={onStartTour}
             className="flex items-center gap-2 px-4 py-2 border border-cyan-500/50 text-cyan-300 rounded-lg hover:bg-cyan-500/10 transition-colors text-sm font-medium">
-            <Compass className="w-4 h-4" /> Take the 60-second tour
+            <Compass className="w-4 h-4" /> Take a guided tour
           </button>
           <button onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-slate-200 text-sm">Explore on my own</button>
         </div>
