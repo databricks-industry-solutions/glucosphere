@@ -86,4 +86,11 @@ on a.patient_id = b.patient_id
 
 left outer join silver_device_telemetry_stream c
 on a.patient_id = c.patient_id
-and a.time between c.start_time and c.end_time
+-- Half-open interval [start_time, end_time): each firmware interval's end_time equals the
+-- NEXT interval's start_time (telemetry builds them via lead(start_time)), so an inclusive
+-- BETWEEN matched a reading at the exact transition instant to BOTH adjacent intervals —
+-- duplicating that one reading per firmware change (1000 patients x 3 changes = 3000 dup
+-- gold rows, fanning out every firmware-joined query). `>= start AND < end` makes each
+-- reading match exactly one interval. The final interval's end_time is a far-future
+-- sentinel, so `< end` still admits all real readings.
+and a.time >= c.start_time and a.time < c.end_time

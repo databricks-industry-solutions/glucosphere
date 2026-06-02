@@ -6,6 +6,11 @@
 # MAGIC implausible row (e.g. a 9-year-old with Type 2 diabetes, a >55yo "gestational" patient,
 # MAGIC a glucose reading of 0 mg/dL) can never silently reach the app/demo again.
 # MAGIC
+# MAGIC Also gates **data-story consistency** the demo depends on: device_model ↔ bias-direction
+# MAGIC cohorts, and firmware era ↔ cohort / device-error tier (the over-read fault on 4.0, the
+# MAGIC under-read fault on 4.0.3, and the faulty firmwares reading noisier than the clean ones —
+# MAGIC so the Device-Error-by-Firmware×Day heatmap gradient can't silently regress).
+# MAGIC
 # MAGIC Runs AFTER the DLT pipeline builds `gold_patient_device_readings` (so it checks the
 # MAGIC consumption-layer table the app actually reads) + `fleet_forecast_incident`.
 # MAGIC
@@ -28,6 +33,10 @@ print(f"Sanity-checking {CATALOG_NAME}.{SCHEMA_NAME}")
 # COMMAND ----------
 
 # MAGIC %run ./additional_patient_info/_device_model_spec
+
+# COMMAND ----------
+
+# MAGIC %run ./additional_patient_info/_firmware_spec
 
 # COMMAND ----------
 
@@ -73,6 +82,35 @@ checks = [
     ("negative_cohort_wrong_model",
      f"SELECT COUNT(*) FROM (SELECT DISTINCT p.patient_id FROM {P} p JOIN {R} r ON p.patient_id=r.patient_id WHERE p.has_incident=1 AND p.incident_direction='negative' AND r.device_model NOT IN ({_in(NEG_BIAS_MODELS)}))",
      f"Under-read (negative) incident on a device that is not {'/'.join(NEG_BIAS_MODELS)}"),
+    # ── Firmware era ↔ cohort gating (mirrors the device_model checks; uses _firmware_spec) ──
+    # The firmware a reading carries must match the demo story: every reading is on one of the
+    # 4 spec versions; the over-read fault (window 1) sits on 4.0; the under-read fault
+    # (window 2) sits on 4.0.3. Fails the run if the telemetry firmware CASE ever drifts from
+    # the device-noise σ eras 05 uses (they share _firmware_spec, so this should hold by
+    # construction — the gate guards against a future decoupling).
+    ("firmware_unexpected_version",
+     f"SELECT COUNT(*) FROM {G} WHERE firmware_version IS NOT NULL AND CAST(firmware_version AS STRING) NOT IN ({_in(FIRMWARE_VERSIONS)})",
+     f"gold firmware_version outside the expected set ({'/'.join(FIRMWARE_VERSIONS)})"),
+    ("window1_overread_not_on_4_0",
+     f"SELECT COUNT(*) FROM {P} p JOIN {G} g ON p.patient_id=g.patient_id AND p.time=g.time WHERE p.incident_type='calibration_bias' AND p.incident_direction='positive' AND CAST(g.firmware_version AS STRING) <> '4.0'",
+     "Over-read (window-1) incident reading not on firmware 4.0"),
+    ("window2_underread_not_on_4_0_3",
+     f"SELECT COUNT(*) FROM {P} p JOIN {G} g ON p.patient_id=g.patient_id AND p.time=g.time WHERE p.incident_type='calibration_bias' AND p.incident_direction='negative' AND CAST(g.firmware_version AS STRING) <> '4.0.3'",
+     "Under-read (window-2) incident reading not on firmware 4.0.3"),
+    # Device-error gradient: the faulty firmwares' measurement noise (σ≈11) must read clearly
+    # above the clean firmwares' (σ≈3–4) on NON-incident readings — otherwise the heatmap is
+    # flat and the σ tiers have regressed. Measured as mean|observed−true| (the heatmap metric).
+    ("device_error_tier_not_gradient",
+     f"""SELECT CASE WHEN faulty_err > clean_err + 2.0 THEN 0 ELSE 1 END FROM (
+            SELECT
+              (SELECT AVG(ABS(p.glucose_observed - p.glucose_true)) FROM {P} p JOIN {G} g
+                 ON p.patient_id=g.patient_id AND p.time=g.time
+                 WHERE p.incident_type IS NULL AND CAST(g.firmware_version AS STRING) IN ({_in(FAULTY_FIRMWARES)})) AS faulty_err,
+              (SELECT AVG(ABS(p.glucose_observed - p.glucose_true)) FROM {P} p JOIN {G} g
+                 ON p.patient_id=g.patient_id AND p.time=g.time
+                 WHERE p.incident_type IS NULL AND CAST(g.firmware_version AS STRING) IN ({_in(CLEAN_FIRMWARES)})) AS clean_err
+         )""",
+     f"Faulty firmware ({'/'.join(FAULTY_FIRMWARES)}) device error not clearly above clean ({'/'.join(CLEAN_FIRMWARES)}) — heatmap gradient lost"),
 ]
 
 violations = []
@@ -92,7 +130,10 @@ if violations:
         "\n\nFix the data-gen and re-run: notebooks 04/05/06 for glucose; the registry generator "
         "for diagnosis-by-age; the shared utils/additional_patient_info/_device_model_spec for any "
         "device_model cohort-gating failure (device_model must be a deterministic function of "
-        "patient_id, identical across 05 + the registry + the telemetry generator). This gate "
+        "patient_id, identical across 05 + the registry + the telemetry generator); the shared "
+        "utils/additional_patient_info/_firmware_spec for any firmware-era / device-error-tier "
+        "failure (the telemetry firmware CASE and 05's device-noise sigma both derive their eras "
+        "from it, so they must agree by construction). This gate "
         "exists so implausible/inconsistent data never reaches the demo."
     )
 print("\n[SUCCESS] All data sanity checks passed — no clinically-impossible records.")

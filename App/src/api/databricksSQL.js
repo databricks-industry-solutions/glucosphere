@@ -351,8 +351,11 @@ export async function getFirmwareLifecycle() {
   // rather than a whole-day average that dilutes the ~3-hour incident to a few mg/dL.
   // Fallback to the all-readings mean (~0) on days/firmwares with no fault, so clean
   // firmwares stay flat at baseline. The COUNT(incident) > COUNT(DISTINCT incident device)
-  // guard ignores the single boundary reading each device carries when the firmware rollout
-  // flips mid-incident (else the prior firmware would falsely spike on the rollout day).
+  // guard is defense-in-depth: it requires more than one in-incident reading per device
+  // before showing the in-incident MAE. (Firmware-boundary row duplication — a reading at
+  // the exact rollout instant landing in BOTH adjacent firmware intervals — is now fixed at
+  // source via the half-open [start,end) join in transformations.sql, so the prior firmware
+  // no longer catches a spurious boundary reading on the rollout day.)
   const query = `
     SELECT
       DATE(g.time) as day,
@@ -667,5 +670,53 @@ export async function getCalibrationDrift() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown, getCalibrationDrift };
+// Per-firmware fault cohort: which DEVICE MODELS were faulted on each firmware, in which
+// DIRECTION (over- vs under-read), with device counts. Lets the Device Error by Firmware × Day
+// heatmap annotate each firmware row with its drift direction + affected models — folding in
+// what the (now-retired) Calibration Drift panel used to show. Data-derived (NOT hardcoded):
+// firmware ← gold, direction ← pseudo incident, device_model ← registry SSOT — so if a cohort
+// ever shifts, the labels track it. Only in-incident ('calibration_bias') readings count.
+export async function getFirmwareCohorts() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH cohort AS (
+      SELECT p.patient_id, p.incident_direction,
+             CAST(g.firmware_version AS STRING) AS firmware_version
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      JOIN ${catalog}.${schema}.gold_patient_device_readings g
+        ON p.patient_id = g.patient_id AND p.time = g.time
+      WHERE p.incident_type = 'calibration_bias'
+    )
+    SELECT c.firmware_version            AS firmware_version,
+           c.incident_direction          AS direction,
+           r.device_model                AS device_model,
+           COUNT(DISTINCT c.patient_id)  AS devices
+    FROM cohort c
+    JOIN ${catalog}.${schema}.silver_patient_registry r ON c.patient_id = r.patient_id
+    GROUP BY c.firmware_version, c.incident_direction, r.device_model
+    ORDER BY c.firmware_version, devices DESC
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(row => {
+        const v = row.values || row;
+        return {
+          firmware_version: v[0]?.string_value ?? v[0],
+          direction: v[1]?.string_value ?? v[1],        // 'positive' (over-read) | 'negative' (under-read)
+          device_model: v[2]?.string_value ?? v[2],
+          devices: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
+        };
+      });
+    }
+    console.warn('Could not parse firmware cohorts from response:', result);
+    return [];
+  } catch (error) {
+    console.error('Failed to get firmware cohorts:', error);
+    return [];
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown, getCalibrationDrift, getFirmwareCohorts };
 

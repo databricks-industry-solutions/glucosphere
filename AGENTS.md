@@ -84,3 +84,27 @@ learn a new gotcha or land an improvement worth remembering, **add it here** so 
 contributor (agent or human) inherits it instead of rediscovering it the hard way. A lesson
 that only lives in one person's head or one session's memory will be re-learned expensively.
 Project-specific lessons → this file; reusable tool-general lessons → the relevant skill.
+
+## 9. Distrust "it's always worked" — consolidated legacy code harbors latent bugs
+
+This repo was assembled from buildathon assets plus later cleanups. Code that has "always
+worked" can carry **latent bugs that only surface under new conditions** — they survived
+because nothing previously exercised the edge, not because they're correct.
+
+Worked example (2026-06-02): the gold reading→firmware join in `transformations.sql` used an
+**inclusive** `time BETWEEN start_time AND end_time`. Each firmware interval's `end_time`
+equals the next interval's `start_time`, so a reading at the exact transition instant matched
+*both* intervals and was duplicated. Latent since the buildathon (commit `d0bcf7c`,
+2026-01-29) — only ~0.15% of rows, so no metric visibly moved — until a 4th firmware version
+(one more transition) **and** a new cohort sanity check made it structurally visible at the
+incident boundary. Fix: half-open `>= start AND < end`.
+
+So:
+- When a sanity gate fires on "old, untouched" code, treat it as a **real find**, not a false
+  positive. `git log -S '<snippet>'` / blame to see how old it is — "it's legacy" is a reason
+  to fix it, not to excuse it.
+- Any change that adds a **new case** (an extra enum value, era, join key, cohort) is exactly
+  the new condition that wakes a latent bug — expect it, and re-validate row counts and joins
+  (e.g. `GROUP BY key HAVING COUNT(*) > 1` to catch fan-out) after the change.
+- Fix at the source so every consumer benefits, then grep for the same anti-pattern elsewhere
+  (e.g. other inclusive interval joins) — fix the **class**, not just the instance.
