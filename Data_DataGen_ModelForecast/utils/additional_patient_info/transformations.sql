@@ -38,7 +38,7 @@ AS SELECT
   patient_id,
   time,
   case when glucose_observed < 70 then 'hypoglycemia' when glucose_observed > 180 then 'hyperglycemia' else 'in_range' end as event_type,
-  case when glucose_observed < 70 then 1 when glucose_observed > 180 then 1 when incident_type is null then 0 else 1 end as glucose_out_of_range,
+  case when glucose_observed < 70 then 1 when glucose_observed > 180 then 1 else 0 end as glucose_out_of_range,  -- purely glucose-based (<70 / >180), consistent with event_type above + the Genie/MetricsExplained docs. (Previously `... when incident_type is null then 0 else 1` force-flagged every incident reading OOR regardless of its glucose, inflating every OOR-rate panel and contradicting the documented definition.)
   greatest(least(glucose_observed, 400), 40) as glucose,  -- CGM ceiling/floor (HI>400, LO<40); gold-layer backstop so device-observed glucose is always physiological regardless of source
   steps,
   basal_rate,
