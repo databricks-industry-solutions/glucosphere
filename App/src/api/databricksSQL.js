@@ -718,5 +718,55 @@ export async function getFirmwareCohorts() {
   }
 }
 
-export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown, getCalibrationDrift, getFirmwareCohorts };
+// Latest reading for ONE specific device — no out-of-range / 3-hour gate. Backs the
+// "Review this device in fleet diagnostics" deep-link from a patient's Device panel:
+// it focuses the fleet table on exactly that device even when it's within range (so it
+// wouldn't appear in the out-of-range snapshot). Returns a single row in the same shape
+// as getOutOfRangeDevices, or null.
+export async function getDeviceLatestReading(deviceId) {
+  // deviceId comes from a URL query param (?device=), so it is untrusted input.
+  // This executor has no bound-parameter path, so enforce the known device-id
+  // format (DEVICE_<digits>) as a strict whitelist before interpolating — anything
+  // else is rejected (caller falls back to the listing). Verified: every device_id
+  // in the gold table matches this pattern. Quote-escape kept as defense-in-depth.
+  if (!deviceId || !/^DEVICE_[0-9]+$/.test(String(deviceId))) return null;
+  const { catalog, schema } = await getConfig();
+  const safeId = String(deviceId).replace(/'/g, "''");
+  const query = `
+    SELECT
+      g.device_id,
+      DATE_FORMAT(g.time, 'yyyy-MM-dd HH:mm') as reading_time,
+      g.patient_id,
+      r.device_model as device_type,
+      CAST(g.firmware_version AS STRING) as firmware_version,
+      g.glucose as glucose_value
+    FROM
+      ${catalog}.${schema}.gold_patient_device_readings g
+      JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    WHERE g.device_id = '${safeId}'
+    ORDER BY g.time DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0 && rows[0].values && rows[0].values.length >= 6) {
+      const v = rows[0].values;
+      return {
+        device_id: v[0].string_value,
+        reading_time: v[1].string_value,
+        patient_id: v[2].string_value,
+        device_type: v[3].string_value,
+        firmware_version: v[4].string_value,
+        glucose_value: parseFloat(v[5].string_value),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get device latest reading:', error);
+    return null;
+  }
+}
+
+export default { executeSQLQuery, getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getDeviceRegionalDistribution, getFirmwareLifecycle, getPopulationRisk, getCohortAffected, getFirmwareImpact, getCohortAffectedBreakdown, getCalibrationDrift, getFirmwareCohorts };
 

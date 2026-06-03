@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle } from '../api/databricksSQL';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import { getConfig } from '../api/config';
@@ -32,6 +32,14 @@ export default function DeviceSupportDashboard() {
   const goBack = useGoBack();
   const [expandedDevice, setExpandedDevice] = useState(null);
   const [filterModel, setFilterModel] = useState('all');
+  // Deep-link from a patient's Device panel (Coach → "Device fleet diagnostics"):
+  // ?model=<deviceModel> pre-filters the fleet to that patient's model; ?device=<id>
+  // best-effort highlights that exact device if it surfaces in the out-of-range list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusModel = searchParams.get('model');
+  const focusDevice = searchParams.get('device');
+  const [focusRow, setFocusRow] = useState(null);       // that device's latest reading (OOR/3h gate overridden)
+  const [focusLoading, setFocusLoading] = useState(false);
   const [deviceCount, setDeviceCount] = useState('...');
   const [deviceCountLoading, setDeviceCountLoading] = useState(true);
   const [heatmapData, setHeatmapData] = useState([]);
@@ -58,6 +66,41 @@ export default function DeviceSupportDashboard() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // Deep-link focus: when arriving with ?model=…, pre-set the model filter so the
+  // fleet opens narrowed to the patient's device model.
+  useEffect(() => {
+    if (focusModel) setFilterModel(focusModel);
+  }, [focusModel]);
+
+  // Deep-link focus: when arriving with ?device=…, fetch THAT device's latest reading
+  // directly (overriding the out-of-range / 3-hour gate) so the table focuses on it for
+  // review even when it's within range.
+  useEffect(() => {
+    if (!focusDevice) { setFocusRow(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        setFocusLoading(true);
+        const row = await getDeviceLatestReading(focusDevice);
+        if (alive) setFocusRow(row);
+      } catch (e) {
+        console.error('focus device fetch failed:', e);
+        if (alive) setFocusRow(null);
+      } finally {
+        if (alive) setFocusLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [focusDevice]);
+
+  // Clear the patient-focus deep-link (drops the banner + the focused device, resets the
+  // filter — back to the full out-of-range fleet view).
+  const clearFocus = () => {
+    setFilterModel('all');
+    setFocusRow(null);
+    setSearchParams({}, { replace: true });
+  };
 
   // Fetch real device count from database
   useEffect(() => {
@@ -191,18 +234,19 @@ export default function DeviceSupportDashboard() {
     if (glucoseValue < 70) return 0.85; // Low
     if (glucoseValue > 250) return 0.92; // Critically high
     if (glucoseValue > 180) return 0.78; // High
-    return 0.65; // Borderline
+    return 0.1; // In range (70–180) — low risk (only reachable via the focus deep-link; OOR-snapshot rows are never in range)
   };
 
-  // Directional severity band for an out-of-range reading (Battelino bands). Every row
-  // in this table is OOR (<70 or >180), so this is always one of four bands — turning
-  // the old constant "OUT-OF-RANGE" status into a real signal. rose = level-2 danger
-  // (Very Low / Very High), amber = level-1 (Low / High).
+  // Directional severity band (Battelino bands). The out-of-range snapshot rows are always
+  // OOR (<70 or >180) → one of four danger bands. The deep-link "focus" row can also be a
+  // healthy in-range reading (70–180) → the IN RANGE (emerald) case. rose = level-2 danger
+  // (Very Low / Very High), amber = level-1 (Low / High), emerald = in range.
   const glucoseBand = (g) =>
     g < 54 ? { label: 'VERY LOW', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
       : g < 70 ? { label: 'LOW', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
       : g > 250 ? { label: 'VERY HIGH', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
-      : { label: 'HIGH', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      : g > 180 ? { label: 'HIGH', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+      : { label: 'IN RANGE', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
 
   // Function to get deeper analysis for a specific device reading
   const handleDeeperAnalysis = async (device) => {
@@ -213,15 +257,16 @@ export default function DeviceSupportDashboard() {
     
     try {
       // Construct prompt with device context - focusing on device troubleshooting
-      const prompt = `Analyze this out-of-range glucose reading from a DEVICE TROUBLESHOOTING perspective (1-2 paragraphs maximum):
+      const _oor = device.glucose_value < 70 || device.glucose_value > 180;
+      const prompt = `Analyze this glucose reading from a DEVICE TROUBLESHOOTING perspective (1-2 paragraphs maximum):
 
 Device ID: ${device.id}
 Device Model: ${device.model}
 Firmware Version: ${device.firmware}
 Patient ID: ${device.patient}
-Glucose Reading: ${device.glucose_value} mg/dL
+Glucose Reading: ${Math.round(device.glucose_value)} mg/dL
 Reading time: ${device.lastReading}
-Status: OUT-OF-RANGE
+Status: ${_oor ? 'OUT-OF-RANGE (outside the 70–180 mg/dL target)' : 'IN RANGE (within the 70–180 mg/dL target — reviewing this device proactively, not because it is flagged)'}
 
 As a biomedical equipment specialist, analyze:
 1. Is this a device malfunction or calibration issue?
@@ -497,9 +542,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     </div>
                   ) : (
                     <div className="h-full flex flex-col gap-2">
-                      {/* X-axis: days (MM-DD) */}
+                      {/* X-axis: days (MM-DD). The corner cell labels the two axes:
+                          rows = firmware version, columns = date. */}
                       <div className="flex items-end gap-2 h-14 shrink-0">
-                        <div className="w-28 shrink-0" />
+                        <div className="w-28 shrink-0 flex flex-col justify-end pb-1 leading-tight font-mono text-[10px]">
+                          <span className="text-slate-400">↓ Firmware Ver.</span>
+                          <span className="text-slate-400">→ Date</span>
+                        </div>
                         {fwDays.map(day => (
                           <div key={day} className="flex-1 text-center">
                             <span className="text-[11px] font-mono text-slate-400">{String(day).slice(5)}</span>
@@ -672,12 +721,34 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
         {/* Device Detail Table */}
         <section data-tour="out-of-range-table">
+          {(focusModel || focusDevice) && (
+            <div className="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5">
+              <span className="text-xs font-mono text-cyan-300">
+                {focusDevice ? (
+                  focusRow ? (
+                    <>Focused on <span className="text-slate-200">{focusRow.device_id}</span> · patient <span className="text-slate-200">{focusRow.patient_id}</span> · model <span className="text-slate-200">{focusRow.device_type}</span><span className="text-slate-500"> — showing its latest reading below (out-of-range gate overridden); <button onClick={clearFocus} className="underline hover:text-cyan-200">clear</button> for the full fleet</span></>
+                  ) : focusLoading ? (
+                    <>Loading <span className="text-slate-200">{focusDevice}</span>…</>
+                  ) : (
+                    <>Couldn't load <span className="text-slate-200">{focusDevice}</span><span className="text-slate-500"> — showing all {focusModel || 'matching'} devices</span></>
+                  )
+                ) : (
+                  <>Focused from a patient · model <span className="text-slate-200">{focusModel}</span><span className="text-slate-500"> — fleet filtered to this device's model</span></>
+                )}
+              </span>
+              <button onClick={clearFocus} className="text-xs font-mono text-slate-400 hover:text-slate-200 shrink-0">clear ✕</button>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
-                Out-of-Range Device Readings
+                {focusDevice ? 'Focused device · latest reading' : 'Out-of-Range Device Readings'}
               </h2>
-              <p className="text-xs text-slate-500 font-mono mt-1">Flagged readings outside the 70–180 mg/dL target — latest snapshot · <span className="text-cyan-400/80">click any row</span> for reading details + AI device analysis</p>
+              <p className="text-xs text-slate-500 font-mono mt-1">
+                {focusDevice
+                  ? <>The latest reading for the device you came from — any range · <span className="text-cyan-400/80">click the row</span> for details + AI device analysis</>
+                  : <>Flagged readings outside the 70–180 mg/dL target — latest snapshot · <span className="text-cyan-400/80">click any row</span> for reading details + AI device analysis</>}
+              </p>
             </div>
             <select 
               value={filterModel}
@@ -692,7 +763,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           </div>
           
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg overflow-hidden">
-            {devicesLoading ? (
+            {(focusDevice ? focusLoading : devicesLoading) ? (
               <div className="flex items-center justify-center h-48 text-slate-500">
                 Loading device readings...
               </div>
@@ -713,12 +784,22 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     </tr>
                   </thead>
                   <tbody>
-                    {devices
-                      .filter(device => filterModel === 'all' || device.model === filterModel)
-                      .map((device, idx) => (
+                    {((focusDevice && focusRow)
+                      ? [{
+                          id: focusRow.device_id,
+                          patient: focusRow.patient_id,
+                          model: focusRow.device_type,
+                          firmware: focusRow.firmware_version,
+                          status: 'focus',
+                          lastReading: focusRow.reading_time,
+                          anomalyScore: calculateAnomalyScore(focusRow.glucose_value),
+                          glucose_value: focusRow.glucose_value,
+                        }]
+                      : devices.filter(device => filterModel === 'all' || device.model === filterModel)
+                    ).map((device, idx) => (
                   <React.Fragment key={idx}>
-                    <tr 
-                      className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer"
+                    <tr
+                      className={`border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer ${focusDevice && device.id === focusDevice ? 'bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/40' : ''}`}
                       onClick={() => setExpandedDevice(expandedDevice === idx ? null : idx)}
                     >
                       <td className="px-4 py-3 text-sm font-mono text-cyan-400">{device.id}</td>
@@ -738,19 +819,22 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.lastReading}</td>
                       <td className="px-4 py-3">
                         <span className={`text-sm font-mono font-bold ${
-                          (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
+                          (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
+                            : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
+                            : 'text-emerald-400'
                         }`}>
-                          {device.glucose_value ? `${device.glucose_value} mg/dL` : 'N/A'}
+                          {device.glucose_value ? `${Math.round(device.glucose_value)} mg/dL` : 'N/A'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div 
+                            <div
                               className={`h-full ${
                                 device.anomalyScore > 0.85 ? 'bg-rose-500' :
                                 device.anomalyScore > 0.7 ? 'bg-amber-500' :
-                                'bg-yellow-500'
+                                device.anomalyScore > 0.4 ? 'bg-yellow-500' :
+                                'bg-emerald-500'
                               }`}
                               style={{ width: `${device.anomalyScore * 100}%` }}
                             />
@@ -774,9 +858,11 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
                                   <span className={`font-mono font-bold ${
-                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
+                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
+                                      : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
+                                      : 'text-emerald-400'
                                   }`}>
-                                    {device.glucose_value} mg/dL
+                                    {Math.round(device.glucose_value)} mg/dL
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -785,7 +871,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                     {device.glucose_value < 54 ? 'Very Low (<54)' :
                                      device.glucose_value < 70 ? 'Low (54–69)' :
                                      device.glucose_value > 250 ? 'Very High (>250)' :
-                                     'High (181–250)'}
+                                     device.glucose_value > 180 ? 'High (181–250)' :
+                                     'In range (70–180)'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -798,9 +885,15 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               </div>
                               
-                              <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
-                                ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
-                              </div>
+                              {(device.glucose_value < 70 || device.glucose_value > 180) ? (
+                                <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
+                                  ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
+                                </div>
+                              ) : (
+                                <div className="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded text-xs text-emerald-300">
+                                  ✓ <strong>Within range:</strong> this reading is inside the 70–180 mg/dL target — no action needed.
+                                </div>
+                              )}
                             </div>
                             
                             {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}
