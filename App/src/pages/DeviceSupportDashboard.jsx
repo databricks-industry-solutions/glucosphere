@@ -803,7 +803,18 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       onClick={() => setExpandedDevice(expandedDevice === idx ? null : idx)}
                     >
                       <td className="px-4 py-3 text-sm font-mono text-cyan-400">{device.id}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.patient}</td>
+                      <td className="px-4 py-3 text-sm font-mono">
+                        {/* cross-reference → this patient's Coach view (the AI rec's
+                            "patient notification / clinical review"). stopPropagation so
+                            it doesn't also toggle the row's reading-detail expander. */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/diabetes-coach?patient=${encodeURIComponent(device.patient)}`); }}
+                          className="text-cyan-400 hover:text-cyan-300 hover:underline decoration-dotted underline-offset-2"
+                          title={`Open ${device.patient} in Diabetes Coach`}
+                        >
+                          {device.patient}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>
                       <td className="px-4 py-3">
