@@ -48,10 +48,15 @@ export default function DeviceSupportDashboard() {
   const [firmwareVersions, setFirmwareVersions] = useState([]);
   // Firmware × day device-error (MAE) for the date×firmware heatmap (reuses the same
   // getFirmwareLifecycle data as the Firmware Lifecycle line chart).
-  const [fwHeat, setFwHeat] = useState([]);          // [{ day, firmware_version, mae }]
+  const [fwHeat, setFwHeat] = useState([]);          // [{ day, firmware_version, mae, maeFleet }]
   const [fwDays, setFwDays] = useState([]);          // sorted unique days (columns)
   const [fwRows, setFwRows] = useState([]);          // sorted unique firmware versions (rows)
   const [fwHeatLoading, setFwHeatLoading] = useState(true);
+  // Heatmap metric scope: 'in-incident' = peak fault severity (triage — which firmware-day to
+  // service); 'fleet-wide' = all-readings average (compliance — avg measurement error across
+  // the deployed firmware, where the ~3h fault dilutes). Mirrors the MAE-timeline's
+  // affected-vs-fleet-wide framing. Default = in-incident (the fault must be findable first).
+  const [fwScope, setFwScope] = useState('in-incident');
   const [devices, setDevices] = useState([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
@@ -169,9 +174,9 @@ export default function DeviceSupportDashboard() {
     const fetchFwHeat = async () => {
       try {
         setFwHeatLoading(true);
-        const data = await getFirmwareLifecycle();  // [{ day, firmwareVersion, mae, readings }]
+        const data = await getFirmwareLifecycle();  // [{ day, firmwareVersion, mae, maeFleet, readings }]
         if (data && data.length > 0) {
-          const rows = data.map(d => ({ day: d.day, firmware_version: d.firmwareVersion, mae: d.mae }));
+          const rows = data.map(d => ({ day: d.day, firmware_version: d.firmwareVersion, mae: d.mae, maeFleet: d.maeFleet }));
           setFwHeat(rows);
           setFwDays([...new Set(rows.map(r => r.day))].sort());                 // dates ascending
           setFwRows([...new Set(rows.map(r => r.firmware_version))].sort());    // 3.14 < 4.0 < 4.0.3 < 4.1
@@ -442,13 +447,21 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
   // Device-error (MAE mg/dL) colour for the firmware × day heatmap: ~0 → neutral slate
   // (clean), scaling green → amber → red toward the injected ~40 mg/dL fault. Gradiated,
   // scaled against the larger of 40 or the observed max so a full fault reads saturated.
+  // Anchor stays in-incident-based (max(40, in-incident max)) in BOTH scope modes, so the
+  // fleet-wide view honestly renders low/green (the diluted ~8-12 mg/dL fault never reaches
+  // red) instead of being re-stretched to fake a fault.
   const fwMaeMax = fwHeat.length ? Math.max(40, ...fwHeat.map(d => d.mae)) : 40;
+  const FW_MAE_GAMMA = 0.7;   // <1 bends the ramp to give clean-day (low-mae) cells visible
+                              // green→yellow-green separation (real firmware baseline-noise
+                              // gradient) WITHOUT pushing a clean day into amber/red. γ=1.0
+                              // would be the old flat-linear scale; γ≤~0.55 over-warms clean
+                              // days into false alarms (see ref_notes color-scale sim).
   const getMaeColor = (mae) => {
     // Clean (≈0) renders EMERALD (matching the legend's "0 clean" end), scaling
     // amber → red toward the ~40 mg/dL fault — so an active firmware-day is always a
     // filled green→red cell. Only firmware-days with NO data (firmware not deployed
     // then) stay dark/N-A, handled by the grid (`has ? getMaeColor(...) : darkNA`).
-    const t = Math.min(Math.max(mae || 0, 0) / fwMaeMax, 1);
+    const t = Math.pow(Math.min(Math.max(mae || 0, 0) / fwMaeMax, 1), FW_MAE_GAMMA);
     const mix = (a, b, u) => Math.round(a + (b - a) * u);
     if (t < 0.5) {                                          // emerald → amber
       const u = t / 0.5;
@@ -528,9 +541,32 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
             <div data-tour="anomaly-heatmap" className="col-span-7 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
-              <div className="mb-4 h-14">
-                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Error by Firmware × Day</h3>
-                <p className="text-xs text-slate-500 font-mono">mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted · <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read marks the faulted rollout</p>
+              <div className="mb-4 min-h-14">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-sm font-medium text-slate-300 mb-1">Device Error by Firmware × Day</h3>
+                  {/* Metric-scope toggle — In-incident (triage, peak fault) vs Fleet-wide
+                      (compliance, all-readings avg). Reuses the MAE-timeline's fleet-wide vocabulary. */}
+                  <div className="shrink-0 text-right">
+                    <span className="block text-[9px] font-mono text-slate-500 mb-0.5 tracking-wide">Metric scope</span>
+                    <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Heatmap metric scope">
+                      <button
+                        onClick={() => setFwScope('in-incident')}
+                        title="Peak fault severity during the incident window — which firmware-day to service"
+                        className={`px-2.5 py-1 transition-colors ${fwScope === 'in-incident' ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+                      >In-incident <span className="opacity-70">(triage)</span></button>
+                      <button
+                        onClick={() => setFwScope('fleet-wide')}
+                        title="All-readings average for the firmware-day — the ~3h fault dilutes; severity is masked"
+                        className={`px-2.5 py-1 transition-colors border-l border-slate-700 ${fwScope === 'fleet-wide' ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+                      >Fleet-wide <span className="opacity-70">(compliance)</span></button>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 font-mono mt-3">
+                  {fwScope === 'in-incident'
+                    ? <>mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted · <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read marks the faulted rollout</>
+                    : <>mean |observed − true| mg/dL averaged over <span className="text-slate-400">all</span> readings per firmware-day · the ~3 h fault dilutes into the day, masking severity — switch to <span className="text-slate-400">In-incident</span> to triage</>}
+                </p>
               </div>
 
               <div className="flex-1 flex flex-col gap-3">
@@ -577,8 +613,12 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                           {fwDays.map(day => {
                             const cell = fwHeat.find(d => d.firmware_version === fw && d.day === day);
                             const has = !!cell;
-                            const mae = has ? cell.mae : 0;
-                            const faultCell = has && mae >= 25 && !!cohort;   // acute in-incident cell → glyph it
+                            // Scope toggle: in-incident = peak fault severity (cell.mae hybrid);
+                            // fleet-wide = all-readings average (cell.maeFleet, fault diluted).
+                            const mae = has ? (fwScope === 'fleet-wide' ? cell.maeFleet : cell.mae) : 0;
+                            // Direction glyphs mark ACUTE faults — only meaningful in in-incident
+                            // scope (fleet-wide dilutes below the 25 threshold, so they'd vanish anyway).
+                            const faultCell = has && fwScope === 'in-incident' && mae >= 25 && !!cohort;
 
                             return (
                               <div
