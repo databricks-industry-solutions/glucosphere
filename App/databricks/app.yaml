@@ -31,6 +31,21 @@ env:
   # second deploy, which populates this.
   - name: SETUP_JOB_ID
     value: "649416388005809"
+  # PIPELINE_ID lets /api/config build a deep-link to the DLT (silver→gold
+  # medallion) pipeline page, shown in the About "under the hood" panel.
+  # Discovered at deploy time by scripts/render_app_yaml.py (same by-name
+  # pattern as SETUP_JOB_ID: `glucosphere-cgm-silver-gold-<target>` via the
+  # Pipelines API). Empty value is valid — JSX falls back to the workspace
+  # /pipelines listing — so render is safe to run before the first deploy.
+  - name: PIPELINE_ID
+    value: ""
+  # FORECAST_ENDPOINT_NAME lets /api/config deep-link the About panel's Model
+  # Serving node straight to the Glucosphere forecast endpoint detail page
+  # (the serving-endpoints list page has no URL search param). Discovered at
+  # deploy time by scripts/render_app_yaml.py (Glucosphere_Forecast_15min +
+  # harness_suffix). Empty value is valid — JSX falls back to /ml/endpoints.
+  - name: FORECAST_ENDPOINT_NAME
+    value: ""
   # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
   # bundle-managed sql_warehouses.glucosphere_warehouse resource (discovered
   # by deterministic name). Empty value here pre-render is intentional —

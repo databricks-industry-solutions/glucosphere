@@ -20,7 +20,7 @@ This application provides:
 
 ### Agent endpoints — Genie / KA / MAS (often confused)
 
-The App's natural-language query experience is powered by **three native Databricks Agent Bricks endpoints** that work together. They are NOT interchangeable — each has a distinct data source and purpose:
+The App's natural-language query experience is powered by **Agent Bricks** (Knowledge Assistant + Multi-Agent Supervisor) together with **AI/BI Genie** — a separate Databricks capability that the MAS orchestrates, *not* part of Agent Bricks. The three work together but are NOT interchangeable — each has a distinct data source and purpose:
 
 | Endpoint | Data source | Purpose |
 |---|---|---|
@@ -209,6 +209,42 @@ Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 ## Configuration
 
 - **`databricks/app.yaml`** — Databricks App deployment config (env vars + resource bindings; regenerated per-target via `scripts/render_app_yaml.py`).
+
+### About page — "Under the hood" platform deep-links
+
+The About page renders a Data → ML/AI → Agentic platform panel whose nodes deep-link into the
+**deploying** workspace. Every link is built client-side from `GET /api/config` (no tenant
+hardcoded in the bundle), so they resolve in whatever workspace the app is deployed to — as long
+as the underlying value is set. There are two classes, and it matters for a fresh-workspace deploy:
+
+| About link | `/api/config` field ← env var | How it resolves on deploy |
+| --- | --- | --- |
+| Unity Catalog | `workspace_host` + `catalog` + `schema` | **Auto** — host from the Apps runtime (`DATABRICKS_HOST`); catalog/schema from bundle vars |
+| MLflow | `workspace_host` → `/ml/experiments` | **Auto** — workspace-relative, no id needed |
+| DLT pipeline | `pipeline_url` ← `PIPELINE_ID` | **Auto** — `render_app_yaml.py` discovers it by name `glucosphere-cgm-silver-gold-<target>` |
+| Model Serving (forecast) | `forecast_endpoint_url` ← `FORECAST_ENDPOINT_NAME` | **Auto** — discovers `Glucosphere_Forecast_15min<harness_suffix>` |
+| Jobs (orchestration) | `setup_job_url` ← `SETUP_JOB_ID` | **Auto** — discovers `glucosphere-full-setup-<target>` |
+| Genie | `genie_space_id` ← `GENIE_SPACE_ID` | **Operator-set** — pass `render_app_yaml.py --genie-space-id …` |
+| Knowledge Assistant | `ka_endpoint_url` ← `KA_ENDPOINT_NAME` | **Operator-set** — pass `--ka-endpoint …` |
+| Multi-Agent Supervisor | `mas_endpoint_url` ← `ENDPOINT_NAME` | **Operator-set** — pass `--mas-endpoint …` |
+
+- **Auto** links need no manual input — `scripts/render_app_yaml.py` looks each id up by its
+  deterministic resource name at deploy time (the same mechanism used for `WAREHOUSE_ID`). If an
+  id can't be found yet (e.g. first-pass render before `bundle deploy`), the value is left empty
+  and the link **falls back to the workspace listing** (`/pipelines`, `/ml/endpoints`, `/jobs`),
+  so nothing 404s.
+- **Operator-set** links (Genie / KA / MAS) can't be auto-discovered — the KA/MAS Agent Bricks
+  endpoints get a random suffix per workspace, and each Genie space has its own workspace-specific
+  id. They're set on the second render pass via the flags above. This is
+  **the same config the chat assistant already requires** (`/api/assist` routes to `ENDPOINT_NAME`
+  / `KA_ENDPOINT_NAME`; Genie uses `GENIE_SPACE_ID`), so if the assistant works on a fresh deploy,
+  these deep-links work too — the panel adds no new portability burden.
+- **Access:** every link opens the Databricks workspace and is OAuth-gated — a signed-in user with
+  object access clicks straight through; without it they hit sign-in / 403. The inline one-liner on
+  each node keeps the panel readable without workspace access.
+
+See `scripts/render_app_yaml.py` (the `discover_*` helpers) for the by-name lookups, and
+`App/databricks/app.py` `GET /api/config` for how each field is assembled.
 
 ## Dependencies used and their corresponding license information
 
