@@ -27,7 +27,7 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
   // centre, day6 ≈ last); the left gutter is otherwise empty by design (its width is driven by
   // that alignment, not the legend). Keep pad.left in sync with the matrix label width
   // (CalibrationDriftPanel: w-[11%]) if either changes.
-  const W = 760, H = 184, pad = { top: 16, right: 48, bottom: 72, left: 132 };
+  const W = 760, H = 176, pad = { top: 16, right: 48, bottom: 64, left: 132 };
   const innerW = W - pad.left - pad.right, innerH = H - pad.top - pad.bottom;
 
   const days = [...new Set(data.map(d => d.day))].sort();
@@ -58,15 +58,17 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
         return (
           <g key={i}>
             <line x1={pad.left} y1={yy} x2={pad.left + innerW} y2={yy} stroke="rgb(51 65 85 / 0.4)" strokeWidth="0.5" />
-            <text x={pad.left - 8} y={yy + 3} textAnchor="end" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)">{(t * maxY).toFixed(1)}</text>
+            <text x={pad.left - 8} y={yy + 3} textAnchor="end" fontSize="8" fontFamily="monospace" fill="rgb(100 116 139)">{(t * maxY).toFixed(1)}</text>
           </g>
         );
       })}
       {/* x labels */}
       {days.map((d, i) => (
-        <text key={i} x={x(d)} y={pad.top + innerH + 16} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)">{fmtDay(d)}</text>
+        <text key={i} x={x(d)} y={pad.top + innerH + 16} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="rgb(100 116 139)">{fmtDay(d)}</text>
       ))}
-      <text x={14} y={pad.top + innerH / 2} textAnchor="middle" fontSize="10" fontFamily="monospace" fill="rgb(100 116 139)" transform={`rotate(-90 14 ${pad.top + innerH / 2})`}>Device error — MAE (mg/dL)</text>
+      {/* Centred on the full SVG height (not the short plot region) — the ~27-char title is
+          taller than the 96px plot band, so centring on innerH/2 clipped its top at the viewBox. */}
+      <text x={22} y={H / 2} textAnchor="middle" fontSize="8.5" fontFamily="monospace" fill="rgb(100 116 139)" transform={`rotate(-90 22 ${H / 2})`}>Device error — MAE (mg/dL)</text>
 
       {/* series */}
       {versions.map((ver, vi) => {
@@ -79,7 +81,7 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
             {pts.map((p, i) => (
               <g key={i}>
                 <circle cx={x(p.day)} cy={y(p.v)} r="3.5" fill={color} />
-                <text x={x(p.day)} y={y(p.v) - 7} textAnchor="middle" fontSize="10" fontFamily="monospace" fill={color}>{p.v}</text>
+                <text x={x(p.day)} y={y(p.v) - 7} textAnchor="middle" fontSize="8" fontFamily="monospace" fill={color}>{p.v}</text>
                 {/* invisible hover hit-target (bigger than the dot for easy targeting) */}
                 <circle
                   cx={x(p.day)} cy={y(p.v)} r="8" fill="transparent" style={{ cursor: 'pointer' }}
@@ -98,13 +100,13 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
       {(() => {
         const ly = pad.top + innerH + 58;
         const step = 88;
-        const startX = 24;   // panel left edge (clears the rotated y-axis title at x=14), mirroring the matrix footer legend below
+        const startX = 24;   // panel left edge (clears the rotated y-axis title at x=22), mirroring the matrix footer legend below
         return versions.map((ver, vi) => {
           const lx = startX + vi * step;
           return (
             <g key={`lg-${ver}`}>
               <circle cx={lx} cy={ly - 2.5} r="3" fill={colorFor(ver)} />
-              <text x={lx + 8} y={ly} fontSize="8" fontFamily="monospace" fill={isFaulty(ver) ? 'rgb(253 164 175)' : 'rgb(148 163 184)'}>FW {ver}{isFaulty(ver) ? ' ⚠' : ''}</text>
+              <text x={lx + 8} y={ly} fontSize="7" fontFamily="monospace" fill={isFaulty(ver) ? 'rgb(253 164 175)' : 'rgb(148 163 184)'}>FW {ver}{isFaulty(ver) ? ' ⚠' : ''}</text>
             </g>
           );
         });

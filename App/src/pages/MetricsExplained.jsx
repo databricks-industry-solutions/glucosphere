@@ -319,8 +319,10 @@ WHERE (glucose < 54 OR glucose > 250)
             Landing Page: Recent Incident Analysis
           </h2>
 
-          {/* Why this monitoring stack matters — frames the 3 incident charts that follow */}
-          <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-6 mb-6">
+          {/* Why this monitoring stack matters — frames the 3 incident charts that follow.
+              id + scroll-mt make it a hash target (the About page's "control tower" overview
+              link jumps here via /metrics-explained#me-why-monitoring). */}
+          <div id="me-why-monitoring" className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-300 mb-1">Why this monitoring stack matters</h3>

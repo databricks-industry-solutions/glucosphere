@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getCalibrationDrift } from '../api/databricksSQL';
 
 // Device Calibration Drift — signed device drift (mean observed − true) per device model,
@@ -12,6 +13,7 @@ import { getCalibrationDrift } from '../api/databricksSQL';
 const FLEET_MODELS = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'];
 
 export default function CalibrationDriftPanel({ days = [] }) {
+  const navigate = useNavigate();
   const [drift, setDrift] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -79,9 +81,9 @@ export default function CalibrationDriftPanel({ days = [] }) {
                 const meta = dayMeta[day];
                 return (
                   <div key={day} className="flex-1 text-center">
-                    <div className="text-[11px] font-mono text-slate-400">{fmtDay(day)}</div>
+                    <div className="text-[13px] font-mono text-slate-400">{fmtDay(day)}</div>
                     {meta && (
-                      <div className={`text-[9px] font-mono leading-tight ${meta.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}`}>
+                      <div className={`text-[11px] font-mono leading-tight ${meta.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}`}>
                         {dirWord(meta.direction)}-read<br />{meta.devices} dev
                       </div>
                     )}
@@ -100,7 +102,10 @@ export default function CalibrationDriftPanel({ days = [] }) {
                   return (
                     <div
                       key={day}
-                      className="flex-1 h-9 rounded-md flex items-center justify-center group relative cursor-default transition-all hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900"
+                      onClick={active ? () => navigate(`/population-risk?model=${encodeURIComponent(m)}`) : undefined}
+                      role={active ? 'button' : undefined}
+                      title={active ? `See ${m}'s affected patients on Population Risk` : undefined}
+                      className={`flex-1 h-9 rounded-md flex items-center justify-center group relative transition-all hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 ${active ? 'cursor-pointer' : 'cursor-default'}`}
                       style={{ backgroundColor: getDriftColor(signed) }}
                     >
                       {active && (
@@ -123,7 +128,7 @@ export default function CalibrationDriftPanel({ days = [] }) {
             ))}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-800/70 text-[10px] font-mono text-slate-500">
+          <div className="mt-4 pt-3 border-t border-slate-800/70 text-[12px] font-mono text-slate-500">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-block w-4 h-3 rounded-sm" style={{ backgroundColor: getDriftColor(-40) }} />
               <span>−40 under-read</span>
