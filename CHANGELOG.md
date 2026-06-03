@@ -19,6 +19,34 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-03]
+
+Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.
+
+### Added — patient ↔ device ↔ fleet drill-downs (closes the detect → diagnose → assess loop in-app)
+- **Calibration Drift matrix → Population Risk.** Faulted drift cells on the Firmware Lifecycle page are clickable → Population Risk pre-filtered to that device model (`?model=`), with **✕ show all** to clear. Self-contained navigation (no external hop) for booth demos. (`8b1c452`)
+- **Device ↔ Coach cross-links.** Device Support's Patient cell links to that patient's Diabetes Coach view (`9d88dc4`); Coach's device panel links to Device Support **focused on that device** with a status-aware honest reading (in-range vs OOR), overriding the OOR/3h gate so any device can be inspected (`207bb3e`).
+- These wire #2's device/coach tabs together and exercise #5's real per-patient data.
+
+### Added — About "Under the hood" platform panel + overview link
+- About page gains a **Data → ML/AI → Agentic** platform-plumbing panel: each node deep-links into the deploying workspace (catalog, DLT pipeline, model serving, MAS/KA endpoints, Genie space) from `/api/config`, with accurate **Agent Bricks (KA + MAS) vs AI/BI Genie** taxonomy, a combined hero, and the glucose-ring logo beside the paragraph that explains it + embedded official Databricks links. (`406314d`)
+- The overview word **"control tower"** links to Metrics Explained's *"Why this monitoring stack matters"* framing (`#me-why-monitoring`). (`8b1c452`)
+
+### Changed — chart legibility
+- **Firmware MAE timeline**: smaller axis / tick / value / legend fonts; y-axis title re-centred on the full SVG height (it was clipping at the top in the short plot band); trimmed the trailing whitespace below the legend. **Calibration Drift heatmap**: larger date headers, direction sublabels, and footer legend. (`8b1c452`)
+- Firmware device-error **green → amber → red gradient** + half-open join dup-fix + Diagnose-page consolidation. (`0da9cf5`)
+
+### Security — dependency bumps (Dependabot)
+- `flask` → 3.1.3, `requests` → 2.33.0, `react-router-dom` → 6.30.3 (both HIGH alerts cleared); build-only `esbuild`/`vite`/`picomatch` deferred (dev-time only, no runtime exposure). Also fixed `render_app_yaml.py --ka-endpoint` to patch the `KA_ENDPOINT_NAME` env var, not just the resource binding (the env value had stayed stale). (`d2ec3dd`)
+
+### Changed — committed `app.yaml` is now a generic template (public-repo hygiene)
+- The committed `App/databricks/app.yaml` no longer ships one workspace's real catalog / warehouse / serving-endpoint / Genie IDs. Workspace-specific env values are **blank** (`CATALOG_NAME` → `your_workspace_catalog`, `WAREHOUSE_ID` / `SETUP_JOB_ID` / `ENDPOINT_NAME` / `KA_ENDPOINT_NAME` / `GENIE_SPACE_ID` → `""`) and the `resources:` bindings use placeholders (`your-mas-endpoint`, `your-ka-endpoint`, `your-warehouse-id`, `your-genie-space-id`). This is safe because **every** deploy (prod or sandbox) runs `scripts/render_app_yaml.py` first, which rewrites these per-target — Databricks Apps `app.yaml` env `value:` fields are literal strings that `bundle deploy` does **not** interpolate, so render is the only substitution path. `FM_ENDPOINT` (a global foundation-model name) and `SCHEMA_NAME` keep their workspace-agnostic defaults. `DEPLOY.md` updated (a stale "the live ones in app.yaml are …" example pointed at the removed IDs).
+
+### Docs
+- Repo-wide README/MD accuracy audit — corrected drift in mermaid diagrams, task counts, `dist`→`static` build-output paths, the firmware-version count, and the deep-link config table. (`34b71c4`)
+
+---
+
 ## [2026-06-02]
 
 Deploy-tooling ergonomics for side-by-side sandbox deployments, plus an end-to-end `from_source` validation of the whole Issue-#2 branch ahead of the PR to `main`.
