@@ -375,7 +375,7 @@ WHERE (glucose < 54 OR glucose > 250)
                   With the two-window mirror simulation (2026-05-18), TWO separate red-tinted dashed-border
                   rectangles mark the two incident windows: Day 2 (+40 mg/dL bias on Alpha/Gamma cohort) and
                   Day 5 (-40 mg/dL bias on Beta/Delta cohort). Baseline sensor noise of 5.0 mg/dL is added
-                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL MARD).
+                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL baseline mean absolute error).
                 </p>
               </div>
 

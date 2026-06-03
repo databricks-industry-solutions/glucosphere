@@ -21,7 +21,15 @@ grouped by date rather than semver tags.
 
 ## [2026-06-03]
 
-Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.
+Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, a Device-error heatmap **metric-scope toggle** (In-incident ⇄ Fleet-wide) with a tuned color curve, an About-page **real-world-extrapolation** note, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.
+
+### Added — Device-error heatmap metric-scope toggle (triage ⇄ fleet-wide) + real-world-extrapolation note
+- **Metric-scope toggle** on Device Support's *Device Error by Firmware × Day* heatmap: **In-incident (triage)** — peak fault severity during the incident window (the existing ~40 mg/dL signal; default) — vs **Fleet-wide (compliance)** — the all-readings average per firmware-day, where the ~3 h fault dilutes into the day and severity is honestly masked. Reuses the MAE-timeline's affected-vs-fleet-wide vocabulary. `getFirmwareLifecycle()` now also returns `maeFleet` (the unconditioned `AVG(|observed − true|)`) alongside the in-incident `mae` — non-breaking for the Coach / Firmware-Lifecycle consumers that read `mae`.
+- **Color curve tuned** (`getMaeColor` γ0.7): the emerald→amber→red ramp is bent so clean firmware-days gain visible green→yellow-green separation (real firmware baseline-noise gradient) without pushing a clean day into amber/red. The anchor stays in-incident-based in **both** scopes, so Fleet-wide renders honestly low/green rather than re-stretched to fake a fault. Heatmap subtitle nudged below the title/toggle row.
+- **About → "What's simulated vs real"** gains a *"How this extrapolates to real devices"* paragraph: a fielded CGM fleet has no ground-truth reference, so the same calibration drift is monitored from observed readings alone via **cohort distribution divergence** (+ sparse fingerstick/lab MARD checks + per-lot sensor-QC telemetry); the operator views stay identical, only the cell metric swaps from error-vs-truth → distribution-divergence. Frames the production path for the DAIS narrative.
+
+### Fixed — MARD terminology in Metrics Explained
+- A baseline noise magnitude was mislabeled `~5.8 mg/dL MARD`; **MARD** is a *percentage* (mean absolute relative difference), so the mg/dL figure is a mean-absolute-**error**. Corrected to `~5.8 mg/dL baseline mean absolute error`. (The datagen MARD references in `_firmware_spec.py` / `05_*.py` already use `%` correctly — verified the mislabel was confined to this one user-facing line.)
 
 ### Added — patient ↔ device ↔ fleet drill-downs (closes the detect → diagnose → assess loop in-app)
 - **Calibration Drift matrix → Population Risk.** Faulted drift cells on the Firmware Lifecycle page are clickable → Population Risk pre-filtered to that device model (`?model=`), with **✕ show all** to clear. Self-contained navigation (no external hop) for booth demos. (`8b1c452`)
@@ -44,6 +52,7 @@ Cross-referencing drill-downs across the three operator views, an About-page pla
 
 ### Docs
 - Repo-wide README/MD accuracy audit — corrected drift in mermaid diagrams, task counts, `dist`→`static` build-output paths, the firmware-version count, and the deep-link config table. (`34b71c4`)
+- `DEPLOY.md`: the app-SP grant step (`scripts/grant_app_sp.py`) now explicitly covers the **fast-iteration bundle redeploy** — a bare `bundle run glucosphere_app` that skips the `glucosphere_full_setup` job (e.g. shipping a UI tweak) leaves the app SP ungranted (403 on every query), because the `09_grant_app_permissions.py` task only runs inside the setup job. Previously the doc framed this as a standalone-A/B-app-only concern.
 
 ---
 

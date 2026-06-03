@@ -322,14 +322,19 @@ This single command does both `apps deploy` + `apps start` atomically and matche
 
 Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows "App is unavailable" until you either run the command above OR click Deploy in the UI.)
 
-### Standalone (A/B) app instances — grant the service principal
+### Grant the app service principal (after any deploy that skips the setup job)
 
-The bundle-managed app above gets its service-principal grants automatically from the setup job's `09_grant_app_permissions.py` task. A **standalone** app created outside the bundle for side-by-side comparison (e.g. `databricks apps create glucosphere-app-v0-N` → `databricks apps deploy …`) gets a **fresh SP with no grants** — so every data/agent call returns `403 PERMISSION_DENIED` (blank metrics, "no data", `403` from the MAS/Genie assistants) until you entitle it. After deploying such an instance, run the deploy-host helper once:
+The app SP's grants come **only** from the setup job's `09_grant_app_permissions.py` task. Any deploy path that does **not** re-run `glucosphere_full_setup` leaves the SP under-granted, so every data/agent call returns `403 PERMISSION_DENIED` (blank metrics, "no data", `403` from the MAS/Genie assistants). Two common cases:
+
+- **Standalone (A/B) apps** — `databricks apps create glucosphere-app-v0-N` → `databricks apps deploy …` mints a fresh SP with **no** grants.
+- **Fast-iteration bundle redeploy** — a bare `databricks bundle deploy` + `databricks bundle run glucosphere_app` (e.g. shipping a UI tweak without the ~40-min full-setup job) does **not** run task `09`. If the app's name/SP changed (e.g. a new `dev_initials` → `glucosphere-<base>-fw-v2-user`), `bundle run` even mints a **brand-new** SP with zero grants.
+
+In **either** case, run the deploy-host helper once after deploying:
 
 ```bash
 # Entitles the app SP exactly like notebook 09 (UC catalog/schema/SELECT + READ VOLUME,
 # warehouse CAN_USE, MAS+KA CAN_QUERY, Genie CAN_RUN). Idempotent; effective per-request.
-uv run python scripts/grant_app_sp.py --app glucosphere-app-v0-N --profile <profile>
+uv run python scripts/grant_app_sp.py --app <deployed-app-name> --profile <profile>
 # --dry-run prints the planned grants (resolved SP + resource IDs from app.yaml) without applying
 ```
 

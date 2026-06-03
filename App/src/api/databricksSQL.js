@@ -356,6 +356,13 @@ export async function getFirmwareLifecycle() {
   // the exact rollout instant landing in BOTH adjacent firmware intervals — is now fixed at
   // source via the half-open [start,end) join in transformations.sql, so the prior firmware
   // no longer catches a spurious boundary reading on the rollout day.)
+  // `mae`      = the in-incident-or-baseline hybrid (the CASE above) — the TRIAGE signal;
+  //              faulted firmware-days surface their ~40 mg/dL fault, clean days sit at baseline.
+  // `maeFleet` = the unconditioned all-readings mean for the firmware-day — the COMPLIANCE /
+  //              fleet-wide signal; the ~3h fault dilutes into the whole day (~8-12 mg/dL on
+  //              fault days, masking severity). This is the ELSE-branch expression, exposed as
+  //              its own column so the Device Support heatmap can offer a triage⇄fleet-wide
+  //              scope toggle. Other consumers (Coach/Firmware pages) keep reading `mae`.
   const query = `
     SELECT
       DATE(g.time) as day,
@@ -365,6 +372,7 @@ export async function getFirmwareLifecycle() {
            THEN ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL THEN ABS(p.glucose_observed - p.glucose_true) END), 1)
            ELSE ROUND(AVG(ABS(p.glucose_observed - p.glucose_true)), 1)
       END as mae,
+      ROUND(AVG(ABS(p.glucose_observed - p.glucose_true)), 1) as mae_fleet,
       COUNT(*) as readings
     FROM ${catalog}.${schema}.gold_patient_device_readings g
     JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
@@ -383,7 +391,8 @@ export async function getFirmwareLifecycle() {
           day: v[0]?.string_value ?? v[0],
           firmwareVersion: v[1]?.string_value ?? v[1],
           mae: parseFloat(v[2]?.string_value ?? v[2]) || 0,
-          readings: parseInt(v[3]?.string_value ?? v[3], 10) || 0,
+          maeFleet: parseFloat(v[3]?.string_value ?? v[3]) || 0,
+          readings: parseInt(v[4]?.string_value ?? v[4], 10) || 0,
         };
       });
     }

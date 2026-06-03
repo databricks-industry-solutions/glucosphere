@@ -185,24 +185,6 @@ export default function AboutPage() {
           </div>
         </section>
 
-        <section className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
-          <h2 className="text-base font-semibold mb-2 text-amber-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>What's simulated vs real</h2>
-          <p className="text-sm text-slate-400 leading-relaxed">
-            The underlying ground-truth glucose signal (<span className="font-mono text-slate-300">glucose_true</span>) is
-            <span className="text-slate-200"> real by default</span> — seeded from the{' '}
-            <a href="https://data.mendeley.com/datasets/3hbcscwz44/1" target="_blank" rel="noopener noreferrer"
-              className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">HUPA-UCM type-1-diabetes dataset</a>{' '}
-            <span className="text-slate-500">(Universidad Complutense de Madrid)</span>; a
-            fully-synthetic generator mode is also available for clean demos (chosen per deployment via{' '}
-            <span className="font-mono text-cyan-400">baseline_source</span>). What the device <em>reports</em>{' '}
-            (<span className="font-mono text-slate-300">glucose_observed</span>) is that signal with a{' '}
-            <span className="text-amber-300 font-medium">simulated</span> ±40 mg/dL calibration bias layered on during
-            incident windows — the gap between the two is the device fault the platform detects. Patient identifiers,
-            device metadata, and the calibration-bug incidents themselves are <span className="text-amber-300 font-medium">always
-            simulated</span> for demonstration — there is no real adverse-event PHI.
-          </p>
-        </section>
-
         {/* Under the hood — the platform plumbing as a Data → ML/AI → Agentic pipeline flow,
             each node deep-linking into the deploying workspace. */}
         <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
@@ -258,6 +240,39 @@ export default function AboutPage() {
           </div>
           <p className="text-[11px] text-slate-600 leading-relaxed mt-2">
             Links open the deploying Databricks workspace (sign-in / object access required) — the inline descriptions read without it.
+          </p>
+        </section>
+
+        <section className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
+          <h2 className="text-base font-semibold mb-2 text-amber-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>What's simulated vs real</h2>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            The underlying ground-truth glucose signal (<span className="font-mono text-slate-300">glucose_true</span>) is
+            <span className="text-slate-200"> real by default</span> — seeded from the{' '}
+            <a href="https://data.mendeley.com/datasets/3hbcscwz44/1" target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">HUPA-UCM type-1-diabetes dataset</a>{' '}
+            <span className="text-slate-500">(Universidad Complutense de Madrid)</span>; a
+            fully-synthetic generator mode is also available for clean demos (chosen per deployment via{' '}
+            <span className="font-mono text-cyan-400">baseline_source</span>). What the device <em>reports</em>{' '}
+            (<span className="font-mono text-slate-300">glucose_observed</span>) is that signal with a{' '}
+            <span className="text-amber-300 font-medium">simulated</span> ±40 mg/dL calibration bias layered on during
+            incident windows — the gap between the two is the device fault the platform detects. Patient identifiers,
+            device metadata, and the calibration-bug incidents themselves are <span className="text-amber-300 font-medium">always
+            simulated</span> for demonstration — there is no real adverse-event PHI.
+          </p>
+          <p className="text-sm text-slate-400 leading-relaxed mt-3">
+            <span className="text-slate-200 font-medium">How this extrapolates to real devices.</span> The demo can measure
+            device error directly because it generates the ground-truth <span className="font-mono text-slate-300">glucose_true</span>.
+            A fielded CGM fleet has <span className="text-slate-200">no such reference</span> — the sensor <em>is</em> the
+            measurement — so the same calibration drift is caught from the <em>observed</em> readings alone: by watching a
+            firmware/model cohort's glucose <span className="text-slate-200">distribution shift</span> away from a matched
+            baseline (other firmware, its own pre-rollout window, or the fleet), corroborated by occasional fingerstick/lab
+            reference checks (the industry <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7189145/" target="_blank" rel="noopener noreferrer" className="font-mono text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">MARD</a> accuracy metric) and per-lot
+            sensor-quality telemetry. The operator views are unchanged — same Firmware × Day heatmap and its
+            In-incident ⇄ Fleet-wide toggle — only the cell metric swaps from <em>error-vs-truth</em> to
+            <em> distribution divergence from a matched baseline</em>. On this same Lakehouse that would run as streaming
+            drift detection, with a low-latency operational store (Lakebase) holding the live alert state.
+            <span className="text-slate-500"> (CGM accuracy methods are general industry practice — confirm against
+            device-specific documentation for a real deployment.)</span>
           </p>
         </section>
 
