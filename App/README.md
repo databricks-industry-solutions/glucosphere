@@ -28,7 +28,7 @@ The App's natural-language query experience is powered by **Agent Bricks** (Know
 | **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
 | **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type (5–7 serial LLM calls) | Available as the **🤖 MAS** engine toggle. Branded "GlucoScope" in `08_genie_ka_mas.py`. **Not** the default — the app's **default fast router calls Genie / KA / a foundation model directly** (see *Assistant engine switch* below). |
 
-The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
+The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:378-384`, "GlucoScope" supervisor instructions):
 
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%
@@ -104,19 +104,19 @@ flowchart LR
 
 ```
 App/
-├── config/               # Databricks workspace configurations
-├── databricks/          # Flask backend (app.py, app.yaml, requirements.txt)
-├── docs/                # Documentation and technical notes
-├── scripts/             # Deployment scripts
+├── databricks/          # Flask backend served as a Databricks App (app.py, app.yaml, requirements.txt, static/)
 ├── src/                 # React frontend source code
-│   ├── api/            # API clients (Databricks SQL, Agent)
+│   ├── api/            # API clients (Databricks SQL, Agent, config)
 │   ├── components/     # React components
 │   └── pages/          # Page components
-├── deploy_glucosphere.py # Deployment script for Databricks Apps
+├── index.html           # Vite entry HTML
 ├── package.json         # NPM dependencies
-├── vite.config.js       # Frontend build configuration
+├── vite.config.js       # Frontend build configuration (outputs to databricks/static/)
+├── tailwind.config.js   # Tailwind config
+├── postcss.config.js    # PostCSS (Tailwind) pipeline
 └── run_backend.sh       # Local backend startup script
 ```
+The App is deployed as a Databricks Asset Bundle resource (`apps.glucosphere_app`), not via a standalone script — see Deployment below.
 
 ## Local Development
 
@@ -161,17 +161,18 @@ npm run dev
 
 ### Deploy to Databricks Apps
 
+The App ships as a Databricks Asset Bundle resource (`apps.glucosphere_app`, `source_code_path: App/databricks`). Build the frontend, then deploy via the bundle — see [`DEPLOY.md`](../DEPLOY.md) for the full flow:
+
 ```bash
-cd App
-npm run build
-python3 deploy_glucosphere.py
+cd App && npm run build          # → App/databricks/static/ (served by the Flask app)
+cd ..                            # repo root
+databricks bundle deploy -t <target>           # pass 1 — creates the warehouse/app
+python3 scripts/render_app_yaml.py --target <target> --profile <profile>   # discovers WAREHOUSE_ID/SETUP_JOB_ID/PIPELINE_ID/FORECAST_ENDPOINT_NAME
+databricks bundle deploy -t <target>           # pass 2 — picks up the rendered app.yaml
+databricks bundle run glucosphere_app -t <target>
 ```
 
-This will:
-- Build the production frontend
-- Upload all files to Databricks workspace
-- Create/update the Databricks App
-- Deploy to: `https://glucosphere-{workspace-id}.databricksapps.com`
+This builds the production frontend, then bundle-deploys the Flask backend + static bundle as the Databricks App. The deployed URL derives from the App name (`${var.app_name}`, default `glucosphere-app`): `https://glucosphere-app-{workspace-id}.databricksapps.com`.
 
 ## Key Features
 
@@ -267,7 +268,7 @@ See `scripts/render_app_yaml.py` (the `discover_*` helpers) for the by-name look
 
 | Dependency | Where used | Why it's used | License |
 | --- | --- | --- | --- |
-| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/uc-assets/`, `/api/clinician-summary`) | BSD-3-Clause |
+| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/api/assist`, `/api/genie/query`, `/uc-assets/`) | BSD-3-Clause |
 | [**requests**](https://github.com/psf/requests) | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | Apache-2.0 |
 
 **Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.

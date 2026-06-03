@@ -24,7 +24,7 @@ flowchart TD
     A[Step 6 — bundle deploy pass 1<br/><i>creates warehouse + jobs + pipelines + app stub</i>]:::cmd
     B[Step 6 — scripts/render_app_yaml.py<br/><i>writes WAREHOUSE_ID into App/databricks/app.yaml</i>]:::cmd
     C[Step 6 — bundle deploy pass 2<br/><i>picks up rendered app.yaml</i>]:::cmd
-    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see Job DAG below</i>]:::wait
+    D[Step 7 — bundle run glucosphere_full_setup<br/><i>17-task pipeline; see Job DAG below</i>]:::wait
     E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
     F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
     G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
@@ -37,7 +37,7 @@ flowchart TD
     S4 -.-> S5
 ```
 
-The Step 7 pipeline job is itself a 16-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
+The Step 7 pipeline job is itself a 17-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
 
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
@@ -200,7 +200,7 @@ name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 cd App
 npm install
 npm run build
-# This produces App/databricks/dist/ which the Flask app serves
+# This produces App/databricks/static/ which the Flask app serves
 ```
 
 ---
@@ -255,6 +255,7 @@ flowchart TD
     I1[create_patient_registry]
     I2[create_device_telemetry]
     J[run_dlt_pipeline<br/><i>silver/gold from pipeline_data</i>]
+    SANITY["data_sanity_checks<br/><i>clinical-plausibility gate: T2D share, glucose 40–400, firmware cohorts — fails the job on violation</i>"]
     K[create_genie_ka_mas<br/><i>08_*: KA + Genie + MAS endpoints</i>]
     L[check_post_endpoint_grants<br/><i>verify KA/MAS/Genie exist before grant</i>]
     M[grant_app_permissions<br/><i>09_*: app SP access on UC + endpoints + warehouse</i>]
@@ -273,9 +274,9 @@ flowchart TD
     I1 --> J
     I2 --> J
     G2 --> J
-    J --> K --> L --> M
+    J --> SANITY --> K --> L --> M
 
-    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
+    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,SANITY,K,L,M plain
 ```
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
@@ -672,7 +673,7 @@ databricks jobs run-now --profile <profile> \
   --json "{\"job_id\": ${JOB_ID}, \"notebook_params\": {\"DEMO_WEEK_START\": \"2026-05-01\"}}"
 ```
 
-The override applies only to that single run — subsequent runs without `notebook_params` revert to YAML's `'auto'` resolution automatically. The pinned date produces a gold-table time range of exactly `2026-05-01T00:00:00 → 2026-05-07T23:55:00` with 3 distinct firmware values (`3.14`, `4.0`, `4.1`) — the full firmware-event narrative (baseline → transient fault → fix) fires inside the window.
+The override applies only to that single run — subsequent runs without `notebook_params` revert to YAML's `'auto'` resolution automatically. The pinned date produces a gold-table time range of exactly `2026-05-01T00:00:00 → 2026-05-07T23:55:00` with 4 distinct firmware values (`3.14`, `4.0`, `4.0.3`, `4.1`) — the full firmware-event narrative (baseline → over-read fault on `4.0` → under-read hotfix on `4.0.3` → recall/fixed on `4.1`) fires inside the window.
 
 ### Which to use
 
