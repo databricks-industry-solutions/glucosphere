@@ -289,6 +289,11 @@ def main() -> int:
             r'(- name: mas-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
             rf'\g<1>{args.mas_endpoint}', "resource mas-endpoint.name")
     if args.ka_endpoint:
+        # Patch BOTH the KA_ENDPOINT_NAME env var (consumed by app.py's assist
+        # router) and the ka-endpoint resource binding — mirrors --mas-endpoint.
+        content = patch(content,
+            r'(- name: KA_ENDPOINT_NAME\s+value: ")[^"]*(")',
+            rf'\g<1>{args.ka_endpoint}\g<2>', "env KA_ENDPOINT_NAME")
         content = patch(content,
             r'(- name: ka-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
             rf'\g<1>{args.ka_endpoint}', "resource ka-endpoint.name")
