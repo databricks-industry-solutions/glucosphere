@@ -37,7 +37,7 @@
 # MAGIC # CGM Incident Simulation - Device Calibration Bug
 # MAGIC
 # MAGIC ## Purpose
-# MAGIC Demonstrate how a **bidirectional device calibration bug** (±40 mg/dL bias, half over-reading half under-reading) causes catastrophic model failure, even for high-performing models (5.8 mg/dL baseline MAE).
+# MAGIC Demonstrate how a **bidirectional device calibration bug** (±40 mg/dL bias, half over-reading half under-reading) causes catastrophic model failure, even for high-performing models (~5.8 mg/dL noise-free baseline MAE; this run's live clean MAE — which includes firmware measurement noise — is computed below).
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -46,14 +46,30 @@
 # MAGIC * **Window 1:** Day 2, 2:00 PM - 5:00 PM (3-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
 # MAGIC * **Window 2:** Day 5, 10:00 AM - 1:00 PM (3-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
 # MAGIC * **Affected total:** ~60% of fleet across both windows (300 + 300 of 1000, mutually exclusive)
-# MAGIC * **Impact:** MAE peaks ~37 mg/dL for affected patients during each window (vs ~5.8 mg/dL clean baseline)
+# MAGIC * **Impact:** MAE peaks ~37 mg/dL for affected patients during each window (well above the clean baseline)
+# MAGIC
+# MAGIC ## Always-on device measurement noise (distinct from the acute bug)
+# MAGIC On TOP of the acute calibration incidents, every reading carries a **firmware-dependent
+# MAGIC measurement noise** — a zero-mean Gaussian term on `glucose_observed` whose σ models the
+# MAGIC device's accuracy (MARD) and **ramps over each firmware's life** (devices degrade
+# MAGIC gradually): the buggy rollout `4.0` (σ 6→15 mg/dL) and its hotfix `4.0.3` (σ 12→18) worsen
+# MAGIC across their days, while the good versions `3.14`/`4.1` stay tight (σ ≈ 2–4 ≈ MARD ~2–3%).
+# MAGIC It is a deterministic function of `(patient_id, time)` (shared `_firmware_spec`), so it is
+# MAGIC stable across runs. The ramp is what makes the Device-Error-by-Firmware×Day heatmap a real
+# MAGIC green→amber→red **gradient** (cell ≈ 0.8·σ) instead of a flat field, and — because the
+# MAGIC model trains on `glucose_observed` — it raises the clean-period forecast MAE off the
+# MAGIC noise-free floor (an HONEST sensor floor, not the idealized synthetic number). Aggregate
+# MAGIC clinical impact stays small (eras are short, so the high-σ tail is a fraction of the week:
+# MAGIC simulated OOR/TIR shift < ~1%).
 # MAGIC
 # MAGIC > **Note on the `~5.8 mg/dL` baseline anchor:** the `5.8 / 10.4 mg/dL` clean-baseline numbers referenced
 # MAGIC > throughout this notebook (intro, print statements, chart `axhline` reference lines) are the
-# MAGIC > published synthetic-trained baseline. The CURRENT run's actual
-# MAGIC > clean-period MAE is computed dynamically in the MAE analysis cells below and may differ slightly
-# MAGIC > depending on `baseline_source` mode (synthetic / from_source / from_table), data seed, and any
-# MAGIC > recent ingest fixes. See `README.md` for the published reference numbers.
+# MAGIC > published synthetic-trained, *noise-free* baseline. The CURRENT run's actual
+# MAGIC > clean-period MAE is computed dynamically in the MAE analysis cells below and is now ABOVE that
+# MAGIC > anchor because `glucose_observed` carries the firmware measurement noise above (a real CGM's
+# MAGIC > forecast floor includes its sensor noise). It also varies with `baseline_source` mode
+# MAGIC > (synthetic / from_source / from_table), data seed, and ingest fixes. See `README.md` for the
+# MAGIC > published reference numbers.
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -378,6 +394,10 @@ import numpy as np
 
 # COMMAND ----------
 
+# MAGIC %run ./utils/additional_patient_info/_firmware_spec
+
+# COMMAND ----------
+
 # DBTITLE 1,Load clean pseudo data
 # ------------------------
 # Load clean pseudo data (from baseline notebook)
@@ -603,21 +623,40 @@ _in_window_2 = (
 )
 _in_window = _in_window_1 | _in_window_2
 
-# Inject SIGNED bias: glucose_observed += signed_bias_mgdl during the patient's incident
-# window. signed_bias_mgdl is +magnitude for cohort 1 (window 1), -magnitude for cohort 2
-# (window 2 mirror) — set at cohort selection time above.
-# Clamp glucose_observed to the physiological CGM range [40, 400] mg/dL for EVERY reading
-# (not just the incident window): real CGMs report "LO" below 40 and "HI" above 400, so the
-# device-observed value never falls outside [40,400] — under-read bias must not drive it to
-# 0, AND baseline hyperglycemia (true glucose can exceed 400) must read as the 400 ceiling.
-# (glucose_true is left unclamped — it's the real underlying value, which can exceed 400.)
+# Build glucose_observed = glucose_true (the clean observed equals true upstream)
+#   + acute calibration bias  (signed_bias_mgdl, only during the patient's incident window)
+#   + device measurement noise (firmware-dependent, EVERY reading)
+# then clamp to the physiological CGM range [40, 400].
+#
+# Acute bias: signed_bias_mgdl is +magnitude for cohort 1 (window 1, over-read), -magnitude
+# for cohort 2 (window 2 mirror, under-read) — set at cohort selection time above.
+#
+# Device measurement noise: a DETERMINISTIC, zero-mean Gaussian term (shared _firmware_spec,
+# %run above) whose σ RAMPS over each firmware's life (devices degrade gradually) — buggy 4.0
+# (σ 6→15) and its hotfix 4.0.3 (σ 12→18) worsen across their days, good 3.14/4.1 stay tight
+# (σ 2–4). Because it is zero-mean it raises the device-error heatmap metric mean|observed−true|
+# (cell → 0.8·σ) into a real green→amber→red gradient WITHOUT shifting the clinical mean (OOR/TIR
+# move <1%, verified on the real distribution). It is a pure function of (patient_id, time) — no
+# rand()/np.random — so it is identical across every run/workspace (the determinism rule), and the
+# firmware era it keys off uses the SAME cfg-derived day-aligned eras as the telemetry
+# firmware_version column (so each incident sits fully inside its firmware era).
+#
+# Clamp to [40, 400] for EVERY reading (not just the incident window): real CGMs report "LO"
+# below 40 and "HI" above 400, so the device-observed value never falls outside [40,400] —
+# under-read bias must not drive it to 0, AND baseline hyperglycemia (true glucose can exceed
+# 400) must read as the 400 ceiling. (glucose_true is left unclamped — the real underlying
+# value, which can exceed 400.)
+_observed_base = (
+    F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
+     .otherwise(F.col("glucose_observed"))
+)
+_fw_sigma_sql = firmware_sigma_case_sql(cfg, time_col="time")
+_device_noise_sql = device_noise_expr_sql(id_col="patient_id", time_col="time",
+                                          sigma_sql=_fw_sigma_sql)
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
     F.greatest(
-        F.least(
-            F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
-             .otherwise(F.col("glucose_observed")),
-            F.lit(400.0)),
+        F.least(_observed_base + F.expr(_device_noise_sql), F.lit(400.0)),
         F.lit(40.0))
 ).withColumn(
     "incident_type",
@@ -727,7 +766,7 @@ from sklearn.metrics import mean_absolute_error
 
 print("INFERENCE-ONLY INCIDENT SIMULATION")
 print("="*80)
-print("\nGoal: Show that clean model (5.8 mg/dL MAE) fails during device calibration bug\n")
+print("\nGoal: Show that the clean model (~5.8 mg/dL noise-free published baseline; this run's live clean MAE is reported below) fails during the device calibration bug\n")
 
 # Load clean models (trained on clean data)
 print("Loading CLEAN models...")
@@ -744,7 +783,7 @@ bst30_clean = mlflow.xgboost.load_model(f"models:/{clean_model_30m}@Champion")
 print(f"[SUCCESS] Loaded clean models:")
 print(f"   15m: {clean_model_15m}@Champion")
 print(f"   30m: {clean_model_30m}@Champion")
-print(f"   Baseline performance: 5.8 mg/dL (15m) | 10.4 mg/dL (30m)\n")
+print(f"   Baseline performance (published, noise-free): 5.8 mg/dL (15m) | 10.4 mg/dL (30m) — this run's live clean MAE reported below\n")
 
 # Load incident data and build features
 print("Building features from incident data...")
@@ -872,6 +911,12 @@ print(f"   Clean period: {len(clean_period):,} timepoints ({len(clean_period)/le
 print(f"   Incident period: {len(incident_period):,} timepoints ({len(incident_period)/len(feat_sample)*100:.1f}%)")
 print(f"   Affected patients: {feat_sample[feat_sample['has_incident']==1]['patient_id'].nunique()}")
 
+# Baseline reference for the chart lines + summaries below = THIS run's clean-period MAE
+# (overwritten in the block below). Self-updating off a frozen literal so the green dashed
+# "baseline" line and the summary numbers stay truthful as glucose_observed carries the
+# firmware measurement noise. Falls back to the published noise-free anchors if unset.
+BASELINE_MAE_15M, BASELINE_MAE_30M = 5.8, 10.4  # published noise-free anchors (fallback)
+
 if len(incident_period) > 0:
     print("\n" + "="*80)
     print("PREDICTION QUALITY SUMMARY")
@@ -881,6 +926,10 @@ if len(incident_period) > 0:
     clean_mae_30m = clean_period['mae_30m'].mean()
     incident_mae_15m = incident_period['mae_15m'].mean()
     incident_mae_30m = incident_period['mae_30m'].mean()
+
+    # This run's actual clean baseline drives the chart reference lines + summaries below.
+    BASELINE_MAE_15M = round(clean_mae_15m, 1) if not pd.isna(clean_mae_15m) else BASELINE_MAE_15M
+    BASELINE_MAE_30M = round(clean_mae_30m, 1) if not pd.isna(clean_mae_30m) else BASELINE_MAE_30M
     
     print(f"\nCLEAN PERIOD (no device bug):")
     print(f"   MAE: {clean_mae_15m:.1f} mg/dL (15m) | {clean_mae_30m:.1f} mg/dL (30m)")
@@ -935,7 +984,7 @@ else:
 print("\n" + "="*80)
 print("KEY FINDINGS")
 print("="*80)
-print(f"\n[1] Clean model performs excellently on clean data (5.8 mg/dL)")
+print(f"\n[1] Clean model performs excellently on clean data ({BASELINE_MAE_15M} mg/dL)")
 print(f"[2] Device calibration bug causes CATASTROPHIC failure (~{incident_mae_15m:.0f} mg/dL)")
 print(f"[3] MAE increases by {degradation_pct_15m:.0f}% during 3-hour incident")
 print(f"[4] Demonstrates critical need for device quality monitoring")
@@ -1048,7 +1097,7 @@ for _i, _blk in enumerate(incident_blocks_1):
                 label='Incident Period' if _i == 0 else None)
 
 if incident_blocks_1:
-    ax1.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
+    ax1.axhline(y=BASELINE_MAE_15M, color='green', linestyle='--', linewidth=1, alpha=0.7, label=f'Baseline MAE ({BASELINE_MAE_15M})')
 
 ax1.set_ylabel("MAE (mg/dL)", fontsize=12)
 ax1.set_title("Incident Impact: MAE Spike During Device Calibration Bug", fontsize=14, fontweight='bold')
@@ -1177,9 +1226,9 @@ plt.show()
 
 print("[SUCCESS] Visualization complete!")
 print(f"\nThe plot clearly shows:")
-print(f"   1. MAE is stable at ~5.8 mg/dL during clean periods")
+print(f"   1. MAE is stable at ~{BASELINE_MAE_15M} mg/dL during clean periods")
 print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 3-hour incident (direction-agnostic — ABS captures both cohorts)")
-print(f"   3. MAE returns to ~5.8 mg/dL after incident ends")
+print(f"   3. MAE returns to ~{BASELINE_MAE_15M} mg/dL after incident ends")
 print(f"   4. GREEN line (true glucose) = stable baseline throughout")
 print(f"   5. RED line (positive cohort) spikes +{bias_magnitude:.0f} mg/dL ABOVE green during incident (over-reading)")
 print(f"   6. BLUE line (negative cohort) drops -{bias_magnitude:.0f} mg/dL BELOW green during incident (under-reading)")
@@ -1291,7 +1340,7 @@ ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_15m"],
 ax1.plot(all_patients_agg["hour"], all_patients_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
 if incident_blocks_2:
-    ax1.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
+    ax1.axhline(y=BASELINE_MAE_15M, color='green', linestyle='--', linewidth=1, alpha=0.7, label=f'Baseline MAE ({BASELINE_MAE_15M})')
     _per_block_annotate(ax1, all_patients_agg, incident_blocks_2, label_prefix='Fleet ')
     fleet_incident_mae_15m = all_patients_agg[all_patients_agg["incident_active"] == 1]["mae_15m"].mean()
     fleet_incident_mae_30m = all_patients_agg[all_patients_agg["incident_active"] == 1]["mae_30m"].mean()
@@ -1311,7 +1360,7 @@ ax2.plot(affected_agg["hour"], affected_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
 incident_blocks_2_affected = _incident_blocks_from(affected_agg)
 if incident_blocks_2_affected:
-    ax2.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
+    ax2.axhline(y=BASELINE_MAE_15M, color='green', linestyle='--', linewidth=1, alpha=0.7, label=f'Baseline MAE ({BASELINE_MAE_15M})')
     _per_block_annotate(ax2, affected_agg, incident_blocks_2_affected, label_prefix='Affected ')
 
 ax2.set_ylabel("MAE (mg/dL)", fontsize=12)
@@ -1329,7 +1378,7 @@ ax3.plot(unaffected_agg["hour"], unaffected_agg["mae_30m"],
          label="MAE 30m", linewidth=2, marker="s", markersize=4, color='orange')
 incident_blocks_2_unaffected = _incident_blocks_from(unaffected_agg)
 if incident_blocks_2_unaffected:
-    ax3.axhline(y=5.8, color='green', linestyle='--', linewidth=1, alpha=0.7, label='Baseline MAE (5.8)')
+    ax3.axhline(y=BASELINE_MAE_15M, color='green', linestyle='--', linewidth=1, alpha=0.7, label=f'Baseline MAE ({BASELINE_MAE_15M})')
     _per_block_annotate(ax3, unaffected_agg, incident_blocks_2_unaffected, color_box='lightgreen', label_prefix='Unaffected ')
     unaffected_incident_mae_15m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_15m"].mean() if (unaffected_agg["incident_active"] == 1).any() else 0
     unaffected_incident_mae_30m = unaffected_agg[unaffected_agg["incident_active"] == 1]["mae_30m"].mean() if (unaffected_agg["incident_active"] == 1).any() else 0
@@ -1983,7 +2032,7 @@ print(f"   Impact: {degradation_pct_15m:.0f}% MAE increase")
 print("\n" + "="*80)
 print("CONCLUSION")
 print("="*80)
-print(f"\nEven an excellent model (5.8 mg/dL MAE) fails catastrophically")
+print(f"\nEven an excellent model ({BASELINE_MAE_15M} mg/dL MAE) fails catastrophically")
 print(f"when device calibration is compromised. During the 3-hour incident:")
 print(f"\n  * MAE increased from {clean_mae_15m:.1f} to {incident_mae_15m:.1f} mg/dL ({degradation_pct_15m:.0f}% worse)")
 print(f"  * ~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of patients affected across both incident windows")
@@ -2140,7 +2189,7 @@ else:
     print("\n" + "="*80)
     print("KEY FINDINGS")
     print("="*80)
-    print(f"\n[1] Clean model performs well on clean data (~5.8 mg/dL)")
+    print(f"\n[1] Clean model performs well on clean data (~{BASELINE_MAE_15M} mg/dL)")
     print(f"[2] Clean model FAILS during incident (~40+ mg/dL MAE spike)")
     print(f"[3] Incident-trained model partially adapts to bias")
     print(f"[4] Demonstrates importance of device quality monitoring")

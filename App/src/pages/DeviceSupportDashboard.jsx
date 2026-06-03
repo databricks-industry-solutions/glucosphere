@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDevicePatternAlerts, getCalibrationDrift, getFirmwareLifecycle } from '../api/databricksSQL';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import { getConfig } from '../api/config';
@@ -32,6 +32,14 @@ export default function DeviceSupportDashboard() {
   const goBack = useGoBack();
   const [expandedDevice, setExpandedDevice] = useState(null);
   const [filterModel, setFilterModel] = useState('all');
+  // Deep-link from a patient's Device panel (Coach → "Device fleet diagnostics"):
+  // ?model=<deviceModel> pre-filters the fleet to that patient's model; ?device=<id>
+  // best-effort highlights that exact device if it surfaces in the out-of-range list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusModel = searchParams.get('model');
+  const focusDevice = searchParams.get('device');
+  const [focusRow, setFocusRow] = useState(null);       // that device's latest reading (OOR/3h gate overridden)
+  const [focusLoading, setFocusLoading] = useState(false);
   const [deviceCount, setDeviceCount] = useState('...');
   const [deviceCountLoading, setDeviceCountLoading] = useState(true);
   const [heatmapData, setHeatmapData] = useState([]);
@@ -48,8 +56,8 @@ export default function DeviceSupportDashboard() {
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
-  const [drift, setDrift] = useState([]);
-  const [driftLoading, setDriftLoading] = useState(true);
+  const [fwCohorts, setFwCohorts] = useState([]);     // [{ firmware_version, direction, device_model, devices }]
+  const [fwCohortsLoading, setFwCohortsLoading] = useState(true);
   const [baselineSource, setBaselineSource] = useState('from_source'); // synthetic | from_source | from_table — drives the baseline/dilution note wording
   const [deviceAnalysis, setDeviceAnalysis] = useState({}); // Store analysis for each device
   const [analysisLoading, setAnalysisLoading] = useState({}); // Track loading state per device
@@ -58,6 +66,41 @@ export default function DeviceSupportDashboard() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // Deep-link focus: when arriving with ?model=…, pre-set the model filter so the
+  // fleet opens narrowed to the patient's device model.
+  useEffect(() => {
+    if (focusModel) setFilterModel(focusModel);
+  }, [focusModel]);
+
+  // Deep-link focus: when arriving with ?device=…, fetch THAT device's latest reading
+  // directly (overriding the out-of-range / 3-hour gate) so the table focuses on it for
+  // review even when it's within range.
+  useEffect(() => {
+    if (!focusDevice) { setFocusRow(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        setFocusLoading(true);
+        const row = await getDeviceLatestReading(focusDevice);
+        if (alive) setFocusRow(row);
+      } catch (e) {
+        console.error('focus device fetch failed:', e);
+        if (alive) setFocusRow(null);
+      } finally {
+        if (alive) setFocusLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [focusDevice]);
+
+  // Clear the patient-focus deep-link (drops the banner + the focused device, resets the
+  // filter — back to the full out-of-range fleet view).
+  const clearFocus = () => {
+    setFilterModel('all');
+    setFocusRow(null);
+    setSearchParams({}, { replace: true });
+  };
 
   // Fetch real device count from database
   useEffect(() => {
@@ -191,18 +234,19 @@ export default function DeviceSupportDashboard() {
     if (glucoseValue < 70) return 0.85; // Low
     if (glucoseValue > 250) return 0.92; // Critically high
     if (glucoseValue > 180) return 0.78; // High
-    return 0.65; // Borderline
+    return 0.1; // In range (70–180) — low risk (only reachable via the focus deep-link; OOR-snapshot rows are never in range)
   };
 
-  // Directional severity band for an out-of-range reading (Battelino bands). Every row
-  // in this table is OOR (<70 or >180), so this is always one of four bands — turning
-  // the old constant "OUT-OF-RANGE" status into a real signal. rose = level-2 danger
-  // (Very Low / Very High), amber = level-1 (Low / High).
+  // Directional severity band (Battelino bands). The out-of-range snapshot rows are always
+  // OOR (<70 or >180) → one of four danger bands. The deep-link "focus" row can also be a
+  // healthy in-range reading (70–180) → the IN RANGE (emerald) case. rose = level-2 danger
+  // (Very Low / Very High), amber = level-1 (Low / High), emerald = in range.
   const glucoseBand = (g) =>
     g < 54 ? { label: 'VERY LOW', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
       : g < 70 ? { label: 'LOW', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
       : g > 250 ? { label: 'VERY HIGH', cls: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
-      : { label: 'HIGH', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      : g > 180 ? { label: 'HIGH', cls: 'bg-amber-500/10 text-amber-400 border-amber-500/30' }
+      : { label: 'IN RANGE', cls: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
 
   // Function to get deeper analysis for a specific device reading
   const handleDeeperAnalysis = async (device) => {
@@ -213,15 +257,16 @@ export default function DeviceSupportDashboard() {
     
     try {
       // Construct prompt with device context - focusing on device troubleshooting
-      const prompt = `Analyze this out-of-range glucose reading from a DEVICE TROUBLESHOOTING perspective (1-2 paragraphs maximum):
+      const _oor = device.glucose_value < 70 || device.glucose_value > 180;
+      const prompt = `Analyze this glucose reading from a DEVICE TROUBLESHOOTING perspective (1-2 paragraphs maximum):
 
 Device ID: ${device.id}
 Device Model: ${device.model}
 Firmware Version: ${device.firmware}
 Patient ID: ${device.patient}
-Glucose Reading: ${device.glucose_value} mg/dL
+Glucose Reading: ${Math.round(device.glucose_value)} mg/dL
 Reading time: ${device.lastReading}
-Status: OUT-OF-RANGE
+Status: ${_oor ? 'OUT-OF-RANGE (outside the 70–180 mg/dL target)' : 'IN RANGE (within the 70–180 mg/dL target — reviewing this device proactively, not because it is flagged)'}
 
 As a biomedical equipment specialist, analyze:
 1. Is this a device malfunction or calibration issue?
@@ -269,23 +314,24 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     }
   };
 
-  // Fetch per-device-model calibration drift during the firmware-4.0 incident windows.
-  // Drift = mean(observed − true) mg/dL; ~0 baseline, ≈±40 during the incident, so the
-  // fault pops where the whole-window OOR heatmap washes out (real baseline OOR ~33%).
+  // Fetch the per-firmware fault cohort: which device models were faulted on each firmware
+  // and in which DIRECTION (over- vs under-read). Annotates the firmware × day heatmap row
+  // labels (direction tag) + the fault-cell ↑/↓ glyphs + the hover model breakdown — folding
+  // in what the (now relocated to the Firmware Lifecycle page) Calibration Drift matrix shows.
   useEffect(() => {
-    const fetchDrift = async () => {
+    const fetchCohorts = async () => {
       try {
-        setDriftLoading(true);
-        const data = await getCalibrationDrift();
-        setDrift(Array.isArray(data) ? data : []);
+        setFwCohortsLoading(true);
+        const data = await getFirmwareCohorts();
+        setFwCohorts(Array.isArray(data) ? data : []);
       } catch (error) {
-        console.error('Failed to fetch calibration drift:', error);
-        setDrift([]);
+        console.error('Failed to fetch firmware cohorts:', error);
+        setFwCohorts([]);
       } finally {
-        setDriftLoading(false);
+        setFwCohortsLoading(false);
       }
     };
-    fetchDrift();
+    fetchCohorts();
   }, []);
 
   // Fetch the deployment's baseline_source so the baseline/dilution note describes
@@ -379,20 +425,19 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     }
   };
 
-  // Diverging colour for calibration drift: under-read (negative) → blue,
-  // over-read (positive) → red, 0 (calibrated) → neutral slate. Magnitude scaled
-  // against the ±40 mg/dL injected bias so a full ±40 cell reads as saturated.
-  const getDriftColor = (signed) => {
-    const t = Math.min(Math.abs(signed) / 40, 1); // 0 (calibrated) .. 1 (full ±40 drift)
-    if (t < 0.02) return 'rgb(30 41 59)';          // slate-800 — calibrated / not in this window
-    const lerp = (a, b) => Math.round(a + (b - a) * t);
-    if (signed > 0) {
-      // neutral slate-800 → red-500 (over-read, reads HIGH)
-      return `rgb(${lerp(30, 239)} ${lerp(41, 68)} ${lerp(59, 68)})`;
-    }
-    // neutral slate-800 → blue-500 (under-read, reads LOW)
-    return `rgb(${lerp(30, 59)} ${lerp(41, 130)} ${lerp(59, 246)})`;
-  };
+  // Per-firmware fault cohort → { direction, models[], totalDevices }, keyed by firmware.
+  // Drives the heatmap's row-label direction tag (↑ over / ↓ under), the fault-cell glyph,
+  // and the hover model breakdown — folding in the (relocated) Calibration Drift matrix.
+  const fwCohortByFw = {};
+  fwCohorts.forEach(c => {
+    const e = fwCohortByFw[c.firmware_version] || { direction: c.direction, models: [], totalDevices: 0 };
+    e.direction = c.direction;                 // 'positive' (over-read) | 'negative' (under-read)
+    e.models.push({ model: c.device_model, devices: c.devices });
+    e.totalDevices += c.devices;
+    fwCohortByFw[c.firmware_version] = e;
+  });
+  const dirGlyph = (dir) => (dir === 'positive' ? '↑' : dir === 'negative' ? '↓' : '');
+  const dirWord = (dir) => (dir === 'positive' ? 'over' : dir === 'negative' ? 'under' : '');
 
   // Device-error (MAE mg/dL) colour for the firmware × day heatmap: ~0 → neutral slate
   // (clean), scaling green → amber → red toward the injected ~40 mg/dL fault. Gradiated,
@@ -412,18 +457,6 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
     const u = (t - 0.5) / 0.5;                              // amber → red
     return `rgb(${mix(234, 239, u)} ${mix(179, 68, u)} ${mix(8, 68, u)})`;
   };
-
-  // Build the model × window grid for the calibration-drift strip. Window 1
-  // (positive/over-read) and Window 2 (negative/under-read) are mutually-exclusive
-  // cohorts; models with no cohort in a window (incl. clean Epsilon/Zeta) show 0.
-  const driftByKey = {};
-  drift.forEach(d => { driftByKey[`${d.device_model}|${d.direction}`] = d; });
-  const driftWindows = [
-    { dir: 'positive', label: 'Window 1', sub: 'over-read', start: drift.find(d => d.direction === 'positive')?.window_start },
-    { dir: 'negative', label: 'Window 2', sub: 'under-read', start: drift.find(d => d.direction === 'negative')?.window_start },
-  ];
-  const driftWindowDevices = (dir) => drift.filter(d => d.direction === dir).reduce((s, d) => s + d.devices, 0);
-  const driftFmtTime = (ts) => (ts ? String(ts).replace('T', ' ').slice(0, 16) + ' UTC' : ''); // "YYYY-MM-DD HH:MM UTC"
 
   // Baseline / dilution note — DYNAMIC so it stays honest regardless of baseline_source.
   // Number comes from the live heatmap OOR range (minOorPct/maxOorPct, same values the
@@ -494,12 +527,12 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
           <div className="grid grid-cols-12 gap-6 items-stretch">
             {/* Heatmap */}
-            <div data-tour="anomaly-heatmap" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+            <div data-tour="anomaly-heatmap" className="col-span-7 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4 h-14">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Error by Firmware × Day</h3>
-                <p className="text-xs text-slate-500 font-mono">mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted</p>
+                <p className="text-xs text-slate-500 font-mono">mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted · <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read marks the faulted rollout</p>
               </div>
-              
+
               <div className="flex-1 flex flex-col gap-3">
                 {/* Heatmap grid: firmware (rows) × day (cols); cell = device-error MAE. */}
                 <div className="flex-1 min-w-0 flex flex-col">
@@ -509,9 +542,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     </div>
                   ) : (
                     <div className="h-full flex flex-col gap-2">
-                      {/* X-axis: days (MM-DD) */}
+                      {/* X-axis: days (MM-DD). The corner cell labels the two axes:
+                          rows = firmware version, columns = date. */}
                       <div className="flex items-end gap-2 h-14 shrink-0">
-                        <div className="w-16" />
+                        <div className="w-28 shrink-0 flex flex-col justify-end pb-1 leading-tight font-mono text-[10px]">
+                          <span className="text-slate-400">↓ Firmware Ver.</span>
+                          <span className="text-slate-400">→ Date</span>
+                        </div>
                         {fwDays.map(day => (
                           <div key={day} className="flex-1 text-center">
                             <span className="text-[11px] font-mono text-slate-400">{String(day).slice(5)}</span>
@@ -520,34 +557,59 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       </div>
 
                       {/* Rows: firmware versions — flex-fill the panel height so the
-                          (few) firmware rows balance the taller model×window panel beside
-                          them instead of leaving white space below. */}
+                          (few) firmware rows fill the panel instead of leaving white space
+                          below. Each row label carries the fault direction (↑ over / ↓ under);
+                          acute fault cells are glyphed + the hover gives the model breakdown. */}
                       <div className="flex-1 flex flex-col gap-2">
-                      {fwRows.map(fw => (
+                      {fwRows.map(fw => {
+                        const cohort = fwCohortByFw[fw];   // faulted firmware → direction + models
+                        const cohortModels = cohort ? cohort.models.map(m => `${m.model} ${m.devices}`).join(' / ') : '';
+                        return (
                         <div key={fw} className="flex items-stretch gap-2 flex-1">
-                          <div className="w-16 text-sm text-slate-300 font-mono flex items-center">{fw}</div>
+                          <div className="w-28 shrink-0 flex flex-col justify-center pr-1 leading-tight">
+                            <span className="text-sm text-slate-300 font-mono">{fw}</span>
+                            {cohort && (
+                              <span className={`text-[10px] font-mono ${cohort.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}`}>
+                                {dirGlyph(cohort.direction)} {dirWord(cohort.direction)}-read
+                              </span>
+                            )}
+                          </div>
                           {fwDays.map(day => {
                             const cell = fwHeat.find(d => d.firmware_version === fw && d.day === day);
                             const has = !!cell;
                             const mae = has ? cell.mae : 0;
+                            const faultCell = has && mae >= 25 && !!cohort;   // acute in-incident cell → glyph it
 
                             return (
                               <div
                                 key={day}
-                                className="flex-1 min-h-[2.25rem] rounded-lg hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all group relative"
+                                className="flex-1 min-h-[2.25rem] rounded-lg hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900 transition-all relative group cursor-default"
                                 style={{ backgroundColor: has ? getMaeColor(mae) : 'rgb(15 23 42)' }}
                               >
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                                  <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-sm font-mono whitespace-nowrap shadow-xl">
-                                    <span className="text-cyan-400 font-bold">{has ? mae : '—'}</span>
-                                    <span className="text-slate-400"> mg/dL · FW {fw} · {String(day).slice(5)}</span>
+                                {faultCell && (
+                                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <span className="text-white font-bold text-sm" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>{dirGlyph(cohort.direction)}</span>
+                                  </div>
+                                )}
+                                {/* Compact tooltip — sits ABOVE the cell (never covers it), stacked + narrow + subtle. */}
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                                  <div className="bg-slate-950/95 border border-slate-700 rounded px-2 py-1 text-center leading-tight shadow-lg">
+                                    <div className="text-slate-100 font-bold font-mono text-xs whitespace-nowrap">{has ? mae : '—'} mg/dL</div>
+                                    <div className="text-slate-500 font-mono text-[10px] whitespace-nowrap">FW {fw} · {String(day).slice(5)}</div>
+                                    {faultCell && (
+                                      <div className={`font-mono text-[10px] whitespace-nowrap ${cohort.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}`}>{dirGlyph(cohort.direction)} {dirWord(cohort.direction)}-read</div>
+                                    )}
+                                    {faultCell && cohortModels && (
+                                      <div className="text-slate-400 font-mono text-[10px] whitespace-nowrap">{cohortModels}</div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
                             );
                           })}
                         </div>
-                      ))}
+                        );
+                      })}
                       </div>
                     </div>
                   )}
@@ -555,7 +617,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
                 {/* Legend (colorbar) — device error mg/dL, clean→fault left to right. */}
                 {!fwHeatLoading && fwHeat.length > 0 && (
-                  <div className="flex items-center gap-2 pl-16">
+                  <div className="flex items-center gap-2 pl-28">
                     <span className="text-[10px] font-mono text-emerald-400 font-bold">0</span>
                     <span className="text-[10px] font-mono text-slate-500">clean</span>
                     <div className="flex-1 flex flex-row rounded overflow-hidden">
@@ -571,108 +633,11 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     <span className="text-[10px] font-mono text-rose-400 font-bold">~{Math.round(fwMaeMax)}</span>
                   </div>
                 )}
-                {/* Roadmap note — the current fault is bimodal (clean ≈0 / acute ±40), so
-                    clean firmware-days read uniform green. The richer per-firmware DRIFT
-                    gradient (devices degrade gradually over a firmware's life) lands when
-                    the data-gen models that — see CHANGELOG / PR. Honest now, denser later. */}
-                {!fwHeatLoading && fwHeat.length > 0 && (
-                  <p className="text-[10px] font-mono text-slate-600 mt-2 pl-16 leading-relaxed">
-                    Roadmap: a per-firmware <span className="text-slate-500">drift gradient</span> (devices degrade gradually over a firmware's life) — more cells will shade green→amber→red as the data-gen models device degradation.
-                  </p>
-                )}
               </div>
-            </div>
-
-            {/* Calibration Drift — top-right of the 2×2 overview, paired with the
-                OOR heatmap to its left. Measures the device fault directly
-                (|observed − true| mg/dL): ~0 at baseline, ≈±40 during the incident,
-                so the firmware-4.0 fault is glaring where the whole-window OOR rate
-                (real HUPA-UCM baseline ~33%) washes it out. Model rows × 2 incident
-                windows; diverging red (over-read) / blue (under-read). */}
-            <div data-tour="calibration-drift" className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
-              <div className="mb-4 h-14">
-                <h3 className="text-sm font-medium text-slate-300 mb-1">Device Calibration Drift · FW 4.0 Incident</h3>
-                <p className="text-xs text-slate-500 font-mono">mean(observed − true) mg/dL, by model × incident window · ≈0 calibrated, ±40 faulted</p>
-              </div>
-
-              {driftLoading ? (
-                <div className="flex items-center justify-center h-48 text-slate-500">Loading calibration drift...</div>
-              ) : drift.length === 0 ? (
-                <div className="flex items-center justify-center h-48 text-slate-500">No incident drift detected</div>
-              ) : (
-                (() => {
-                  const models = (deviceTypes && deviceTypes.length > 0)
-                    ? deviceTypes
-                    : [...new Set(drift.map(d => d.device_model))].sort();
-                  return (
-                    <div className="flex-1 flex flex-col">
-                      <div className="space-y-2">
-                        {/* Window column headers — fixed height + bottom-aligned to
-                            match the OOR heatmap's header so model rows line up. */}
-                        <div className="flex items-end gap-3 h-14">
-                          <div className="w-20 shrink-0" />
-                          {driftWindows.map(win => (
-                            <div key={win.dir} className="flex-1 text-center">
-                              <div className="text-xs font-mono text-slate-300">{win.label}</div>
-                              <div className="text-[10px] font-mono text-slate-500">{win.sub} · {driftWindowDevices(win.dir)} dev</div>
-                              {win.start && <div className="text-[10px] font-mono text-slate-600">{driftFmtTime(win.start)}</div>}
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* One row per device model */}
-                        {models.map(m => (
-                          <div key={m} className="flex items-center gap-3">
-                            <div className="w-20 shrink-0 text-sm text-slate-300 font-mono">{m}</div>
-                            {driftWindows.map(win => {
-                              const cell = driftByKey[`${m}|${win.dir}`];
-                              const signed = cell ? cell.signed_drift : 0;
-                              const devs = cell ? cell.devices : 0;
-                              return (
-                                <div
-                                  key={win.dir}
-                                  className="flex-1 h-10 rounded-lg flex items-center justify-center group relative cursor-default transition-all hover:ring-2 hover:ring-cyan-500 hover:ring-offset-2 hover:ring-offset-slate-900"
-                                  style={{ backgroundColor: getDriftColor(signed) }}
-                                >
-                                  <span className={`text-sm font-mono font-semibold ${Math.abs(signed) >= 8 ? 'text-white' : 'text-slate-500'}`}>
-                                    {signed > 0 ? '+' : ''}{signed === 0 ? '0' : signed.toFixed(0)}
-                                  </span>
-                                  {cell && (
-                                    <div className="absolute inset-x-0 -top-9 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                                      <div className="bg-slate-950 border border-cyan-500 rounded px-3 py-1.5 text-xs font-mono whitespace-nowrap shadow-xl">
-                                        <span className="text-cyan-400 font-bold">{signed > 0 ? '+' : ''}{signed.toFixed(1)} mg/dL</span>
-                                        <span className="text-slate-400"> · {devs} dev</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Diverging legend — two left-aligned rows (swatches, then the
-                          clean-models note) so nothing floats or wraps raggedly. */}
-                      <div className="mt-auto pt-3 border-t border-slate-800/70 text-[10px] font-mono text-slate-500">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-4 h-3 rounded-sm" style={{ backgroundColor: getDriftColor(-40) }} />
-                          <span>−40 under</span>
-                          <span className="inline-block w-4 h-3 rounded-sm ml-2" style={{ backgroundColor: getDriftColor(0) }} />
-                          <span>0 calibrated</span>
-                          <span className="inline-block w-4 h-3 rounded-sm ml-2" style={{ backgroundColor: getDriftColor(40) }} />
-                          <span>+40 over</span>
-                        </div>
-                        <div className="mt-1.5 text-slate-600">Epsilon / Zeta clean — no incident</div>
-                      </div>
-                    </div>
-                  );
-                })()
-              )}
             </div>
 
             {/* Device Pattern Alerts */}
-            <div className="col-span-4 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
+            <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Pattern Alerts</h3>
                 <p className="text-xs text-slate-500 font-mono">Detected device performance patterns</p>
@@ -741,13 +706,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             </div>
           </div>
 
-          {/* Why-two-views note — both panels measure device error DIRECTLY; this explains
-              the metric choice (why NOT a whole-window out-of-range rate): the real HUPA-UCM
-              baseline (~31–39% OOR even on healthy firmware) would dilute a 3-hour fault.
-              Keeps oorBaselineRange/baselineNote (computed from the live OOR data) in use. */}
+          {/* Why-device-error note — explains the metric choice (why NOT a whole-window
+              out-of-range rate): the real HUPA-UCM baseline (~31–39% OOR even on healthy
+              firmware) would dilute a 3-hour fault. Keeps oorBaselineRange/baselineNote
+              (computed from the live OOR data) in use. */}
           <div className="mt-6 bg-slate-900/30 border border-slate-800/70 rounded-lg px-5 py-3 text-[11px] font-mono text-slate-500 leading-relaxed">
-            <span className="text-slate-300">Why two views? </span>
-            Both read <span className="text-slate-400">device error</span> directly (|observed − true|, ≈0 calibrated / ±40 faulted): the <span className="text-slate-400">Firmware × Day</span> heatmap shows <span className="text-slate-400">which firmware drifts and when</span> (FW 4.0 lights up on the incident days; 3.14 before and 4.1 after stay ~0), and <span className="text-slate-400">Calibration Drift</span> shows <span className="text-slate-400">which models and which direction</span> (over- vs under-read). We measure error directly because a whole-window <span className="text-slate-400">out-of-range rate</span> reads <span className="text-slate-400">{oorBaselineRange}</span> even on healthy firmware — glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why} — so that baseline would <span className="text-amber-400/80">dilute</span> a 3-hour fault. Honest signal, no data inflation.
+            <span className="text-slate-300">Why device error? </span>
+            The <span className="text-slate-400">Firmware × Day</span> heatmap reads <span className="text-slate-400">device error</span> directly (mean |observed − true|, ≈0 clean → ~40 faulted): <span className="text-slate-400">which firmware drifts, when, how much, and which way</span> — the <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read glyph + row label name the direction and faulted models (the per-model breakdown is on the <span className="text-slate-400">Firmware Lifecycle</span> page). We measure error directly because a whole-window <span className="text-slate-400">out-of-range rate</span> reads <span className="text-slate-400">{oorBaselineRange}</span> even on healthy firmware — glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why} — so that baseline would <span className="text-amber-400/80">dilute</span> a 3-hour fault. Honest signal, no data inflation.
           </div>
         </section>
 
@@ -756,12 +721,34 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
         {/* Device Detail Table */}
         <section data-tour="out-of-range-table">
+          {(focusModel || focusDevice) && (
+            <div className="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5">
+              <span className="text-xs font-mono text-cyan-300">
+                {focusDevice ? (
+                  focusRow ? (
+                    <>Focused on <span className="text-slate-200">{focusRow.device_id}</span> · patient <span className="text-slate-200">{focusRow.patient_id}</span> · model <span className="text-slate-200">{focusRow.device_type}</span><span className="text-slate-500"> — showing its latest reading below (out-of-range gate overridden); <button onClick={clearFocus} className="underline hover:text-cyan-200">clear</button> for the full fleet</span></>
+                  ) : focusLoading ? (
+                    <>Loading <span className="text-slate-200">{focusDevice}</span>…</>
+                  ) : (
+                    <>Couldn't load <span className="text-slate-200">{focusDevice}</span><span className="text-slate-500"> — showing all {focusModel || 'matching'} devices</span></>
+                  )
+                ) : (
+                  <>Focused from a patient · model <span className="text-slate-200">{focusModel}</span><span className="text-slate-500"> — fleet filtered to this device's model</span></>
+                )}
+              </span>
+              <button onClick={clearFocus} className="text-xs font-mono text-slate-400 hover:text-slate-200 shrink-0">clear ✕</button>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
-                Out-of-Range Device Readings
+                {focusDevice ? 'Focused device · latest reading' : 'Out-of-Range Device Readings'}
               </h2>
-              <p className="text-xs text-slate-500 font-mono mt-1">Flagged readings outside the 70–180 mg/dL target — latest snapshot · <span className="text-cyan-400/80">click any row</span> for reading details + AI device analysis</p>
+              <p className="text-xs text-slate-500 font-mono mt-1">
+                {focusDevice
+                  ? <>The latest reading for the device you came from — any range · <span className="text-cyan-400/80">click the row</span> for details + AI device analysis</>
+                  : <>Flagged readings outside the 70–180 mg/dL target — latest snapshot · <span className="text-cyan-400/80">click any row</span> for reading details + AI device analysis</>}
+              </p>
             </div>
             <select 
               value={filterModel}
@@ -776,7 +763,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
           </div>
           
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg overflow-hidden">
-            {devicesLoading ? (
+            {(focusDevice ? focusLoading : devicesLoading) ? (
               <div className="flex items-center justify-center h-48 text-slate-500">
                 Loading device readings...
               </div>
@@ -797,16 +784,37 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                     </tr>
                   </thead>
                   <tbody>
-                    {devices
-                      .filter(device => filterModel === 'all' || device.model === filterModel)
-                      .map((device, idx) => (
+                    {((focusDevice && focusRow)
+                      ? [{
+                          id: focusRow.device_id,
+                          patient: focusRow.patient_id,
+                          model: focusRow.device_type,
+                          firmware: focusRow.firmware_version,
+                          status: 'focus',
+                          lastReading: focusRow.reading_time,
+                          anomalyScore: calculateAnomalyScore(focusRow.glucose_value),
+                          glucose_value: focusRow.glucose_value,
+                        }]
+                      : devices.filter(device => filterModel === 'all' || device.model === filterModel)
+                    ).map((device, idx) => (
                   <React.Fragment key={idx}>
-                    <tr 
-                      className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer"
+                    <tr
+                      className={`border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer ${focusDevice && device.id === focusDevice ? 'bg-cyan-500/10 ring-1 ring-inset ring-cyan-500/40' : ''}`}
                       onClick={() => setExpandedDevice(expandedDevice === idx ? null : idx)}
                     >
                       <td className="px-4 py-3 text-sm font-mono text-cyan-400">{device.id}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.patient}</td>
+                      <td className="px-4 py-3 text-sm font-mono">
+                        {/* cross-reference → this patient's Coach view (the AI rec's
+                            "patient notification / clinical review"). stopPropagation so
+                            it doesn't also toggle the row's reading-detail expander. */}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/diabetes-coach?patient=${encodeURIComponent(device.patient)}`); }}
+                          className="text-cyan-400 hover:text-cyan-300 hover:underline decoration-dotted underline-offset-2"
+                          title={`Open ${device.patient} in Diabetes Coach`}
+                        >
+                          {device.patient}
+                        </button>
+                      </td>
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>
                       <td className="px-4 py-3">
@@ -822,19 +830,22 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.lastReading}</td>
                       <td className="px-4 py-3">
                         <span className={`text-sm font-mono font-bold ${
-                          (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
+                          (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
+                            : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
+                            : 'text-emerald-400'
                         }`}>
-                          {device.glucose_value ? `${device.glucose_value} mg/dL` : 'N/A'}
+                          {device.glucose_value ? `${Math.round(device.glucose_value)} mg/dL` : 'N/A'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                            <div 
+                            <div
                               className={`h-full ${
                                 device.anomalyScore > 0.85 ? 'bg-rose-500' :
                                 device.anomalyScore > 0.7 ? 'bg-amber-500' :
-                                'bg-yellow-500'
+                                device.anomalyScore > 0.4 ? 'bg-yellow-500' :
+                                'bg-emerald-500'
                               }`}
                               style={{ width: `${device.anomalyScore * 100}%` }}
                             />
@@ -858,9 +869,11 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
                                   <span className={`font-mono font-bold ${
-                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400' : 'text-amber-400'
+                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
+                                      : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
+                                      : 'text-emerald-400'
                                   }`}>
-                                    {device.glucose_value} mg/dL
+                                    {Math.round(device.glucose_value)} mg/dL
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -869,7 +882,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                     {device.glucose_value < 54 ? 'Very Low (<54)' :
                                      device.glucose_value < 70 ? 'Low (54–69)' :
                                      device.glucose_value > 250 ? 'Very High (>250)' :
-                                     'High (181–250)'}
+                                     device.glucose_value > 180 ? 'High (181–250)' :
+                                     'In range (70–180)'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -882,9 +896,15 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               </div>
                               
-                              <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
-                                ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
-                              </div>
+                              {(device.glucose_value < 70 || device.glucose_value > 180) ? (
+                                <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
+                                  ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
+                                </div>
+                              ) : (
+                                <div className="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded text-xs text-emerald-300">
+                                  ✓ <strong>Within range:</strong> this reading is inside the 70–180 mg/dL target — no action needed.
+                                </div>
+                              )}
                             </div>
                             
                             {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}

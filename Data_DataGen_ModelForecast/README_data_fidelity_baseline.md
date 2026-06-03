@@ -63,19 +63,30 @@ The bidirectional incident overlay shifts glucose distribution by cohort — bas
 
 ![Distribution shift 4-class](assets/distribution_comparison_4panel.png)
 
+## Device firmware rollout & the device-error gradient
+
+Separate from the acute ±40 mg/dL calibration incidents, the fleet carries a **four-version firmware rollout** — `3.14 → 4.0 → 4.0.3 → 4.1` — with an always-on, **per-firmware measurement-noise σ ramp** (`utils/additional_patient_info/_firmware_spec.py`: a zero-mean Gaussian term on `glucose_observed`). This turns the *Device Error by Firmware × Day* view into a **green → amber → red gradient** rather than a binary fault:
+
+- **`3.14`** (baseline) and **`4.1`** (recall / fixed) are the **clean** versions — low noise.
+- **`4.0`** is the faulty over-read rollout; **`4.0.3`** is the under-read "hotfix" that briefly looked better then regressed — both **faulty**, with elevated σ.
+
+The noise is **deterministic** (seeded from a hash, so reruns reproduce) and **zero-mean**, so it does not bias the signal — but it raises the clean-period forecast MAE off the idealized noise-free floor, which is why the live clean MAE (below) sits above the `~5.8 mg/dL` published anchor. This is the honest sensor-noise story behind the recall narrative. The firmware version labels and device metadata themselves remain **synthetic**; only the glucose signal is real (in `from_source` mode).
+
 ## Forecast model performance
 
-The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) is trained on real HUPA-UCM-derived data and evaluated under a simulated +40 mg/dL device calibration bug overlay:
+The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) is trained on real HUPA-UCM-derived data and evaluated under a simulated **bidirectional ±40 mg/dL** device calibration bug (two ~3-hour windows: Day-2 over-read cohort + Day-5 under-read cohort, ~300 patients each ≈ 60% of the 1,000-patient fleet):
 
-| Period | Timepoints | MAE 15m | MAE 30m |
-|---|---:|---:|---:|
-| Clean (no device bug) | 588,550 | **5.3 mg/dL** | **9.2 mg/dL** |
-| Incident (+40 mg/dL bias, 3-hour window, 300/1000 patients affected) | 3,218 | **38.8 mg/dL** | **37.7 mg/dL** |
-| Degradation | — | **+631%** | **+310%** |
+| Period | MAE 15m | MAE 30m |
+|---|---:|---:|
+| Clean — published noise-free anchor | ~5.8 mg/dL | ~10.4 mg/dL |
+| Incident (bidirectional ±40 mg/dL bug) | ~38 mg/dL | ~37 mg/dL |
+| Degradation vs anchor | ≈6× | ≈3.5× |
 
-A well-tuned model performs at published-research-quality on clean data (~5 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — by over 6× — when device calibration is compromised**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
+> **The clean-period MAE is computed dynamically each run** (`05_incident_inference_bidirectional.py`) and now sits **slightly above** the published `~5.8 / 10.4 mg/dL` noise-free anchor — because the model trains and evaluates on `glucose_observed`, which carries the always-on firmware **measurement noise** (an honest sensor floor, not the idealized synthetic number). Treat the incident/degradation figures as a **representative run**, not a fixed contract.
 
-Real-trained vs synthetic-trained models produce nearly identical numbers (the published synthetic-trained baseline was 5.8 / 10.4 mg/dL clean, 38.3 / 36.8 incident), so this story is consistent across baseline modes. See [`05_incident_inference_bidirectional.py`](05_incident_inference_bidirectional.py) for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler [`06_incident_inference_single.py`](06_incident_inference_single.py) sibling retains the unidirectional single-incident variant for reference.
+A well-tuned model performs at published-research-quality on clean data (~5–6 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — several-fold — when device calibration is compromised in either direction**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
+
+Real-trained vs synthetic-trained models tell the same story across baseline modes. See [`05_incident_inference_bidirectional.py`](05_incident_inference_bidirectional.py) for the active inference notebook (two-incident mirror, bidirectional cohort split). The simpler [`06_incident_inference_single.py`](06_incident_inference_single.py) sibling retains the unidirectional single-incident variant for reference.
 
 ### Clean-data forecast accuracy
 

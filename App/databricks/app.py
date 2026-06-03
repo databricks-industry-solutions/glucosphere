@@ -686,6 +686,26 @@ def get_config():
     # JSX falls back to {workspace_host}/jobs listing when this is empty.
     setup_job_id = os.getenv('SETUP_JOB_ID', '')
     setup_job_url = f"{raw_host}/jobs/{setup_job_id}" if raw_host and setup_job_id else ''
+    # pipeline_url: deep-link to the DLT (silver→gold medallion) pipeline page,
+    # surfaced by the About page's "under the hood" platform-plumbing panel.
+    # PIPELINE_ID is discovered at deploy time by scripts/render_app_yaml.py
+    # (same by-name pattern as SETUP_JOB_ID) and baked into the env via app.yaml.
+    # JSX falls back to the {workspace_host}/pipelines listing when this is empty.
+    pipeline_id = os.getenv('PIPELINE_ID', '')
+    pipeline_url = f"{raw_host}/pipelines/{pipeline_id}" if raw_host and pipeline_id else ''
+    # Agent-Bricks endpoint deep-links for the About "under the hood" panel: the
+    # Multi-Agent Supervisor (MAS) and Knowledge Assistant (KA) are both Model
+    # Serving endpoints, so they open at /ml/endpoints/{name}. Names come from the
+    # same env vars the assist router already uses (ENDPOINT_NAME / KA_ENDPOINT_NAME).
+    mas_endpoint_url = f"{raw_host}/ml/endpoints/{ENDPOINT_NAME}" if raw_host and ENDPOINT_NAME else ''
+    ka_endpoint_url = f"{raw_host}/ml/endpoints/{KA_ENDPOINT_NAME}" if raw_host and KA_ENDPOINT_NAME else ''
+    # forecast_endpoint_url: deep-link straight to the Glucosphere forecast Model
+    # Serving endpoint detail page (the serving-endpoints LIST page has no URL search
+    # param, so a direct link beats dropping the user on the unfiltered list). Name is
+    # discovered at deploy time by render_app_yaml.py (Glucosphere_Forecast_15min +
+    # harness_suffix); empty falls back to the /ml/endpoints listing.
+    forecast_endpoint_name = os.getenv('FORECAST_ENDPOINT_NAME', '')
+    forecast_endpoint_url = f"{raw_host}/ml/endpoints/{forecast_endpoint_name}" if raw_host and forecast_endpoint_name else ''
     return jsonify({
         'catalog': CATALOG_NAME,
         'schema': SCHEMA_NAME,
@@ -694,6 +714,10 @@ def get_config():
         'baseline_source_detail': provenance['source_detail'],
         'workspace_host': raw_host,
         'setup_job_url': setup_job_url,
+        'pipeline_url': pipeline_url,
+        'mas_endpoint_url': mas_endpoint_url,
+        'ka_endpoint_url': ka_endpoint_url,
+        'forecast_endpoint_url': forecast_endpoint_url,
     })
 
 @app.route('/health')

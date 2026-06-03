@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import PopulationRiskChart from '../components/PopulationRiskChart';
@@ -83,6 +83,15 @@ export default function PopulationRiskPage() {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [filter, setFilter] = useState(null); // {dim:'region'|'model', label}
+  // Deep-link from a Calibration-Drift cell (Firmware Lifecycle): ?model=Alpha (or
+  // ?region=NA) pre-filters the roster to that cohort on arrival; "✕ show all" clears it.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const m = searchParams.get('model');
+    const rg = searchParams.get('region');
+    if (m) setFilter({ dim: 'model', label: m });
+    else if (rg) setFilter({ dim: 'region', label: rg });
+  }, [searchParams]);
   const [outreachOpen, setOutreachOpen] = useState(false);
   const [channel, setChannel] = useState('portal');
 
@@ -197,7 +206,7 @@ export default function PopulationRiskPage() {
               <>
                 <span className="text-slate-500">Filtered to</span>
                 <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">{filter.dim}: {filter.label}</span>
-                <button onClick={() => setFilter(null)} className="text-slate-500 hover:text-slate-300">clear ✕</button>
+                <button onClick={() => setFilter(null)} className="text-slate-500 hover:text-slate-300">✕ show all</button>
               </>
             )}
             <div className="ml-auto flex items-center gap-2">

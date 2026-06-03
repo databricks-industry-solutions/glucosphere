@@ -236,6 +236,25 @@ targets:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
 
+  # Isolated from_source sandbox for the firmware-heatmap / device-error-gradient work.
+  # A SEPARATE target (not a schema override on from_source_e2e) so its pipeline/job/
+  # warehouse/app — all named with ${bundle.target} — get distinct names and never touch
+  # the from_source_e2e demo deploy. Deploy with:
+  #   source .env.bundle
+  #   export BUNDLE_VAR_schema=glucosphere_fw_v2
+  #   export BUNDLE_VAR_app_name=gsphere-v0-2
+  #   export BUNDLE_VAR_harness_suffix=_fw_v2   # isolates workspace-global KA/MAS/Genie/endpoints
+  #   databricks bundle deploy -t gsphere_fw_v2
+  gsphere_fw_v2:
+    mode: development
+    variables:
+      baseline_source: from_source
+      app_name: ${var.app_basename}-fw-v2-${var.dev_initials}
+    resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
+
 resources:
 
   # ---------------------------------------------------------------------------

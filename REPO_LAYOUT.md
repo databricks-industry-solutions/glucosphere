@@ -80,7 +80,7 @@ For deeper detail: [`Data_DataGen_ModelForecast/README.md`](Data_DataGen_ModelFo
 | [`App/src/pages/CareManagementDashboard.jsx`](App/src/pages/CareManagementDashboard.jsx) | React | clinician dashboard |
 | [`App/src/pages/DeviceSupportDashboard.jsx`](App/src/pages/DeviceSupportDashboard.jsx) | React | device-team dashboard |
 | [`App/src/pages/MetricsExplained.jsx`](App/src/pages/MetricsExplained.jsx) | React | metrics + simulation framing prose |
-| [`App/src/components/AgentChatInterface.jsx`](App/src/components/AgentChatInterface.jsx) | React | MAS / KA / Genie chat UI |
+| [`App/src/components/GlobalAssistant.jsx`](App/src/components/GlobalAssistant.jsx) | React | unified MAS / KA / Genie assistant (FAB → slide-over) |
 | [`App/src/components/IncidentCharts.jsx`](App/src/components/IncidentCharts.jsx) | React | MAE timeline + incident-impact charts |
 | [`App/src/api/`](App/src/api/) | JS | API client (Flask + Statement Execution + agent endpoints) |
 | [`App/databricks/app.py`](App/databricks/app.py) | Flask (Python) | backend — proxies SQL via Statement Execution API, MAS / KA / Genie via serving endpoints, provenance lookup |
@@ -117,8 +117,8 @@ flowchart TD
     F[datagen_modeling<br/><i>04_pseudo_data_forecast_modeling.py</i>]
     G1[incident_inference<br/><i>05_incident_inference_bidirectional.py</i>]
     G2[deploy_model_endpoints<br/><i>07_deploy_serving_endpoints.py</i>]
-    H[generate_patient_device_data<br/><i>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb</i>]
-    I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
+    H[generate_patient_device_data<br/><i>utils/additional_patient_info/Create Patient_Device Table.ipynb</i>]
+    I1[create_patient_registry<br/><i>utils/additional_patient_info/Create Raw Patient_Registry Data.ipynb</i>]
     I2[create_device_telemetry<br/><i>utils/additional_patient_info/Create Raw Device Data.ipynb</i>]
     J[run_dlt_pipeline<br/><i>invokes cgm_silver_gold SDP</i>]
     SC[data_sanity_checks<br/><i>clinical-plausibility gate</i>]

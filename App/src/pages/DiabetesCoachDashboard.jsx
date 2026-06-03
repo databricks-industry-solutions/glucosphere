@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Users, Loader2, ChevronRight } from 'lucide-react';
+import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Users, Loader2, ChevronRight, Wrench, User } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics, getPatientList, getPatientDetail } from './DiabetesCoachDashboard/queries';
 import { getFirmwareLifecycle } from '../api/databricksSQL';
 
@@ -405,6 +405,7 @@ export default function DiabetesCoachDashboard() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
+                    <User className="w-6 h-6 text-cyan-400 shrink-0" strokeWidth={2.25} />
                     <h2 className="text-2xl font-semibold font-mono" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                       {selectedPatientId}
                     </h2>
@@ -586,25 +587,25 @@ export default function DiabetesCoachDashboard() {
             <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <h3 className="text-sm font-medium text-slate-300 mb-1">Observations</h3>
               <p className="text-xs text-slate-500 font-mono mb-4">Derived from this patient's observed window{windowDays ? ` (${windowDays}d)` : ''}</p>
-              <div className="space-y-3">
+              {/* horizontal 3-up (was a vertical list) — fills the left column width
+                  so the section sits compactly alongside the right-hand panels */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {observations.map((o, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-slate-950 rounded border border-slate-800 hover:border-slate-700 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        o.severity === 'high' ? 'bg-rose-500/10 border border-rose-500/30' :
-                        o.severity === 'medium' ? 'bg-amber-500/10 border border-amber-500/30' :
-                        'bg-emerald-500/10 border border-emerald-500/30'
-                      }`}>
-                        <AlertCircle className={`w-5 h-5 ${
-                          o.severity === 'high' ? 'text-rose-400' :
-                          o.severity === 'medium' ? 'text-amber-400' :
-                          'text-emerald-400'
-                        }`} />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-medium text-slate-200">{o.type}</h4>
-                        <p className="text-xs text-slate-500 font-mono">{o.detail}</p>
-                      </div>
+                  <div key={idx} className="flex items-start gap-3 p-4 bg-slate-950 rounded border border-slate-800 hover:border-slate-700 transition-colors">
+                    <div className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${
+                      o.severity === 'high' ? 'bg-rose-500/10 border border-rose-500/30' :
+                      o.severity === 'medium' ? 'bg-amber-500/10 border border-amber-500/30' :
+                      'bg-emerald-500/10 border border-emerald-500/30'
+                    }`}>
+                      <AlertCircle className={`w-5 h-5 ${
+                        o.severity === 'high' ? 'text-rose-400' :
+                        o.severity === 'medium' ? 'text-amber-400' :
+                        'text-emerald-400'
+                      }`} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-sm font-medium text-slate-200 leading-tight">{o.type}</h4>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">{o.detail}</p>
                     </div>
                   </div>
                 ))}
@@ -699,10 +700,26 @@ export default function DiabetesCoachDashboard() {
                 </div>
               </div>
               <button
-                onClick={() => navigate('/device-support')}
-                className="mt-4 w-full flex items-center justify-center gap-1 text-xs font-mono px-3 py-2 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors"
+                onClick={() => {
+                  // Carry this patient's device into the fleet view so it opens
+                  // pre-filtered to their model (+ best-effort highlight of the
+                  // exact device if it surfaces in the out-of-range list).
+                  const qs = new URLSearchParams();
+                  if (demo?.deviceModel) qs.set('model', demo.deviceModel);
+                  if (demo?.deviceId) qs.set('device', demo.deviceId);
+                  const q = qs.toString();
+                  navigate(q ? `/device-support?${q}` : '/device-support');
+                }}
+                className="mt-6 w-full flex items-center justify-center gap-1.5 text-sm font-mono px-3 py-2.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 hover:text-cyan-200 hover:border-cyan-500/60 transition-colors"
               >
-                Device fleet diagnostics <ChevronRight className="w-3 h-3" />
+<Wrench className="w-4 h-4 shrink-0" /> <span className="text-center leading-tight">Review this device<br />in fleet diagnostics</span> <ChevronRight className="w-4 h-4 shrink-0" />
+              </button>
+              {/* secondary: jump to the full (unfocused) fleet view */}
+              <button
+                onClick={() => navigate('/device-support')}
+                className="mt-3.5 w-full flex items-center justify-center gap-1 text-xs font-mono text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                or open the full fleet diagnostics <ChevronRight className="w-3 h-3" />
               </button>
             </div>
           </div>

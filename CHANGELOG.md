@@ -19,9 +19,40 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-03]
+
+Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.
+
+### Added — patient ↔ device ↔ fleet drill-downs (closes the detect → diagnose → assess loop in-app)
+- **Calibration Drift matrix → Population Risk.** Faulted drift cells on the Firmware Lifecycle page are clickable → Population Risk pre-filtered to that device model (`?model=`), with **✕ show all** to clear. Self-contained navigation (no external hop) for booth demos. (`8b1c452`)
+- **Device ↔ Coach cross-links.** Device Support's Patient cell links to that patient's Diabetes Coach view (`9d88dc4`); Coach's device panel links to Device Support **focused on that device** with a status-aware honest reading (in-range vs OOR), overriding the OOR/3h gate so any device can be inspected (`207bb3e`).
+- These wire #2's device/coach tabs together and exercise #5's real per-patient data.
+
+### Added — About "Under the hood" platform panel + overview link
+- About page gains a **Data → ML/AI → Agentic** platform-plumbing panel: each node deep-links into the deploying workspace (catalog, DLT pipeline, model serving, MAS/KA endpoints, Genie space) from `/api/config`, with accurate **Agent Bricks (KA + MAS) vs AI/BI Genie** taxonomy, a combined hero, and the glucose-ring logo beside the paragraph that explains it + embedded official Databricks links. (`406314d`)
+- The overview word **"control tower"** links to Metrics Explained's *"Why this monitoring stack matters"* framing (`#me-why-monitoring`). (`8b1c452`)
+
+### Changed — chart legibility
+- **Firmware MAE timeline**: smaller axis / tick / value / legend fonts; y-axis title re-centred on the full SVG height (it was clipping at the top in the short plot band); trimmed the trailing whitespace below the legend. **Calibration Drift heatmap**: larger date headers, direction sublabels, and footer legend. (`8b1c452`)
+- Firmware device-error **green → amber → red gradient** + half-open join dup-fix + Diagnose-page consolidation. (`0da9cf5`)
+
+### Security — dependency bumps (Dependabot)
+- `flask` → 3.1.3, `requests` → 2.33.0, `react-router-dom` → 6.30.3 (both HIGH alerts cleared); build-only `esbuild`/`vite`/`picomatch` deferred (dev-time only, no runtime exposure). Also fixed `render_app_yaml.py --ka-endpoint` to patch the `KA_ENDPOINT_NAME` env var, not just the resource binding (the env value had stayed stale). (`d2ec3dd`)
+
+### Changed — committed `app.yaml` is now a generic template (public-repo hygiene)
+- The committed `App/databricks/app.yaml` no longer ships one workspace's real catalog / warehouse / serving-endpoint / Genie IDs. Workspace-specific env values are **blank** (`CATALOG_NAME` → `your_workspace_catalog`, `WAREHOUSE_ID` / `SETUP_JOB_ID` / `ENDPOINT_NAME` / `KA_ENDPOINT_NAME` / `GENIE_SPACE_ID` → `""`) and the `resources:` bindings use placeholders (`your-mas-endpoint`, `your-ka-endpoint`, `your-warehouse-id`, `your-genie-space-id`). This is safe because **every** deploy (prod or sandbox) runs `scripts/render_app_yaml.py` first, which rewrites these per-target — Databricks Apps `app.yaml` env `value:` fields are literal strings that `bundle deploy` does **not** interpolate, so render is the only substitution path. `FM_ENDPOINT` (a global foundation-model name) and `SCHEMA_NAME` keep their workspace-agnostic defaults. `DEPLOY.md` updated (a stale "the live ones in app.yaml are …" example pointed at the removed IDs).
+
+### Docs
+- Repo-wide README/MD accuracy audit — corrected drift in mermaid diagrams, task counts, `dist`→`static` build-output paths, the firmware-version count, and the deep-link config table. (`34b71c4`)
+
+---
+
 ## [2026-06-02]
 
 Deploy-tooling ergonomics for side-by-side sandbox deployments, plus an end-to-end `from_source` validation of the whole Issue-#2 branch ahead of the PR to `main`.
+
+### Fixed — firmware-boundary row duplication in the gold join (latent since the buildathon)
+- The gold reading→firmware join in `transformations.sql` used an **inclusive** `a.time BETWEEN c.start_time AND c.end_time`. Because each firmware interval's `end_time` equals the next interval's `start_time` (the telemetry generator builds them via `lead(start_time)`), a reading at the *exact* firmware-transition instant matched **both** adjacent intervals and was duplicated — one extra `gold_patient_device_readings` row per device per firmware change. **Latent since the buildathon** (commit `d0bcf7c`, 2026-01-29): with the original 3-version rollout (`3.14 → 4.0 → 4.1`, 2 transitions) it silently duplicated ~2,000 rows; it surfaced only now because the 4-version rollout (`3.14 → 4.0 → 4.0.3 → 4.1`, 3 transitions → 3,000 dup rows = 1,000 patients × 3) **plus** a new firmware-cohort sanity check made it structurally visible — at the incident boundary the duplicate lands on the *prior* firmware. Tiny in aggregate (~0.15% of ~1.98M rows) so it never visibly moved a metric, but it fanned out every firmware-joined query (heatmap, calibration drift, roster). Fixed to a half-open **`a.time >= c.start_time AND a.time < c.end_time`** join so each reading matches exactly one interval (the final interval's `end_time` is a far-future sentinel, so all real readings are still admitted). The `getFirmwareLifecycle` boundary-guard comment in `databricksSQL.js` was updated to note the dup is now fixed at source (the guard remains as defense-in-depth). New AGENTS.md §9 captures the general lesson (distrust "it's always worked" in consolidated legacy code).
 
 ### Changed — free-name harness Apps via `${var.app_name}`
 - The three harness targets (`gsphere_synth_e2e`, `gsphere_from_table_e2e`, `gsphere_from_source_e2e`) previously hardcoded the App resource `name:` to a composed string (`${var.app_basename}-<mode>-e2e-${var.dev_initials}`, e.g. `glucosphere-source-e2e-mmt`), so `BUNDLE_VAR_app_name` was silently ignored on the sandbox targets. Each harness `resources.apps.glucosphere_app.name` now references **`${var.app_name}`** (matching the production `gsphere` target, which already did). The per-target `variables.app_name` keeps the old composed string as its **default**, so:

@@ -20,7 +20,7 @@ This application provides:
 
 ### Agent endpoints — Genie / KA / MAS (often confused)
 
-The App's natural-language query experience is powered by **three native Databricks Agent Bricks endpoints** that work together. They are NOT interchangeable — each has a distinct data source and purpose:
+The App's natural-language query experience is powered by **Agent Bricks** (Knowledge Assistant + Multi-Agent Supervisor) together with **AI/BI Genie** — a separate Databricks capability that the MAS orchestrates, *not* part of Agent Bricks. The three work together but are NOT interchangeable — each has a distinct data source and purpose:
 
 | Endpoint | Data source | Purpose |
 |---|---|---|
@@ -28,7 +28,7 @@ The App's natural-language query experience is powered by **three native Databri
 | **Knowledge Assistant (KA)** | UC Volume `/Volumes/<catalog>/<schema>/pipeline_data/who_docs/` — WHO diabetes guidelines PDF | **RAG** over WHO **clinical definitions, classification, and diagnosis criteria** |
 | **MAS (Multi-Agent Supervisor)** | Routes between the two above based on question type (5–7 serial LLM calls) | Available as the **🤖 MAS** engine toggle. Branded "GlucoScope" in `08_genie_ka_mas.py`. **Not** the default — the app's **default fast router calls Genie / KA / a foundation model directly** (see *Assistant engine switch* below). |
 
-The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:325-331`, "GlucoScope" supervisor instructions):
+The MAS routing logic (per `Data_DataGen_ModelForecast/08_genie_ka_mas.py:378-384`, "GlucoScope" supervisor instructions):
 
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%
@@ -104,19 +104,19 @@ flowchart LR
 
 ```
 App/
-├── config/               # Databricks workspace configurations
-├── databricks/          # Flask backend (app.py, app.yaml, requirements.txt)
-├── docs/                # Documentation and technical notes
-├── scripts/             # Deployment scripts
+├── databricks/          # Flask backend served as a Databricks App (app.py, app.yaml, requirements.txt, static/)
 ├── src/                 # React frontend source code
-│   ├── api/            # API clients (Databricks SQL, Agent)
+│   ├── api/            # API clients (Databricks SQL, Agent, config)
 │   ├── components/     # React components
 │   └── pages/          # Page components
-├── deploy_glucosphere.py # Deployment script for Databricks Apps
+├── index.html           # Vite entry HTML
 ├── package.json         # NPM dependencies
-├── vite.config.js       # Frontend build configuration
+├── vite.config.js       # Frontend build configuration (outputs to databricks/static/)
+├── tailwind.config.js   # Tailwind config
+├── postcss.config.js    # PostCSS (Tailwind) pipeline
 └── run_backend.sh       # Local backend startup script
 ```
+The App is deployed as a Databricks Asset Bundle resource (`apps.glucosphere_app`), not via a standalone script — see Deployment below.
 
 ## Local Development
 
@@ -161,17 +161,18 @@ npm run dev
 
 ### Deploy to Databricks Apps
 
+The App ships as a Databricks Asset Bundle resource (`apps.glucosphere_app`, `source_code_path: App/databricks`). Build the frontend, then deploy via the bundle — see [`DEPLOY.md`](../DEPLOY.md) for the full flow:
+
 ```bash
-cd App
-npm run build
-python3 deploy_glucosphere.py
+cd App && npm run build          # → App/databricks/static/ (served by the Flask app)
+cd ..                            # repo root
+databricks bundle deploy -t <target>           # pass 1 — creates the warehouse/app
+python3 scripts/render_app_yaml.py --target <target> --profile <profile>   # discovers WAREHOUSE_ID/SETUP_JOB_ID/PIPELINE_ID/FORECAST_ENDPOINT_NAME
+databricks bundle deploy -t <target>           # pass 2 — picks up the rendered app.yaml
+databricks bundle run glucosphere_app -t <target>
 ```
 
-This will:
-- Build the production frontend
-- Upload all files to Databricks workspace
-- Create/update the Databricks App
-- Deploy to: `https://glucosphere-{workspace-id}.databricksapps.com`
+This builds the production frontend, then bundle-deploys the Flask backend + static bundle as the Databricks App. The deployed URL derives from the App name (`${var.app_name}`, default `glucosphere-app`): `https://glucosphere-app-{workspace-id}.databricksapps.com`.
 
 ## Key Features
 
@@ -210,6 +211,42 @@ Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
 - **`databricks/app.yaml`** — Databricks App deployment config (env vars + resource bindings; regenerated per-target via `scripts/render_app_yaml.py`).
 
+### About page — "Under the hood" platform deep-links
+
+The About page renders a Data → ML/AI → Agentic platform panel whose nodes deep-link into the
+**deploying** workspace. Every link is built client-side from `GET /api/config` (no tenant
+hardcoded in the bundle), so they resolve in whatever workspace the app is deployed to — as long
+as the underlying value is set. There are two classes, and it matters for a fresh-workspace deploy:
+
+| About link | `/api/config` field ← env var | How it resolves on deploy |
+| --- | --- | --- |
+| Unity Catalog | `workspace_host` + `catalog` + `schema` | **Auto** — host from the Apps runtime (`DATABRICKS_HOST`); catalog/schema from bundle vars |
+| MLflow | `workspace_host` → `/ml/experiments` | **Auto** — workspace-relative, no id needed |
+| DLT pipeline | `pipeline_url` ← `PIPELINE_ID` | **Auto** — `render_app_yaml.py` discovers it by name `glucosphere-cgm-silver-gold-<target>` |
+| Model Serving (forecast) | `forecast_endpoint_url` ← `FORECAST_ENDPOINT_NAME` | **Auto** — discovers `Glucosphere_Forecast_15min<harness_suffix>` |
+| Jobs (orchestration) | `setup_job_url` ← `SETUP_JOB_ID` | **Auto** — discovers `glucosphere-full-setup-<target>` |
+| Genie | `genie_space_id` ← `GENIE_SPACE_ID` | **Operator-set** — pass `render_app_yaml.py --genie-space-id …` |
+| Knowledge Assistant | `ka_endpoint_url` ← `KA_ENDPOINT_NAME` | **Operator-set** — pass `--ka-endpoint …` |
+| Multi-Agent Supervisor | `mas_endpoint_url` ← `ENDPOINT_NAME` | **Operator-set** — pass `--mas-endpoint …` |
+
+- **Auto** links need no manual input — `scripts/render_app_yaml.py` looks each id up by its
+  deterministic resource name at deploy time (the same mechanism used for `WAREHOUSE_ID`). If an
+  id can't be found yet (e.g. first-pass render before `bundle deploy`), the value is left empty
+  and the link **falls back to the workspace listing** (`/pipelines`, `/ml/endpoints`, `/jobs`),
+  so nothing 404s.
+- **Operator-set** links (Genie / KA / MAS) can't be auto-discovered — the KA/MAS Agent Bricks
+  endpoints get a random suffix per workspace, and each Genie space has its own workspace-specific
+  id. They're set on the second render pass via the flags above. This is
+  **the same config the chat assistant already requires** (`/api/assist` routes to `ENDPOINT_NAME`
+  / `KA_ENDPOINT_NAME`; Genie uses `GENIE_SPACE_ID`), so if the assistant works on a fresh deploy,
+  these deep-links work too — the panel adds no new portability burden.
+- **Access:** every link opens the Databricks workspace and is OAuth-gated — a signed-in user with
+  object access clicks straight through; without it they hit sign-in / 403. The inline one-liner on
+  each node keeps the panel readable without workspace access.
+
+See `scripts/render_app_yaml.py` (the `discover_*` helpers) for the by-name lookups, and
+`App/databricks/app.py` `GET /api/config` for how each field is assembled.
+
 ## Dependencies used and their corresponding license information
 
 ### Frontend (`package.json`)
@@ -231,7 +268,7 @@ Incident table: `${CATALOG_NAME}.${SCHEMA_NAME}.pseudo_incident_7d_labeled`
 
 | Dependency | Where used | Why it's used | License |
 | --- | --- | --- | --- |
-| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/uc-assets/`, `/api/clinician-summary`) | BSD-3-Clause |
+| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/api/assist`, `/api/genie/query`, `/uc-assets/`) | BSD-3-Clause |
 | [**requests**](https://github.com/psf/requests) | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | Apache-2.0 |
 
 **Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.

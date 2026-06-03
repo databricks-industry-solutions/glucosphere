@@ -21,7 +21,7 @@ This repo contains two main parts that work together:
 
 ![Architecture](Data_DataGen_ModelForecast/assets/architecture.png)
 
-The App's natural-language query experience is powered by native Databricks Agent Bricks endpoints — **Genie** (NL→SQL over gold CGM tables), **Knowledge Assistant** (RAG over WHO clinical guidelines PDF), and a **Multi-Agent Supervisor (MAS)**. The Device-support assistant runs through `/api/assist` with a **live engine switch** (⚡ Fast / 🤖 MAS): the default **fast router** makes one direct call to the right specialist (KA for clinical questions, a foundation model for device reasoning) — robust under load — while the MAS supervisor is one toggle away for live A/B. Genie (CGM-data mode) is always called directly. Full routing detail, the switch, and the latency rationale in [`App/README.md`](App/README.md).
+The App's natural-language query experience is powered by **Agent Bricks** — **Knowledge Assistant** (RAG over WHO clinical guidelines PDF) and a **Multi-Agent Supervisor (MAS)** — together with **AI/BI Genie** (NL→SQL over gold CGM tables), a separate Databricks capability the MAS orchestrates. The Device-support assistant runs through `/api/assist` with a **live engine switch** (⚡ Fast / 🤖 MAS): the default **fast router** makes one direct call to the right specialist (KA for clinical questions, a foundation model for device reasoning) — robust under load — while the MAS supervisor is one toggle away for live A/B. Genie (CGM-data mode) is always called directly. Full routing detail, the switch, and the latency rationale in [`App/README.md`](App/README.md).
 
 ## Data fidelity & forecast model performance
 
