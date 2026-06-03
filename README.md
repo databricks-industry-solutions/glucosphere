@@ -5,7 +5,7 @@
 This repo contains two main parts that work together:
 
 - **`Data_DataGen_ModelForecast/`**: Databricks notebooks/scripts to ingest Continuous Glucose Monitoring (CGM) data, generate pseudo-patients, train forecasting models, simulate incidents, and deploy models to serving.
-- **`App/`**: The dashboard "front-end" (Databricks App) that integrates **Genie Space** and **Agents**. It reads curated **bronze/silver/gold** tables derived from patient **CGM/IoT** signals (see [`Data_DataGen_ModelForecast/README_data.md`](Data_DataGen_ModelForecast/README_data.md)).
+- **`App/`**: The **control-tower** front-end (Databricks App) — a persistent nav rail, a command-center landing framed as **detect → diagnose → act**, live **Firmware Lifecycle** (device-error by firmware) and **Population Risk** (clinical blast radius) views, a real per-patient **Diabetes Coach** (search + 24h profile + near-term forecast), and a **unified assistant** folding **Genie** (NL→SQL) and a **Multi-Agent Supervisor** into one surface. It reads curated **bronze/silver/gold** tables derived from patient **CGM/IoT** signals (see [`Data_DataGen_ModelForecast/README_data.md`](Data_DataGen_ModelForecast/README_data.md)).
 
 **glucosphere concept**: a monitoring "engine/sphere" on the Databricks platform that turns CGM + context data into curated signals, forecasts, and incident monitoring, then surfaces **actionable insights** via dashboards and agentic workflows (Genie / multi-agent tools) for multiple personas (e.g., physicians, caregivers, patients, device/MedTech teams, and regulators such as FDA review boards).
 
@@ -21,7 +21,7 @@ This repo contains two main parts that work together:
 
 ![Architecture](Data_DataGen_ModelForecast/assets/architecture.png)
 
-The App's natural-language query experience is powered by three native Databricks Agent Bricks endpoints — **Genie** (NL→SQL over gold CGM tables), **Knowledge Assistant** (RAG over WHO clinical guidelines PDF), and a **Multi-Agent Supervisor (MAS)** that routes between them. Full routing detail + examples in [`App/README.md`](App/README.md).
+The App's natural-language query experience is powered by **Agent Bricks** — **Knowledge Assistant** (RAG over WHO clinical guidelines PDF) and a **Multi-Agent Supervisor (MAS)** — together with **AI/BI Genie** (NL→SQL over gold CGM tables), a separate Databricks capability the MAS orchestrates. The Device-support assistant runs through `/api/assist` with a **live engine switch** (⚡ Fast / 🤖 MAS): the default **fast router** makes one direct call to the right specialist (KA for clinical questions, a foundation model for device reasoning) — robust under load — while the MAS supervisor is one toggle away for live A/B. Genie (CGM-data mode) is always called directly. Full routing detail, the switch, and the latency rationale in [`App/README.md`](App/README.md).
 
 ## Data fidelity & forecast model performance
 
@@ -40,7 +40,7 @@ Mode-by-mode model performance (clean ~5 mg/dL MAE → +631% incident-period deg
 ├── REPO_LAYOUT.md                    # Full navigation guide (what file does what)
 ├── App/                              # React + Flask Databricks App
 ├── Data_DataGen_ModelForecast/       # Notebooks: ingest, modeling, agents, grants
-├── scripts/                          # render_app_yaml.py + smoke_test.py
+├── scripts/                          # render_app_yaml.py · smoke_test.py · grant_app_sp.py
 └── docs/                             # Maintainer-specific notes
 ```
 

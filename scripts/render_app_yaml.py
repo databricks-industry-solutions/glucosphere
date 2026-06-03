@@ -140,6 +140,71 @@ def discover_setup_job_id(target: str, profile: str | None) -> str:
     return ""
 
 
+def discover_pipeline_id(target: str, profile: str | None) -> str:
+    """Query the workspace for the bundle-managed `cgm_silver_gold` DLT pipeline
+    by deterministic name pattern `glucosphere-cgm-silver-gold-<target>`.
+
+    Pattern matches the `name:` field of `resources.pipelines.cgm_silver_gold`
+    in databricks.yml. Uses `endswith` to handle `mode: development` targets
+    which auto-prefix the name with `[dev USER]` (same as the setup job).
+
+    Returns the pipeline_id (string) used to build the About page's "under the
+    hood" platform-plumbing deep-link at runtime. Same profile-resolution rules
+    as `discover_setup_job_id`.
+
+    Returns empty string (not sys.exit) if no matching pipeline is found — the
+    pipeline link is optional UX; the App's JSX falls back to the workspace
+    `/pipelines` listing when PIPELINE_ID is empty. Safe to run before the first
+    `bundle deploy` (e.g. between deploy passes).
+    """
+    cmd = ["databricks", "pipelines", "list-pipelines", "-o", "json"]
+    effective_profile = profile or os.environ.get("DATABRICKS_CONFIG_PROFILE")
+    if effective_profile:
+        cmd += ["-p", effective_profile]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=REPO_ROOT)
+    if result.returncode != 0:
+        print(f"[warn]  `databricks pipelines list-pipelines` failed; PIPELINE_ID will be empty (link falls back to /pipelines listing):\n{result.stderr}", file=sys.stderr)
+        return ""
+    pipelines = json.loads(result.stdout)
+    expected_suffix = f"glucosphere-cgm-silver-gold-{target}"
+    for pl in pipelines:
+        if str(pl.get("name", "")).endswith(expected_suffix):
+            return str(pl.get("pipeline_id", ""))
+    print(f"[warn]  No pipeline found with name ending in `{expected_suffix}` — PIPELINE_ID will be empty (link falls back to /pipelines listing). This is expected on first-pass render before bundle deploy.", file=sys.stderr)
+    return ""
+
+
+def discover_forecast_endpoint(harness_suffix: str, profile: str | None) -> str:
+    """Find the Glucosphere forecast Model Serving endpoint for this deploy.
+
+    The 15-minute forecast endpoint is named `Glucosphere_Forecast_15min` +
+    `harness_suffix` (07_*.py); the suffix isolates harness deploys (e.g.
+    `_fw_v2`) and is empty for the production `gsphere` target. Used to deep-link
+    the About panel's Model Serving node straight to the endpoint detail page —
+    the serving-endpoints LIST page has no URL search param, so a direct link is
+    the only way to land on a specific glucosphere endpoint.
+
+    Returns the endpoint name (string), or empty string if not found — the link
+    is optional UX; JSX falls back to the `/ml/endpoints` listing. Safe to run
+    before the endpoint exists (e.g. first-pass render).
+    """
+    expected = f"Glucosphere_Forecast_15min{harness_suffix or ''}"
+    cmd = ["databricks", "serving-endpoints", "list", "-o", "json"]
+    effective_profile = profile or os.environ.get("DATABRICKS_CONFIG_PROFILE")
+    if effective_profile:
+        cmd += ["-p", effective_profile]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=REPO_ROOT)
+    if result.returncode != 0:
+        print(f"[warn]  `databricks serving-endpoints list` failed; FORECAST_ENDPOINT_NAME will be empty (link falls back to /ml/endpoints listing):\n{result.stderr}", file=sys.stderr)
+        return ""
+    endpoints = json.loads(result.stdout)
+    for ep in endpoints:
+        if ep.get("name", "") == expected:
+            return expected
+    print(f"[warn]  No serving endpoint named `{expected}` — FORECAST_ENDPOINT_NAME will be empty (link falls back to /ml/endpoints listing). This is expected on first-pass render before bundle deploy.", file=sys.stderr)
+    return ""
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", required=True, help="DABs target name (e.g. gsphere)")
@@ -157,12 +222,16 @@ def main() -> int:
     # This requires the bundle to have been deployed at least once.
     warehouse_id = discover_bundle_warehouse_id(args.target, args.profile)
     setup_job_id = discover_setup_job_id(args.target, args.profile)
+    pipeline_id = discover_pipeline_id(args.target, args.profile)
+    forecast_endpoint = discover_forecast_endpoint(vars_.get("harness_suffix", ""), args.profile)
 
     print(f"Rendering {APP_YAML.relative_to(REPO_ROOT)} for target={args.target}:")
     print(f"  catalog        = {catalog}")
     print(f"  schema         = {schema}")
     print(f"  warehouse_id   = {warehouse_id}")
     print(f"  setup_job_id   = {setup_job_id or '(not found — link will fall back to /jobs listing)'}")
+    print(f"  pipeline_id    = {pipeline_id or '(not found — link will fall back to /pipelines listing)'}")
+    print(f"  forecast_endpt = {forecast_endpoint or '(not found — link will fall back to /ml/endpoints listing)'}")
     print(f"  mas-endpoint   = {args.mas_endpoint or '(unchanged)'}")
     print(f"  ka-endpoint    = {args.ka_endpoint or '(unchanged)'}")
     print(f"  genie-space-id = {args.genie_space_id or '(unchanged)'}")
@@ -186,6 +255,16 @@ def main() -> int:
     content = patch(content,
         r'(- name: SETUP_JOB_ID\s+value: ")[^"]*(")',
         rf'\g<1>{setup_job_id}\g<2>', "env SETUP_JOB_ID")
+    # PIPELINE_ID — discovered above via Pipelines API by name match. Empty
+    # string is valid (and written) — JSX falls back to /pipelines listing.
+    content = patch(content,
+        r'(- name: PIPELINE_ID\s+value: ")[^"]*(")',
+        rf'\g<1>{pipeline_id}\g<2>', "env PIPELINE_ID")
+    # FORECAST_ENDPOINT_NAME — discovered above via Serving Endpoints API by name.
+    # Empty string is valid (and written) — JSX falls back to /ml/endpoints listing.
+    content = patch(content,
+        r'(- name: FORECAST_ENDPOINT_NAME\s+value: ")[^"]*(")',
+        rf'\g<1>{forecast_endpoint}\g<2>', "env FORECAST_ENDPOINT_NAME")
     if warehouse_id:
         # Update BOTH the WAREHOUSE_ID env var (consumed by app.py's
         # /api/sql/query Statement Execution API call) AND the resource
@@ -210,6 +289,11 @@ def main() -> int:
             r'(- name: mas-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
             rf'\g<1>{args.mas_endpoint}', "resource mas-endpoint.name")
     if args.ka_endpoint:
+        # Patch BOTH the KA_ENDPOINT_NAME env var (consumed by app.py's assist
+        # router) and the ka-endpoint resource binding — mirrors --mas-endpoint.
+        content = patch(content,
+            r'(- name: KA_ENDPOINT_NAME\s+value: ")[^"]*(")',
+            rf'\g<1>{args.ka_endpoint}\g<2>', "env KA_ENDPOINT_NAME")
         content = patch(content,
             r'(- name: ka-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
             rf'\g<1>{args.ka_endpoint}', "resource ka-endpoint.name")

@@ -5,13 +5,31 @@ env:
   # valueFrom references couldn't resolve → ENDPOINT_NAME and GENIE_SPACE_ID
   # were empty at runtime, causing 500 errors from Clinical Analysis and
   # Genie Natural-Language Query panels. Hardcoded IDs work reliably.
-  # render_app_yaml.py rewrites these per-target.
+  #
+  # The workspace-specific values below ship BLANK in the repo — every deploy
+  # (prod or sandbox) runs scripts/render_app_yaml.py first, which rewrites
+  # them per-target from the operator's own workspace. Don't commit real
+  # catalog / warehouse / endpoint / Genie IDs here; keep this a clean template.
   - name: ENDPOINT_NAME
-    value: "mas-bae6759d-endpoint"
+    value: ""
+  # Direct-engine router (/api/assist) — bypasses the slow MAS supervisor. KA = WHO
+  # Knowledge Assistant; FM = foundation model for device reasoning. ASSIST_ENGINE is
+  # the default ('direct' | 'mas'); the UI can override per-request to A/B them live.
+  - name: KA_ENDPOINT_NAME
+    value: ""
+  # FM_ENDPOINT is a workspace-agnostic Databricks foundation-model name (same in
+  # every workspace), so it ships with a real default rather than blank.
+  - name: FM_ENDPOINT
+    value: "databricks-claude-sonnet-4-6"
+  - name: ASSIST_ENGINE
+    value: "direct"
   - name: GENIE_SPACE_ID
-    value: "01f15c24270e10e98a4c45cd605e6301"
+    value: ""
+  # CATALOG_NAME / SCHEMA_NAME default to the repo's generic placeholder catalog
+  # (matches databricks.yml var defaults). render_app_yaml.py overwrites CATALOG_NAME
+  # with the operator's BUNDLE_VAR_catalog at deploy time.
   - name: CATALOG_NAME
-    value: "mmt_aws_usw2"
+    value: "your_workspace_catalog"
   - name: SCHEMA_NAME
     value: "glucosphere"
   # SETUP_JOB_ID lets /api/config build a deep-link to the bundle's setup
@@ -21,31 +39,55 @@ env:
   # value here pre-render is intentional — operator runs render before the
   # second deploy, which populates this.
   - name: SETUP_JOB_ID
-    value: "649416388005809"
+    value: ""
+  # PIPELINE_ID lets /api/config build a deep-link to the DLT (silver→gold
+  # medallion) pipeline page, shown in the About "under the hood" panel.
+  # Discovered at deploy time by scripts/render_app_yaml.py (same by-name
+  # pattern as SETUP_JOB_ID: `glucosphere-cgm-silver-gold-<target>` via the
+  # Pipelines API). Empty value is valid — JSX falls back to the workspace
+  # /pipelines listing — so render is safe to run before the first deploy.
+  - name: PIPELINE_ID
+    value: ""
+  # FORECAST_ENDPOINT_NAME lets /api/config deep-link the About panel's Model
+  # Serving node straight to the Glucosphere forecast endpoint detail page
+  # (the serving-endpoints list page has no URL search param). Discovered at
+  # deploy time by scripts/render_app_yaml.py (Glucosphere_Forecast_15min +
+  # harness_suffix). Empty value is valid — JSX falls back to /ml/endpoints.
+  - name: FORECAST_ENDPOINT_NAME
+    value: ""
   # WAREHOUSE_ID is populated by scripts/render_app_yaml.py from the
   # bundle-managed sql_warehouses.glucosphere_warehouse resource (discovered
   # by deterministic name). Empty value here pre-render is intentional —
   # operator runs render before the second deploy, which populates this.
   - name: WAREHOUSE_ID
-    value: "6675f79762438c43"
+    value: ""
 resources:
+  # Resource bindings — names/IDs are PLACEHOLDERS; render_app_yaml.py rewrites
+  # them per-target so the deployed app's service principal is granted on the
+  # operator's own endpoints / warehouse / Genie space. fm-endpoint is the one
+  # workspace-agnostic resource (a global foundation model), so it keeps its name.
   - name: mas-endpoint
     description: "Multi-Agent Supervisor serving endpoint"
     serving_endpoint:
-      name: mas-bae6759d-endpoint
+      name: your-mas-endpoint
       permission: CAN_QUERY
   - name: ka-endpoint
     description: "WHO Knowledge Assistant serving endpoint"
     serving_endpoint:
-      name: ka-4cd8c014-endpoint
+      name: your-ka-endpoint
+      permission: CAN_QUERY
+  - name: fm-endpoint
+    description: "Foundation model for the direct-engine router (device reasoning)"
+    serving_endpoint:
+      name: databricks-claude-sonnet-4-6
       permission: CAN_QUERY
   - name: sql-warehouse
     description: "SQL warehouse for CGM data queries"
     sql_warehouse:
-      id: 6675f79762438c43
+      id: your-warehouse-id
       permission: CAN_USE
   - name: genie-space
-    description: "Genie space for CGM intelligence queries (ENV GENIE_SPACE_ID resolves from here)"
+    description: "Genie space for CGM intelligence queries (render_app_yaml.py rewrites both this id and the GENIE_SPACE_ID env above)"
     genie_space:
-      id: 01f15c24270e10e98a4c45cd605e6301
+      id: your-genie-space-id
       permission: CAN_RUN

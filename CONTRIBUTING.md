@@ -45,7 +45,7 @@ The committed `databricks.yml` includes target stanzas pointed at maintainer wor
 
 ## Keeping dependency tables current
 
-Component READMEs (`App/README.md`, `Data_DataGen_ModelForecast/README.md`) carry a **"Dependencies used and their corresponding license information"** table — one row per direct dependency with: name, where it's used, why, source URL, and license. When you add, remove, or upgrade a direct dependency (anything in `package.json`, `requirements.txt`, or a notebook-level `%pip install`), update the table in the same PR:
+Component READMEs (`App/README.md`, `Data_DataGen_ModelForecast/README.md`) carry a **"Dependencies used and their corresponding license information"** table — one row per direct dependency with: name, where it's used, why, source URL, and license. When you add, remove, or upgrade a direct dependency (anything in `App/package.json`, `App/databricks/requirements.txt`, or a notebook-level `%pip install`), update the table in the same PR:
 
 - **Verify the license** from an authoritative source: `node_modules/<pkg>/package.json` `license` field for frontend; PyPI `info.license` / `info.license_expression` or `dist-info/METADATA` `License:` for backend; the upstream repo's `LICENSE` / `pyproject.toml` for edge cases.
 - **Keep the "Where used" specific** — file paths, not vague subsystems. Future grepability matters when assessing impact.
@@ -87,7 +87,7 @@ fixes) often don't.
 
 ## Before opening a PR
 
-- [ ] Code runs against the bundle's `cgm_pipeline_job` end-to-end (or a harness target if changes are isolated)
+- [ ] Code runs against the bundle's `glucosphere_full_setup` job end-to-end (or a harness target if changes are isolated)
 - [ ] **Smoke test passes 8/8**: `uv run python scripts/smoke_test.py --target <your-target> --profile <your-profile>`
 - [ ] Visual sanity check on the App if you touched pipeline / data / App code:
   - Metrics Explained page renders the 4-panel comparison PNG

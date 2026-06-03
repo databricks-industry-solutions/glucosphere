@@ -38,8 +38,8 @@ AS SELECT
   patient_id,
   time,
   case when glucose_observed < 70 then 'hypoglycemia' when glucose_observed > 180 then 'hyperglycemia' else 'in_range' end as event_type,
-  case when glucose_observed < 70 then 1 when glucose_observed > 180 then 1 when incident_type is null then 0 else 1 end as glucose_out_of_range,
-  glucose_observed as glucose,
+  case when glucose_observed < 70 then 1 when glucose_observed > 180 then 1 else 0 end as glucose_out_of_range,  -- purely glucose-based (<70 / >180), consistent with event_type above + the Genie/MetricsExplained docs. (Previously `... when incident_type is null then 0 else 1` force-flagged every incident reading OOR regardless of its glucose, inflating every OOR-rate panel and contradicting the documented definition.)
+  greatest(least(glucose_observed, 400), 40) as glucose,  -- CGM ceiling/floor (HI>400, LO<40); gold-layer backstop so device-observed glucose is always physiological regardless of source
   steps,
   basal_rate,
   bolus_volume_delivered,
@@ -64,7 +64,7 @@ AS SELECT
   b.activation_date,
   b.birth_year,
   c.device_id,
-  c.device_model,
+  b.device_model,  -- registry SSOT: device_model is a fixed per-device property, so take it from the registry (one row/patient), NOT a time-fuzzy telemetry temporal join. device_model is now a deterministic function of patient_id (shared _device_model_spec), so registry, telemetry, and 05's incident cohorts all carry the IDENTICAL value — the historical ~82% registry-vs-telemetry disagreement is gone. firmware_version below stays from telemetry (it IS time-varying).
   c.firmware_version,
   a.glucose,
   a.glucose_out_of_range,
@@ -86,4 +86,11 @@ on a.patient_id = b.patient_id
 
 left outer join silver_device_telemetry_stream c
 on a.patient_id = c.patient_id
-and a.time between c.start_time and c.end_time
+-- Half-open interval [start_time, end_time): each firmware interval's end_time equals the
+-- NEXT interval's start_time (telemetry builds them via lead(start_time)), so an inclusive
+-- BETWEEN matched a reading at the exact transition instant to BOTH adjacent intervals —
+-- duplicating that one reading per firmware change (1000 patients x 3 changes = 3000 dup
+-- gold rows, fanning out every firmware-joined query). `>= start AND < end` makes each
+-- reading match exactly one interval. The final interval's end_time is a far-future
+-- sentinel, so `< end` still admits all real readings.
+and a.time >= c.start_time and a.time < c.end_time

@@ -158,16 +158,16 @@ targets:
       # puts BUNDLE_VAR_* above per-target variables, so the env-side
       # override is the authoritative source of truth.)
       baseline_source: synthetic
-      # Mirrors resources.apps.glucosphere_app.name below — kept in sync so
-      # `APP_NAME: ${var.app_name}` passed to notebook 09 resolves to the
-      # harness App name, not the default `glucosphere-app` (which 404s here).
+      # Default harness App name (used when BUNDLE_VAR_app_name is unset).
+      # resources.apps.glucosphere_app.name below references ${var.app_name},
+      # so this default flows there AND to notebook 09. Override with
+      # BUNDLE_VAR_app_name=<your-name> (e.g. gsphere-v0-1) to free-name the App.
       app_name: ${var.app_basename}-synth-e2e-${var.dev_initials}
     resources:
-      # App names must be 2-30 chars. Suffix `-synth-e2e` distinguishes
-      # the harness App from the live `glucosphere-app`.
+      # App name = ${var.app_name} (free; default above). 2-30 chars, lowercase/digits/hyphens.
       apps:
         glucosphere_app:
-          name: ${var.app_basename}-synth-e2e-${var.dev_initials}
+          name: ${var.app_name}
       # database_instances Lakebase override deferred — see resources.database_instances
       # block below (commented out until app code wires Lakebase in, issue #3).
       # database_instances:
@@ -196,14 +196,14 @@ targets:
       baseline_source: from_table
       source_catalog: ${var.catalog}
       source_table: diabetes_data
-      # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
-      # target above for rationale.
+      # Default harness App name; resources.apps.glucosphere_app.name below
+      # references ${var.app_name}. Override with BUNDLE_VAR_app_name to free-name.
       app_name: ${var.app_basename}-table-e2e-${var.dev_initials}
     resources:
-      # Parallel naming with synth_e2e harness; kept under the 30-char App limit.
+      # App name = ${var.app_name} (free; default above). 2-30 chars.
       apps:
         glucosphere_app:
-          name: ${var.app_basename}-table-e2e-${var.dev_initials}
+          name: ${var.app_name}
       # database_instances Lakebase override deferred — see issue #3.
       # database_instances:
       #   glucosphere_oltp:
@@ -223,17 +223,37 @@ targets:
       # `_from_source_e2e` to BUNDLE_VAR_schema. (No per-target `schema:`
       # override; BUNDLE_VAR_* beats per-target variables in DABs precedence.)
       baseline_source: from_source
-      # Mirrors resources.apps.glucosphere_app.name below — see synth_e2e
-      # target above for rationale.
+      # Default harness App name; resources.apps.glucosphere_app.name below
+      # references ${var.app_name}. Override with BUNDLE_VAR_app_name to free-name.
       app_name: ${var.app_basename}-source-e2e-${var.dev_initials}
     resources:
+      # App name = ${var.app_name} (free; default above). 2-30 chars.
       apps:
         glucosphere_app:
-          name: ${var.app_basename}-source-e2e-${var.dev_initials}
+          name: ${var.app_name}
       # database_instances Lakebase override deferred — see issue #3.
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
+
+  # Isolated from_source sandbox for the firmware-heatmap / device-error-gradient work.
+  # A SEPARATE target (not a schema override on from_source_e2e) so its pipeline/job/
+  # warehouse/app — all named with ${bundle.target} — get distinct names and never touch
+  # the from_source_e2e demo deploy. Deploy with:
+  #   source .env.bundle
+  #   export BUNDLE_VAR_schema=glucosphere_fw_v2
+  #   export BUNDLE_VAR_app_name=gsphere-v0-2
+  #   export BUNDLE_VAR_harness_suffix=_fw_v2   # isolates workspace-global KA/MAS/Genie/endpoints
+  #   databricks bundle deploy -t gsphere_fw_v2
+  gsphere_fw_v2:
+    mode: development
+    variables:
+      baseline_source: from_source
+      app_name: ${var.app_basename}-fw-v2-${var.dev_initials}
+    resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
 
 resources:
 
@@ -505,12 +525,28 @@ resources:
             pipeline_id: ${resources.pipelines.cgm_silver_gold.id}
             full_refresh: false
 
+        # ── Data sanity gate (clinical plausibility) ──────────────────────
+        # Fails the run if clinically-impossible records reached gold, so implausible
+        # data (9yo T2D, >55 gestational, glucose 0, no-forecast patients) can never
+        # silently reach the app/demo. Gates the intelligence + app layers below.
+        - task_key: data_sanity_checks
+          description: Clinical-plausibility gate — fail on T2D<13, implausible gestational age, glucose outside [40,400], or patients with no forecast row
+          max_retries: 0
+          depends_on:
+            - task_key: run_dlt_pipeline
+          notebook_task:
+            notebook_path: Data_DataGen_ModelForecast/utils/data_sanity_checks.py
+            base_parameters:
+              CATALOG_NAME: ${var.catalog}
+              SCHEMA_NAME:  ${var.schema}
+          environment_key: default
+
         # ── Intelligence Layer ────────────────────────────────────────────
         - task_key: create_genie_ka_mas
           description: Create WHO Knowledge Assistant, Genie room, and Multi-Agent Supervisor endpoint
           max_retries: 0
           depends_on:
-            - task_key: run_dlt_pipeline
+            - task_key: data_sanity_checks
           notebook_task:
             notebook_path: Data_DataGen_ModelForecast/08_genie_ka_mas.py
             base_parameters:

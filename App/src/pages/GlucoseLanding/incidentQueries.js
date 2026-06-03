@@ -311,19 +311,26 @@ export async function getIncidentSummary() {
   const query = `
     WITH error_data AS (
       SELECT
-        time,
-        ABS(glucose_observed - glucose_true) + 5.0 as mae,
-        (glucose_observed - glucose_true) as bias,
-        CASE WHEN time >= incident_start_time AND time < incident_end_time THEN 1 ELSE 0 END as incident_period,
-        incident_type
-      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
-      WHERE time IS NOT NULL
+        p.time,
+        ABS(p.glucose_observed - p.glucose_true) + 5.0 as mae,
+        (p.glucose_observed - p.glucose_true) as bias,
+        CASE WHEN p.time >= p.incident_start_time AND p.time < p.incident_end_time THEN 1 ELSE 0 END as incident_period,
+        p.incident_type,
+        CAST(g.firmware_version AS STRING) as fw
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      LEFT JOIN ${catalog}.${schema}.gold_patient_device_readings g
+        ON p.patient_id = g.patient_id AND p.time = g.time
+      WHERE p.time IS NOT NULL
     )
     SELECT
       MAX(CASE WHEN incident_period = 1 THEN mae ELSE 0 END) as peak_mae_15m,
       MAX(CASE WHEN incident_period = 1 THEN mae ELSE 0 END) as peak_mae_30m,
-      5.8 as baseline_mae_15m,
-      5.8 as baseline_mae_30m,
+      -- Baseline = the live clean-firmware (3.14 / 4.1 — the non-faulty rollouts) non-incident
+      -- device-error floor, so the dashed reference tracks where the blue line actually sits on
+      -- healthy firmware. (Every reading now carries firmware-dependent measurement noise, so a
+      -- hardcoded 5.8 reads low.) COALESCE → 5.8 if the firmware join yields nothing.
+      ROUND(COALESCE(AVG(CASE WHEN incident_period = 0 AND fw IN ('3.14','4.1') THEN mae END), 5.8), 1) as baseline_mae_15m,
+      ROUND(COALESCE(AVG(CASE WHEN incident_period = 0 AND fw IN ('3.14','4.1') THEN mae END), 5.8), 1) as baseline_mae_30m,
       -- Bidirectional: bias can be positive or negative. ABS captures the magnitude
       -- of the worst calibration drift in either direction, which is the
       -- operationally meaningful "how bad was the device error".

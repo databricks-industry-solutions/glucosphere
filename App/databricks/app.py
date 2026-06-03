@@ -8,8 +8,16 @@ app = Flask(__name__)
 # CATALOG_NAME + SCHEMA_NAME MUST be set in App/databricks/app.yaml (per-target env).
 # No fallback defaults — fail loudly at startup if missing so we don't silently
 # point at the wrong workspace.
-ENDPOINT_NAME = os.getenv('ENDPOINT_NAME', '')
+ENDPOINT_NAME = os.getenv('ENDPOINT_NAME', '')   # Multi-Agent Supervisor (MAS) endpoint
 GENIE_SPACE_ID = os.getenv('GENIE_SPACE_ID', '')
+# Direct-engine endpoints for the /api/assist router (bypasses the slow MAS supervisor).
+# KA = WHO Knowledge Assistant (sourced clinical answers); FM = a foundation model for
+# device-reasoning. ASSIST_ENGINE is the default engine when the request doesn't specify
+# one: 'direct' (router → KA/FM/Genie) or 'mas' (the supervisor). The UI can override
+# per-request via the `engine` field so the demo can A/B them live.
+KA_ENDPOINT_NAME = os.getenv('KA_ENDPOINT_NAME', '')
+FM_ENDPOINT = os.getenv('FM_ENDPOINT', 'databricks-claude-sonnet-4-6')
+ASSIST_ENGINE = os.getenv('ASSIST_ENGINE', 'direct').lower()
 CATALOG_NAME  = os.getenv('CATALOG_NAME', '')
 SCHEMA_NAME   = os.getenv('SCHEMA_NAME',  '')
 if not CATALOG_NAME or not SCHEMA_NAME:
@@ -451,6 +459,161 @@ def query_agent():
             'error': str(e)
         }), 500
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Assistant router (/api/assist) — the "direct" engine that bypasses the slow MAS
+# supervisor. The MAS chains 5–7 sequential LLM calls (supervisor + sub-agents +
+# their FMs), which balloons to >300s under shared-endpoint contention and trips the
+# 300s Apps gateway. The router makes ONE decision then ONE direct call, so it stays
+# fast (FM ~6s / KA ~13s) even under load. engine='mas' keeps the supervisor path
+# available for live A/B; the MAS endpoint itself is untouched.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_responses_text(d):
+    """Pull the final assistant text from an agent/v1/responses payload (MAS + KA
+    share this format)."""
+    outputs = d.get('output', []) if isinstance(d, dict) else []
+    for item in reversed(outputs):
+        if item.get('type') == 'message':
+            for c in item.get('content', []):
+                if c.get('type') == 'output_text' and c.get('text', '').strip():
+                    return c['text']
+    if outputs:
+        content = outputs[-1].get('content', [])
+        if content:
+            return content[-1].get('text', '') or content[0].get('text', '')
+    return ''
+
+
+def _serving_invoke(endpoint, payload, timeout=120):
+    """POST to a serving endpoint's /invocations. Returns parsed JSON; raises on error."""
+    host, token = get_auth()
+    r = requests.post(
+        f"{host}/serving-endpoints/{endpoint}/invocations",
+        headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+        json=payload, timeout=timeout,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _call_fm(messages, max_tokens=900):
+    """Direct foundation-model call (chat-completions shape)."""
+    d = _serving_invoke(FM_ENDPOINT, {'messages': messages, 'max_tokens': max_tokens})
+    return d['choices'][0]['message']['content']
+
+
+def _call_ka(text):
+    """Direct WHO Knowledge Assistant call (agent/v1/responses shape)."""
+    d = _serving_invoke(KA_ENDPOINT_NAME, {'input': [{'role': 'user', 'content': text}]})
+    return _extract_responses_text(d)
+
+
+# Clinical-knowledge questions belong to the WHO corpus → route to KA; everything
+# else (device troubleshooting / reasoning) → FM. Deterministic keyword match, so no
+# extra LLM hop for routing.
+_KA_KEYWORDS = ('who ', 'guideline', 'diagnos', 'classif', 'threshold', 'criteria',
+                'hba1c', 'definition of diabetes', 'fasting glucose', 'oral glucose')
+
+def _is_clinical_knowledge(text):
+    t = (text or '').lower()
+    return any(k in t for k in _KA_KEYWORDS)
+
+
+def _safe_ident(s):
+    """Allow-list for SQL string literals interpolated into fleet-stats query."""
+    return ''.join(ch for ch in str(s or '') if ch.isalnum() or ch in ' ._-')
+
+
+def _fleet_stats(model, firmware):
+    """One-shot fleet context for the Clinical-Analysis enrichment (parity with what
+    the MAS pulled from Genie). Returns a short text block, or '' on any failure."""
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not warehouse_id or not model:
+        return ''
+    m, fw = _safe_ident(model), _safe_ident(firmware)
+    where = f"device_model = '{m}'" + (f" AND CAST(firmware_version AS STRING) = '{fw}'" if fw else '')
+    sql = (f"SELECT COUNT(*) n, "
+           f"ROUND(AVG(CASE WHEN glucose BETWEEN 70 AND 180 THEN 1 ELSE 0 END)*100,1) in_range, "
+           f"ROUND(AVG(CASE WHEN glucose>180 THEN 1 ELSE 0 END)*100,1) hyper, "
+           f"ROUND(AVG(CASE WHEN glucose<70 THEN 1 ELSE 0 END)*100,1) hypo "
+           f"FROM {CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings WHERE {where}")
+    try:
+        host, token = get_auth()
+        resp = requests.post(
+            f"{host}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json={'warehouse_id': warehouse_id, 'statement': sql, 'wait_timeout': '20s'},
+            timeout=25,
+        )
+        rows = resp.json().get('result', {}).get('data_array', []) if resp.ok else []
+        if rows and rows[0]:
+            n, ir, hyper, hypo = rows[0][0], rows[0][1], rows[0][2], rows[0][3]
+            return (f"Fleet context for {m}{(' firmware ' + fw) if fw else ''}: "
+                    f"{n} total readings; {ir}% in-range, {hyper}% hyper, {hypo}% hypo.")
+    except Exception as e:
+        print(f"[ASSIST] fleet-stats failed (non-fatal): {e}")
+    return ''
+
+
+def _invoke_mas(messages, conversation_id):
+    """Call the Multi-Agent Supervisor (agent/v1/responses). Returns (text, raw)."""
+    payload = {
+        'input': messages,
+        'context': {'conversation_id': conversation_id or 'dashboard-session', 'user_id': 'dashboard_user'},
+        'databricks_options': {'return_trace': False},
+        'stream': False,
+    }
+    d = _serving_invoke(ENDPOINT_NAME, payload, timeout=600)
+    return _extract_responses_text(d), d
+
+
+@app.route('/api/assist', methods=['POST'])
+def assist():
+    """Unified assistant entrypoint with a switchable engine.
+
+    Body: { messages:[{role,content}], conversation_id?, engine?('direct'|'mas'),
+            mode?('chat'|'analysis'), context?({model,firmware}) }
+    """
+    try:
+        data = request.get_json() or {}
+        messages = data.get('messages', [])
+        engine = (data.get('engine') or ASSIST_ENGINE).lower()
+        mode = data.get('mode', 'chat')
+        ctx = data.get('context', {}) or {}
+        conversation_id = data.get('conversation_id')
+        user_text = messages[-1]['content'] if messages else ''
+
+        if engine == 'mas':
+            text, raw = _invoke_mas(messages, conversation_id)
+            return jsonify({'response': text, 'engine': 'mas', 'raw': raw}), 200
+
+        # ── direct engine ──
+        if mode == 'analysis':
+            stats = _fleet_stats(ctx.get('model'), ctx.get('firmware'))
+            sys = ("You are a biomedical equipment specialist analyzing CGM device readings. "
+                   "Focus on DEVICE technical issues (calibration, sensor, firmware, connectivity), "
+                   "not patient clinical care. Be concise and actionable for biomedical technicians."
+                   + (f"\n\n{stats}" if stats else ""))
+            text = _call_fm([{'role': 'system', 'content': sys}, {'role': 'user', 'content': user_text}])
+            return jsonify({'response': text, 'engine': 'direct', 'route': 'fm-analysis'}), 200
+
+        if _is_clinical_knowledge(user_text) and KA_ENDPOINT_NAME:
+            return jsonify({'response': _call_ka(user_text), 'engine': 'direct', 'route': 'ka'}), 200
+
+        sys = ("You are the Glucosphere Device Troubleshooting Assistant for biomedical engineers. "
+               "Answer questions about CGM sensor drift, calibration errors, firmware, adhesion, "
+               "battery, and connectivity with concise, actionable troubleshooting steps.")
+        text = _call_fm([{'role': 'system', 'content': sys}] + messages)
+        return jsonify({'response': text, 'engine': 'direct', 'route': 'fm'}), 200
+
+    except requests.exceptions.HTTPError as e:
+        return jsonify({'error': f'serving endpoint error: {e.response.status_code}',
+                        'details': e.response.text[:300]}), 502
+    except Exception as e:
+        print(f"[ASSIST] Exception: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 _baseline_provenance_cache = {'value': None, 'fetched_at': 0, 'ttl': 60}  # 60-second TTL
 
 def _get_baseline_provenance():
@@ -523,6 +686,26 @@ def get_config():
     # JSX falls back to {workspace_host}/jobs listing when this is empty.
     setup_job_id = os.getenv('SETUP_JOB_ID', '')
     setup_job_url = f"{raw_host}/jobs/{setup_job_id}" if raw_host and setup_job_id else ''
+    # pipeline_url: deep-link to the DLT (silver→gold medallion) pipeline page,
+    # surfaced by the About page's "under the hood" platform-plumbing panel.
+    # PIPELINE_ID is discovered at deploy time by scripts/render_app_yaml.py
+    # (same by-name pattern as SETUP_JOB_ID) and baked into the env via app.yaml.
+    # JSX falls back to the {workspace_host}/pipelines listing when this is empty.
+    pipeline_id = os.getenv('PIPELINE_ID', '')
+    pipeline_url = f"{raw_host}/pipelines/{pipeline_id}" if raw_host and pipeline_id else ''
+    # Agent-Bricks endpoint deep-links for the About "under the hood" panel: the
+    # Multi-Agent Supervisor (MAS) and Knowledge Assistant (KA) are both Model
+    # Serving endpoints, so they open at /ml/endpoints/{name}. Names come from the
+    # same env vars the assist router already uses (ENDPOINT_NAME / KA_ENDPOINT_NAME).
+    mas_endpoint_url = f"{raw_host}/ml/endpoints/{ENDPOINT_NAME}" if raw_host and ENDPOINT_NAME else ''
+    ka_endpoint_url = f"{raw_host}/ml/endpoints/{KA_ENDPOINT_NAME}" if raw_host and KA_ENDPOINT_NAME else ''
+    # forecast_endpoint_url: deep-link straight to the Glucosphere forecast Model
+    # Serving endpoint detail page (the serving-endpoints LIST page has no URL search
+    # param, so a direct link beats dropping the user on the unfiltered list). Name is
+    # discovered at deploy time by render_app_yaml.py (Glucosphere_Forecast_15min +
+    # harness_suffix); empty falls back to the /ml/endpoints listing.
+    forecast_endpoint_name = os.getenv('FORECAST_ENDPOINT_NAME', '')
+    forecast_endpoint_url = f"{raw_host}/ml/endpoints/{forecast_endpoint_name}" if raw_host and forecast_endpoint_name else ''
     return jsonify({
         'catalog': CATALOG_NAME,
         'schema': SCHEMA_NAME,
@@ -531,6 +714,10 @@ def get_config():
         'baseline_source_detail': provenance['source_detail'],
         'workspace_host': raw_host,
         'setup_job_url': setup_job_url,
+        'pipeline_url': pipeline_url,
+        'mas_endpoint_url': mas_endpoint_url,
+        'ka_endpoint_url': ka_endpoint_url,
+        'forecast_endpoint_url': forecast_endpoint_url,
     })
 
 @app.route('/health')

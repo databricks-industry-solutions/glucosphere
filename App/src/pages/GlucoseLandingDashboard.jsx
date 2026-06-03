@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Wifi, AlertCircle, Clock, Wrench, Stethoscope, BookOpen } from 'lucide-react';
+import { BookOpen, Compass, AlertTriangle, ArrowRight } from 'lucide-react';
+import BrandMark from '../components/BrandMark';
 import { getActivePatients, getDevicesOnline, getHighRiskAlerts, getIncidentAffectedPatients } from './GlucoseLanding/queries';
 import { IncidentImpactChart, GlucoseAbsoluteChart, GlucoseTimelineChart } from '../components/IncidentCharts';
 // Clipboard import available if Care Management is restored
@@ -14,6 +15,10 @@ export default function GlucoseLandingDashboard() {
   const [highRiskAlerts, setHighRiskAlerts] = useState(null);
   const [incidentAffected, setIncidentAffected] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+
+  // Land at the top on mount so the hero alert tiles are in view — matters when
+  // arriving from a deep-scrolled page (e.g. the guided tour returning Home at the end).
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   // Fetch real metrics from CGM schema
   useEffect(() => {
@@ -41,57 +46,30 @@ export default function GlucoseLandingDashboard() {
     fetchMetrics();
   }, []);
 
-  const personas = [
-    {
-      icon: Wrench,
-      title: 'Device Support',
-      subtitle: 'Biomedical Engineering',
-      metric: '12 devices flagged',
-      color: 'from-amber-500 to-orange-500',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'border-amber-500/30',
-      route: '/device-support'
-    },
-    {
-      icon: Stethoscope,
-      title: 'Diabetes Coach',
-      subtitle: 'Diabetes Coaching',
-      metric: 'View Dashboard',
-      color: 'from-cyan-500 to-blue-500',
-      bgColor: 'bg-cyan-500/10',
-      borderColor: 'border-cyan-500/30',
-      route: '/diabetes-coach'
-    }
-    // Care Management option temporarily hidden - uncomment to restore
-    // {
-    //   icon: Clipboard,
-    //   title: 'Care Management',
-    //   subtitle: 'RPM Nursing',
-    //   metric: '5 priority interventions',
-    //   color: 'from-emerald-500 to-teal-500',
-    //   bgColor: 'bg-emerald-500/10',
-    //   borderColor: 'border-emerald-500/30',
-    //   route: '/care-management'
-    // }
-  ];
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <Activity className="w-7 h-7 text-cyan-400" strokeWidth={2.5} />
+              <BrandMark className="w-7 h-7 text-cyan-400" />
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-                  GlucoStream Intelligence
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
+                  Glucosphere
                 </h1>
-                <p className="text-xs text-slate-500 font-mono">Continuous Glucose Monitoring Platform</p>
+                <p className="text-xs text-slate-500 font-mono">CGM Stream Intelligence <span className="text-cyan-400/80">· fleet control tower</span></p>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.dispatchEvent(new Event('glucosphere:start-tour'))}
+              className="flex items-center gap-2 px-4 py-2 border border-cyan-500/40 rounded-lg hover:bg-cyan-500/10 transition-colors"
+            >
+              <Compass className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm font-medium text-cyan-400">Take a tour</span>
+            </button>
             <button
               onClick={() => navigate('/metrics-explained')}
               className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg hover:bg-cyan-500/20 transition-colors"
@@ -111,9 +89,9 @@ export default function GlucoseLandingDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Hero Metrics */}
-        <div className="grid grid-cols-4 gap-4 mb-12">
+        <div data-tour="hero-metrics" className="grid grid-cols-4 gap-4 mb-12">
           <MetricCard
             label="Active Patients"
             value={metricsLoading ? '...' : (activePatients !== null ? activePatients.toLocaleString() : 'N/A')}
@@ -129,69 +107,33 @@ export default function GlucoseLandingDashboard() {
           <MetricCard
             label="High-Risk Alerts"
             value={metricsLoading ? '...' : (highRiskAlerts !== null ? highRiskAlerts.toLocaleString() : 'N/A')}
-            subtitle="last 3h"
+            subtitle="<54 / >250 · 3h"
             sparkline={[55, 52, 50, 48, 51, 49, 47]}
+            to="/device-support"
+            cta="Review"
           />
           <MetricCard
             label="Device-Incident-Affected"
             value={metricsLoading ? '...' : (incidentAffected !== null ? incidentAffected.toLocaleString() : 'N/A')}
             subtitle="past 7d"
             sparkline={[0, 0, 300, 300, 300, 600, 600]}
+            to="/firmware-lifecycle"
+            cta="Diagnose"
+            flag={!metricsLoading && incidentAffected !== null && incidentAffected > 0}
           />
         </div>
 
-        {/* Incident Analysis */}
-        <section className="mb-12">
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
+        {/* Incident Analysis — the Detect detail (fleet/incident overview).
+            Role navigation lives in the nav rail (Device Support / Diabetes Coach),
+            so the old bottom "Quick Access by Role" cards were removed as redundant. */}
+        <section data-tour="incident-charts" className="mb-8">
+          <h2 className="text-lg font-semibold mb-4 text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Recent Incident Analysis
           </h2>
-          <div className="space-y-6">
+          <div className="space-y-3">
             <IncidentImpactChart />
             <GlucoseAbsoluteChart />
             <GlucoseTimelineChart />
-          </div>
-        </section>
-
-        {/* Quick Access by Role */}
-        <section>
-          <h2 className="text-lg font-semibold mb-6 text-slate-300" style={{ fontFamily: 'Georgia, serif' }}>
-            Quick Access by Role
-          </h2>
-          <div className="grid grid-cols-2 gap-6">
-            {personas.map((persona, idx) => (
-              <button
-                key={idx}
-                onClick={() => navigate(persona.route)}
-                className={`${persona.bgColor} border ${persona.borderColor} rounded-lg p-6 text-left hover:scale-[1.02] transition-all duration-300 group`}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${persona.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                    <persona.icon className="w-6 h-6 text-white" strokeWidth={2.5} />
-                  </div>
-                  <svg className="w-5 h-5 text-slate-500 group-hover:text-slate-300 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-slate-100 mb-1" style={{ fontFamily: 'Georgia, serif' }}>
-                  {persona.title}
-                </h3>
-                <p className="text-xs text-slate-500 mb-4 font-mono">{persona.subtitle}</p>
-                <div className="flex items-center gap-2">
-                  {persona.metric.match(/^\d+/) ? (
-                    <>
-                      <span className="text-2xl font-mono font-bold bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">
-                        {persona.metric.split(' ')[0]}
-                      </span>
-                      <span className="text-sm text-slate-400">{persona.metric.split(' ').slice(1).join(' ')}</span>
-                    </>
-                  ) : (
-                    <span className="text-base font-medium text-slate-400">
-                      {persona.metric}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
           </div>
         </section>
       </main>
@@ -199,20 +141,31 @@ export default function GlucoseLandingDashboard() {
   );
 }
 
-function MetricCard({ label, value, change, trend, subtitle, period, sparkline }) {
+function MetricCard({ label, value, change, trend, subtitle, period, sparkline, to, cta, flag }) {
+  const navigate = useNavigate();
+  const clickable = !!to;
+  const Wrapper = clickable ? 'button' : 'div';
   return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-5 hover:border-slate-700 transition-colors">
+    <Wrapper
+      {...(clickable ? { type: 'button', onClick: () => navigate(to) } : {})}
+      className={`text-left w-full bg-slate-900/50 border rounded-lg p-5 transition-colors ${
+        flag ? 'border-amber-500/40 hover:border-amber-400/70' : 'border-slate-800 hover:border-slate-700'
+      } ${clickable ? 'cursor-pointer group' : ''}`}
+    >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <p className="text-xs text-slate-500 font-mono mb-1">{label}</p>
-          <p className="text-2xl font-mono font-bold text-slate-100">{value}</p>
+          <p className="text-xs text-slate-500 font-mono mb-1 flex items-center gap-1">
+            {flag && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
+            {label}
+          </p>
+          <p className={`text-2xl font-mono font-bold ${flag ? 'text-amber-300' : 'text-slate-100'}`}>{value}</p>
         </div>
         {sparkline && (
           <div className="w-16 h-8 flex items-end gap-0.5">
             {sparkline.map((val, i) => (
-              <div 
+              <div
                 key={i}
-                className="flex-1 bg-cyan-500/40 rounded-t"
+                className={`flex-1 rounded-t ${flag ? 'bg-amber-500/40' : 'bg-cyan-500/40'}`}
                 style={{ height: `${(val / Math.max(...sparkline)) * 100}%` }}
               />
             ))}
@@ -231,8 +184,13 @@ function MetricCard({ label, value, change, trend, subtitle, period, sparkline }
         )}
         {subtitle && <span className="text-xs text-slate-500 font-mono">{subtitle}</span>}
         {period && <span className="text-xs text-slate-500 font-mono">{period}</span>}
+        {clickable && cta && (
+          <span className="ml-auto text-xs font-mono text-cyan-400 inline-flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+            {cta} <ArrowRight className="w-3 h-3" />
+          </span>
+        )}
       </div>
-    </div>
+    </Wrapper>
   );
 }
 

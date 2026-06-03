@@ -450,14 +450,16 @@ pseudo_with_flag = pseudo_clean.drop("has_incident").join(
     "left"
 ).fillna({"has_incident": 0})
 
-# Inject bias: Add calibration_bias_mgdl to glucose_observed during incident window
+# Inject bias: Add calibration_bias_mgdl to glucose_observed during incident window.
+# Clamp to the physiological CGM range [40, 400] mg/dL (matches 01/04/05) so the biased
+# value can't exceed the device's reportable range.
 pseudo_incident = pseudo_with_flag.withColumn(
     "glucose_observed",
     F.when(
         (F.col("has_incident") == 1) &
         (F.col("time") >= F.lit(incident_start_ts)) &
         (F.col("time") < F.lit(incident_end_ts)),
-        F.col("glucose_observed") + F.lit(cfg.calibration_bias_mgdl)
+        F.greatest(F.least(F.col("glucose_observed") + F.lit(cfg.calibration_bias_mgdl), F.lit(400.0)), F.lit(40.0))
     ).otherwise(F.col("glucose_observed"))
 ).withColumn(
     "incident_type",
@@ -1617,7 +1619,7 @@ else:
 # DBTITLE 1,Fleet Forecast Table (Demo Output)
 # ------------------------
 # Fleet forecast NOW using registered models
-# Use RANDOM timepoint from middle days (3-5) to avoid edge effects
+# Anchor at each patient's LATEST reading (genuinely near-term; agrees with the Coach chart end)
 # Filter out clipped floor values (glucose_observed <= 40)
 # ------------------------
 import mlflow.xgboost
@@ -1644,13 +1646,13 @@ df_with_day = (df
   .drop("t0")
 )
 
-# Select ONE random timepoint per patient from days 3-5 (middle of timeline)
-# Filter out clipped floor values (glucose_observed <= 40) - these are data artifacts
-w_random = Window.partitionBy("patient_id").orderBy(F.rand(seed=cfg.seed))
+# Forecast anchor = each patient's LATEST reading (genuinely near-term; agrees with the
+# Coach 7-day chart end). Was: a random day-3-5 mid-timeline point. Exclude clamped-floor
+# readings (glucose_observed <= 40) as the anchor — floor artifacts, not a "current" value.
+w_latest = Window.partitionBy("patient_id").orderBy(F.col("time").desc())
 fleet_sample = (df_with_day
-  .filter((F.col("day_idx") >= 3) & (F.col("day_idx") <= 5))  # Middle days
-  .filter(F.col("glucose_observed") > 40)  # Exclude clipped floor values
-  .withColumn("rn", F.row_number().over(w_random))
+  .filter(F.col("glucose_observed") > 40)  # skip clamped-floor artifacts as the anchor
+  .withColumn("rn", F.row_number().over(w_latest))
   .filter("rn=1")
   .drop("rn", "day_idx")
 )
@@ -1659,8 +1661,9 @@ fleet_pd = fleet_sample.toPandas()
 X_fleet = fleet_pd[feature_cols].to_numpy(dtype=np.float32)
 dfleet = xgb.DMatrix(X_fleet, feature_names=feature_cols)
 
-fleet_pd["pred_15m"] = bst15.predict(dfleet)
-fleet_pd["pred_30m"] = bst30.predict(dfleet)
+# Clamp model predictions to the physiological CGM range [40, 400] (matches observed clamp).
+fleet_pd["pred_15m"] = np.clip(bst15.predict(dfleet), 40, 400)
+fleet_pd["pred_30m"] = np.clip(bst30.predict(dfleet), 40, 400)
 fleet_pd["delta_15m"] = fleet_pd["pred_15m"] - fleet_pd["glucose_observed"]
 fleet_pd["delta_30m"] = fleet_pd["pred_30m"] - fleet_pd["glucose_observed"]
 
@@ -1674,9 +1677,9 @@ print(f"   Patients: {len(fleet_output):,}")
 print(f"   Glucose range: [{fleet_output['glucose_observed'].min():.0f}, {fleet_output['glucose_observed'].max():.0f}] mg/dL")
 print(f"   Average glucose: {fleet_output['glucose_observed'].mean():.1f} mg/dL")
 print(f"   Patients at 40 mg/dL: {(fleet_output['glucose_observed'] == 40).sum()} (should be 0)")
-print(f"\nSampling: Random timepoint from days 3-5, glucose > 40 mg/dL")
-print(f"   * Avoids edge effects (timeline start/end)")
-print(f"   * Excludes clipped floor values (data artifacts)")
+print(f"\nAnchor: each patient's LATEST reading, glucose > 40 mg/dL")
+print(f"   * Near-term forecast from the most recent point (matches the Coach 7-day chart end)")
+print(f"   * Excludes clamped floor values (data artifacts)")
 
 display(spark.table(fleet_forecast_tbl).orderBy(F.desc("delta_30m")).limit(20))
 

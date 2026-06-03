@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
+import { useGoBack } from '../hooks/useGoBack';
 // fig4 PNG is served at runtime from UC Volume via Flask /uc-assets/ route
 // (App/databricks/app.py:serve_uc_asset). No vite-bundled static copy needed —
 // the pipeline writes to /Volumes/{CATALOG}/{SCHEMA}/pipeline_data/incident_inference_assets/
@@ -10,6 +11,18 @@ const FIG4_UC_PATH = '/uc-assets/incident_inference_assets/distribution_comparis
 
 export default function MetricsExplained() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const goBack = useGoBack();
+
+  // Deep-link support: the landing-page chart panels link here with a #anchor
+  // (e.g. /metrics-explained#me-mae-timeline). react-router v6 does NOT auto-scroll
+  // to a hash, so scroll the matching card into view (below the sticky header via
+  // scroll-mt on the targets). Defer a frame so layout is settled first.
+  useEffect(() => {
+    if (!location.hash) return;
+    const el = document.querySelector(location.hash);
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [location.hash]);
 
   // Fetch catalog/schema from Flask /api/config so the SQL examples + display
   // text shown to users reflect the workspace this app is deployed to.
@@ -35,10 +48,10 @@ export default function MetricsExplained() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-[1200px] mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-[88rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => navigate('/')}
+              onClick={goBack}
               className="text-slate-500 hover:text-slate-300 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -48,7 +61,7 @@ export default function MetricsExplained() {
                 <BookOpen className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Metrics Explained
                 </h1>
                 <p className="text-xs text-slate-500 font-mono">How metrics are calculated across dashboards</p>
@@ -58,15 +71,15 @@ export default function MetricsExplained() {
         </div>
       </header>
 
-      <main className="max-w-[1200px] mx-auto px-6 py-8">
+      <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Introduction */}
         <section className="mb-12">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+            <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               About This Page
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
-              This page documents how each metric is calculated across the GlucoStream Intelligence Dashboard.
+              This page documents how each metric is calculated across the Glucosphere Dashboard.
               All metrics are derived from real-time data in the Databricks Unity Catalog using SQL queries
               via the DBSQL MCP (Model Context Protocol) server.
             </p>
@@ -114,9 +127,29 @@ export default function MetricsExplained() {
           </div>
         </section>
 
+        {/* Counts vs rates — data-agnostic principle (true on real OR synthetic baseline) */}
+        <section className="mb-12">
+          <div className="bg-slate-900/50 border border-amber-500/20 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-amber-300 mb-2" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
+              Why fleet comparisons use rates, not counts
+            </h2>
+            <p className="text-sm text-slate-400">
+              The gold table holds <span className="font-mono text-cyan-400">one row per reading</span> (~288/patient/day),
+              so a raw <span className="font-mono text-amber-400">COUNT</span> of out-of-range readings scales with how much
+              data a group has — not how unhealthy it is. Comparing device models, diagnoses, regions, or firmware by raw
+              count therefore ranks them by population/volume and can invert the real picture (the smallest cohort often has
+              the highest rate). So cross-group views — the firmware × model heatmap, the High-Risk tile, and the CGM Genie
+              assistant — report <span className="text-cyan-300">rates</span>{' '}
+              (<span className="font-mono text-cyan-400">AVG(glucose_out_of_range)*100</span>), and reserve the Battelino
+              level-2 danger bands (<span className="font-mono">&lt;54</span> / <span className="font-mono">&gt;250</span> mg/dL)
+              for "high risk". Device-health questions use data completeness (readings vs the expected ~288/day), not glucose excursions.
+            </p>
+          </div>
+        </section>
+
         {/* Landing Page Hero Metrics */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Landing Page: Hero Metrics
           </h2>
 
@@ -225,21 +258,24 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Number of unique patients who have had at least one out-of-range glucose reading in the
-                  last <span className="font-mono text-cyan-400">3 hours</span> of available data.
-                  Out-of-range means glucose levels are outside the clinically safe range.
+                  Number of unique patients with at least one reading in a <span className="text-slate-200">clinically-critical
+                  glucose range</span> — Very Low <span className="font-mono text-cyan-400">&lt;54 mg/dL</span> or Very High
+                  <span className="font-mono text-cyan-400"> &gt;250 mg/dL</span> — in the last
+                  <span className="font-mono text-cyan-400"> 3 hours</span> of available data. These are the level-2 danger
+                  bands, deliberately narrower than "any out-of-range (&lt;70 or &gt;180)," which is routine for a diabetic fleet.
                 </p>
               </div>
 
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why 3 hours (not 24)?</p>
                 <p className="text-sm text-slate-400">
-                  The 3-hour window matches a typical device-calibration incident window length so a live
-                  incident shifts the count clearly above the natural baseline. With a 24-hour window the
-                  natural diabetic OOR baseline (~943 patients) dominates and a live incident only nudges it
-                  slightly — bad signal-to-noise for a fleet operator's live tile. With 3 hours the baseline
-                  sits around ~495 patients during clean periods and rises to ~800 (baseline + ~300-patient
-                  incident cohort) during an active incident.
+                  The 3-hour window matches a typical device-calibration incident window so a live incident
+                  shifts the count clearly. For scale, on this deployment's <span className="text-slate-300">real (HUPA-UCM) baseline</span>:
+                  ~822 patients have a reading in a 3h window; <span className="font-mono text-cyan-400">~517</span> have
+                  <em>any</em> out-of-range reading (&lt;70 or &gt;180) — routine for type-1 diabetes — while only
+                  <span className="font-mono text-cyan-400"> ~176</span> hit a critical band (&lt;54 or &gt;250).
+                  Counting the critical bands is what makes this a believable "high-risk" signal rather than half the fleet.
+                  <span className="text-slate-500">(A synthetic-baseline deployment is idealized and skews far healthier — fewer in either band; the &lt;54 / &gt;250 thresholds are fixed clinical bands regardless of data source.)</span>
                 </p>
               </div>
 
@@ -248,7 +284,7 @@ WHERE time >= (
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
 {`SELECT COUNT(DISTINCT patient_id) as high_risk_patients
 FROM ${catalog}.${schema}.gold_patient_device_readings
-WHERE glucose_out_of_range = 1
+WHERE (glucose < 54 OR glucose > 250)
   AND time >= (
     SELECT MAX(time) - INTERVAL 3 HOUR
     FROM ${catalog}.${schema}.gold_patient_device_readings
@@ -257,10 +293,13 @@ WHERE glucose_out_of_range = 1
               </div>
               
               <div>
-                <p className="text-sm font-medium text-slate-300 mb-2">What is "out-of-range"?</p>
+                <p className="text-sm font-medium text-slate-300 mb-2">Why &lt;54 and &gt;250?</p>
                 <p className="text-sm text-slate-400">
-                  The <span className="font-mono text-amber-400">glucose_out_of_range</span> field is a binary flag (0 or 1) 
-                  indicating whether the glucose reading is outside the clinically safe range. This is pre-calculated in the data pipeline.
+                  These are the level-2 (clinically-significant) danger bands from the international Time-in-Ranges
+                  consensus (Battelino et al., 2019): <span className="font-mono text-cyan-400">Very Low &lt;54</span>,
+                  Low 54–69, Target 70–180, High 181–250, <span className="font-mono text-cyan-400">Very High &gt;250</span> mg/dL.
+                  Counted from the raw <span className="font-mono text-amber-400">glucose</span> column — not the broader
+                  <span className="font-mono text-amber-400"> glucose_out_of_range</span> flag, which fires on the routine &lt;70 / &gt;180 bands.
                 </p>
               </div>
               
@@ -276,12 +315,14 @@ WHERE glucose_out_of_range = 1
 
         {/* Landing Page: Recent Incident Analysis */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Landing Page: Recent Incident Analysis
           </h2>
 
-          {/* Why this monitoring stack matters — frames the 3 incident charts that follow */}
-          <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-6 mb-6">
+          {/* Why this monitoring stack matters — frames the 3 incident charts that follow.
+              id + scroll-mt make it a hash target (the About page's "control tower" overview
+              link jumps here via /metrics-explained#me-why-monitoring). */}
+          <div id="me-why-monitoring" className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-300 mb-1">Why this monitoring stack matters</h3>
@@ -306,18 +347,18 @@ WHERE glucose_out_of_range = 1
             </p>
             <p className="text-sm text-slate-300 leading-relaxed mt-3">
               The detection chain spans three views, each documented in detail below:
-              <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view). <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
+              <span className="block ml-4 mt-1">(1) <span className="text-cyan-300 font-medium">MAE Timeline</span> — catches the magnitude (fleet-vs-affected dilution view). <span className="text-xs text-slate-500">Lives on the Glucosphere landing page.</span></span>
               <span className="block ml-4">(2) <span className="text-cyan-300 font-medium">How MAE alerts are triggered</span> — distribution shift explains <em>why</em> MAE spiked. <span className="text-xs text-slate-500">Snapshot PNG from the most recent incident-simulation pipeline run (05_incident_inference_bidirectional notebook), embedded only in this Metrics Explained tab.</span></span>
-              <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted. <span className="text-xs text-slate-500">Lives on the GlucoStream Intelligence landing page.</span></span>
+              <span className="block ml-4">(3) <span className="text-cyan-300 font-medium">Device Calibration Bias Over Time</span> — signed-bias delta reveals <em>which</em> direction each cohort drifted. <span className="text-xs text-slate-500">Lives on the Glucosphere landing page.</span></span>
             </p>
           </div>
 
           {/* Incident Impact Chart */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-mae-timeline" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Incident Impact: MAE Timeline</h3>
-                <p className="text-xs text-slate-500 font-mono">Top chart on the GlucoStream landing page — Mean Absolute Error over time</p>
+                <p className="text-xs text-slate-500 font-mono">Top chart on the Glucosphere landing page — Mean Absolute Error over time</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">TIME SERIES</span>
             </div>
@@ -334,7 +375,7 @@ WHERE glucose_out_of_range = 1
                   With the two-window mirror simulation (2026-05-18), TWO separate red-tinted dashed-border
                   rectangles mark the two incident windows: Day 2 (+40 mg/dL bias on Alpha/Gamma cohort) and
                   Day 5 (-40 mg/dL bias on Beta/Delta cohort). Baseline sensor noise of 5.0 mg/dL is added
-                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL MARD).
+                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL baseline mean absolute error).
                 </p>
               </div>
 
@@ -370,12 +411,15 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> ABS(glucose_observed - glucose_true) + 5.0 (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
+                  <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> <code className="font-mono text-cyan-300 bg-slate-800/60 px-1.5 py-0.5 rounded">ABS(glucose_observed − glucose_true) + 5.0</code> (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
                   <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only the active-window cohort drifts at any moment</li>
                   <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the two-window-mirror dilution trap where has_incident=1 includes both cohorts at all times.</li>
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
                   <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window per cohort; two such windows total in the mirror simulation)</li>
                   <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy — dashed slate-400 reference line)</li>
+                  <li>• <span className="font-mono text-amber-300">Two MAEs — don't conflate:</span> the <em>model-monitoring</em> MAE is <span className="font-medium">forecast error</span> = |XGBoost prediction − actual future glucose| (computed in the inference notebook: clean ~3.8 mg/dL @15-min / ~5.9 @30-min → ~38 mg/dL during an incident — the headline degradation). <span className="font-medium">This landing chart</span> instead computes a fast <span className="font-medium">device-error proxy</span> = <span className="font-mono text-cyan-400">ABS(glucose_observed − glucose_true) + 5.0</span> directly in SQL (the dashboard doesn't re-run the model in the browser). The proxy is engineered to mirror the forecast-MAE spike — the +5.0 floor → ~5.8 baseline, the ±40 device bias → ~45 affected — and the dashed "Baseline (5.8)" line is the real forecast 30-min baseline.</li>
+                  <li>• <span className="font-mono text-slate-300">Derived, not stored:</span> neither MAE is a raw column — both are computed (the forecast MAE during model inference; this chart's proxy at query time from <span className="font-mono text-cyan-400">glucose_observed</span> / <span className="font-mono text-cyan-400">glucose_true</span>).</li>
+                  <li>• <span className="font-mono text-slate-300">Time granularity:</span> one point per reading timestamp — readings are 5-min spaced, so <span className="font-mono text-cyan-400">DATE_TRUNC('minute', time)</span> yields a per-5-min point, averaged across the patient population at that moment.</li>
                 </ul>
               </div>
               
@@ -402,11 +446,11 @@ ORDER BY minute`}
           </div>
 
           {/* How MAE alerts are triggered — distribution shift view (4-panel snapshot from 05_incident_inference_bidirectional notebook) */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-distribution-shift" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">How MAE alerts are triggered</h3>
-                <p className="text-xs text-slate-500 font-mono">Distribution shift view — why MAE spikes signal device drift</p>
+                <p className="text-xs text-slate-500 font-mono">Distribution shift view — why MAE spikes signal device drift. Companion explainer for the "Actual vs Device Readings (per-cohort)" landing chart.</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">DISTRIBUTION</span>
             </div>
@@ -414,7 +458,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why MAE spikes signal device drift:</p>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the GlucoStream Intelligence landing page) catches in real time and surfaces as an alert.
+                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) catches in real time and surfaces as an alert.
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL incident itself is a <span className="text-amber-300">simulated</span> calibration bug injected into the demo data for illustration — see _About This Page_ above for full provenance.)
@@ -450,11 +494,11 @@ ORDER BY minute`}
           </div>
 
           {/* Glucose Timeline Chart */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6">
+          <div id="me-bias-timeline" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Device Calibration Bias Over Time (±40 mg/dL Bidirectional)</h3>
-                <p className="text-xs text-slate-500 font-mono">Bottom chart on the GlucoStream landing page — Signed bias delta per direction cohort</p>
+                <p className="text-xs text-slate-500 font-mono">Bottom chart on the Glucosphere landing page — Signed bias delta per direction cohort</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">TIME SERIES</span>
             </div>
@@ -463,7 +507,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the GlucoStream Intelligence landing page).
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the Glucosphere landing page).
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL two-window incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see _About This Page_ above for full provenance.)
@@ -524,7 +568,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Clinical Significance:</p>
                 <p className="text-sm text-slate-400">
-                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the GlucoStream Intelligence landing page) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
+                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the Glucosphere landing page) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
                 </p>
               </div>
               
@@ -605,7 +649,7 @@ FROM error_data`}
 
         {/* Device Support Dashboard */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
+          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Device Support Dashboard
           </h2>
 
@@ -647,40 +691,48 @@ FROM ${catalog}.${schema}.silver_patient_registry`}
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold text-cyan-400 mb-1">Anomaly Heatmap</h3>
-                <p className="text-xs text-slate-500 font-mono">Device type vs. Firmware version</p>
+                <p className="text-xs text-slate-500 font-mono">Device error (MAE) · Firmware × Day</p>
               </div>
               <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">AGGREGATION</span>
             </div>
-            
+
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Total out-of-range glucose events for each combination of device model and firmware version. 
-                  Color intensity indicates severity (green = low, red = high).
+                  Mean device error (|observed − true|, mg/dL) for each firmware version on each day.
+                  Faulty firmware lights up on its incident days (~40 mg/dL); clean firmware (before the
+                  rollout / after the recall) sits near 0. Color scales with the error (slate = clean,
+                  green → amber → red). Device error is used here — not a whole-window out-of-range
+                  rate, which the real-data baseline (~⅓ of readings) would dilute.
                 </p>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">SQL Query:</p>
                 <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
-{`SELECT 
-  device_model as device_type,
-  CAST(firmware_version AS STRING) as firmware_version,
-  COUNT(*) as out_of_range_events
-FROM ${catalog}.${schema}.gold_patient_device_readings
-WHERE glucose_out_of_range = 1
-GROUP BY device_model, firmware_version
-ORDER BY device_model, firmware_version`}
+{`SELECT
+  DATE(g.time) as day,
+  CAST(g.firmware_version AS STRING) as firmware_version,
+  -- MAE over the affected (in-incident) readings, so a fault day shows its true
+  -- ~40 mg/dL magnitude instead of a whole-day average that dilutes the 3-hour fault
+  ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL
+                 THEN ABS(p.glucose_observed - p.glucose_true) END), 1) as device_error_mae
+FROM ${catalog}.${schema}.gold_patient_device_readings g
+JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+  ON g.patient_id = p.patient_id AND g.time = p.time
+WHERE g.firmware_version IS NOT NULL
+GROUP BY DATE(g.time), CAST(g.firmware_version AS STRING)
+ORDER BY day, firmware_version`}
                 </pre>
               </div>
-              
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Axes (Dynamic):</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
-                  <li>• <span className="font-mono text-cyan-400">X-axis (top):</span> Unique firmware versions extracted from data</li>
-                  <li>• <span className="font-mono text-cyan-400">Y-axis (left):</span> Unique device models extracted from data</li>
-                  <li>• <span className="font-mono text-amber-400">Cell values:</span> Count of readings where glucose_out_of_range = 1 for that combination</li>
+                  <li>• <span className="font-mono text-cyan-400">X-axis (top):</span> Day (the rolling demo week)</li>
+                  <li>• <span className="font-mono text-cyan-400">Y-axis (left):</span> Firmware version (3.14 → 4.0 → 4.1)</li>
+                  <li>• <span className="font-mono text-amber-400">Cell values:</span> mean device error |observed − true| mg/dL for that firmware on that day — ≈0 when calibrated, ~40 during a fault</li>
                 </ul>
               </div>
               
@@ -839,25 +891,6 @@ LIMIT 50`}
                   Table: <span className="text-cyan-400">{catalog}.{schema}.gold_patient_device_readings</span>
                 </p>
               </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Future Sections */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-bold mb-6 text-slate-200" style={{ fontFamily: 'Georgia, serif' }}>
-            Other Dashboards
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 opacity-50">
-              <h3 className="text-sm font-semibold text-slate-400 mb-2">Care Management Dashboard</h3>
-              <p className="text-xs text-slate-500">Metrics documentation coming soon...</p>
-            </div>
-
-            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 opacity-50">
-              <h3 className="text-sm font-semibold text-slate-400 mb-2">Diabetes Coach Dashboard</h3>
-              <p className="text-xs text-slate-500">Metrics documentation coming soon...</p>
             </div>
           </div>
         </section>

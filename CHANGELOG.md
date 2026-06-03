@@ -19,6 +19,159 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-03]
+
+Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, a Device-error heatmap **metric-scope toggle** (In-incident ⇄ Fleet-wide) with a tuned color curve, an About-page **real-world-extrapolation** note, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.
+
+### Added — Device-error heatmap metric-scope toggle (triage ⇄ fleet-wide) + real-world-extrapolation note
+- **Metric-scope toggle** on Device Support's *Device Error by Firmware × Day* heatmap: **In-incident (triage)** — peak fault severity during the incident window (the existing ~40 mg/dL signal; default) — vs **Fleet-wide (compliance)** — the all-readings average per firmware-day, where the ~3 h fault dilutes into the day and severity is honestly masked. Reuses the MAE-timeline's affected-vs-fleet-wide vocabulary. `getFirmwareLifecycle()` now also returns `maeFleet` (the unconditioned `AVG(|observed − true|)`) alongside the in-incident `mae` — non-breaking for the Coach / Firmware-Lifecycle consumers that read `mae`.
+- **Color curve tuned** (`getMaeColor` γ0.7): the emerald→amber→red ramp is bent so clean firmware-days gain visible green→yellow-green separation (real firmware baseline-noise gradient) without pushing a clean day into amber/red. The anchor stays in-incident-based in **both** scopes, so Fleet-wide renders honestly low/green rather than re-stretched to fake a fault. Heatmap subtitle nudged below the title/toggle row.
+- **About → "What's simulated vs real"** gains a *"How this extrapolates to real devices"* paragraph: a fielded CGM fleet has no ground-truth reference, so the same calibration drift is monitored from observed readings alone via **cohort distribution divergence** (+ sparse fingerstick/lab MARD checks + per-lot sensor-QC telemetry); the operator views stay identical, only the cell metric swaps from error-vs-truth → distribution-divergence. Frames the production path for the DAIS narrative.
+
+### Fixed — MARD terminology in Metrics Explained
+- A baseline noise magnitude was mislabeled `~5.8 mg/dL MARD`; **MARD** is a *percentage* (mean absolute relative difference), so the mg/dL figure is a mean-absolute-**error**. Corrected to `~5.8 mg/dL baseline mean absolute error`. (The datagen MARD references in `_firmware_spec.py` / `05_*.py` already use `%` correctly — verified the mislabel was confined to this one user-facing line.)
+
+### Added — patient ↔ device ↔ fleet drill-downs (closes the detect → diagnose → assess loop in-app)
+- **Calibration Drift matrix → Population Risk.** Faulted drift cells on the Firmware Lifecycle page are clickable → Population Risk pre-filtered to that device model (`?model=`), with **✕ show all** to clear. Self-contained navigation (no external hop) for booth demos. (`8b1c452`)
+- **Device ↔ Coach cross-links.** Device Support's Patient cell links to that patient's Diabetes Coach view (`9d88dc4`); Coach's device panel links to Device Support **focused on that device** with a status-aware honest reading (in-range vs OOR), overriding the OOR/3h gate so any device can be inspected (`207bb3e`).
+- These wire #2's device/coach tabs together and exercise #5's real per-patient data.
+
+### Added — About "Under the hood" platform panel + overview link
+- About page gains a **Data → ML/AI → Agentic** platform-plumbing panel: each node deep-links into the deploying workspace (catalog, DLT pipeline, model serving, MAS/KA endpoints, Genie space) from `/api/config`, with accurate **Agent Bricks (KA + MAS) vs AI/BI Genie** taxonomy, a combined hero, and the glucose-ring logo beside the paragraph that explains it + embedded official Databricks links. (`406314d`)
+- The overview word **"control tower"** links to Metrics Explained's *"Why this monitoring stack matters"* framing (`#me-why-monitoring`). (`8b1c452`)
+
+### Changed — chart legibility
+- **Firmware MAE timeline**: smaller axis / tick / value / legend fonts; y-axis title re-centred on the full SVG height (it was clipping at the top in the short plot band); trimmed the trailing whitespace below the legend. **Calibration Drift heatmap**: larger date headers, direction sublabels, and footer legend. (`8b1c452`)
+- Firmware device-error **green → amber → red gradient** + half-open join dup-fix + Diagnose-page consolidation. (`0da9cf5`)
+
+### Security — dependency bumps (Dependabot)
+- `flask` → 3.1.3, `requests` → 2.33.0, `react-router-dom` → 6.30.3 (both HIGH alerts cleared); build-only `esbuild`/`vite`/`picomatch` deferred (dev-time only, no runtime exposure). Also fixed `render_app_yaml.py --ka-endpoint` to patch the `KA_ENDPOINT_NAME` env var, not just the resource binding (the env value had stayed stale). (`d2ec3dd`)
+
+### Changed — committed `app.yaml` is now a generic template (public-repo hygiene)
+- The committed `App/databricks/app.yaml` no longer ships one workspace's real catalog / warehouse / serving-endpoint / Genie IDs. Workspace-specific env values are **blank** (`CATALOG_NAME` → `your_workspace_catalog`, `WAREHOUSE_ID` / `SETUP_JOB_ID` / `ENDPOINT_NAME` / `KA_ENDPOINT_NAME` / `GENIE_SPACE_ID` → `""`) and the `resources:` bindings use placeholders (`your-mas-endpoint`, `your-ka-endpoint`, `your-warehouse-id`, `your-genie-space-id`). This is safe because **every** deploy (prod or sandbox) runs `scripts/render_app_yaml.py` first, which rewrites these per-target — Databricks Apps `app.yaml` env `value:` fields are literal strings that `bundle deploy` does **not** interpolate, so render is the only substitution path. `FM_ENDPOINT` (a global foundation-model name) and `SCHEMA_NAME` keep their workspace-agnostic defaults. `DEPLOY.md` updated (a stale "the live ones in app.yaml are …" example pointed at the removed IDs).
+
+### Docs
+- Repo-wide README/MD accuracy audit — corrected drift in mermaid diagrams, task counts, `dist`→`static` build-output paths, the firmware-version count, and the deep-link config table. (`34b71c4`)
+- `DEPLOY.md`: the app-SP grant step (`scripts/grant_app_sp.py`) now explicitly covers the **fast-iteration bundle redeploy** — a bare `bundle run glucosphere_app` that skips the `glucosphere_full_setup` job (e.g. shipping a UI tweak) leaves the app SP ungranted (403 on every query), because the `09_grant_app_permissions.py` task only runs inside the setup job. Previously the doc framed this as a standalone-A/B-app-only concern.
+
+---
+
+## [2026-06-02]
+
+Deploy-tooling ergonomics for side-by-side sandbox deployments, plus an end-to-end `from_source` validation of the whole Issue-#2 branch ahead of the PR to `main`.
+
+### Fixed — firmware-boundary row duplication in the gold join (latent since the buildathon)
+- The gold reading→firmware join in `transformations.sql` used an **inclusive** `a.time BETWEEN c.start_time AND c.end_time`. Because each firmware interval's `end_time` equals the next interval's `start_time` (the telemetry generator builds them via `lead(start_time)`), a reading at the *exact* firmware-transition instant matched **both** adjacent intervals and was duplicated — one extra `gold_patient_device_readings` row per device per firmware change. **Latent since the buildathon** (commit `d0bcf7c`, 2026-01-29): with the original 3-version rollout (`3.14 → 4.0 → 4.1`, 2 transitions) it silently duplicated ~2,000 rows; it surfaced only now because the 4-version rollout (`3.14 → 4.0 → 4.0.3 → 4.1`, 3 transitions → 3,000 dup rows = 1,000 patients × 3) **plus** a new firmware-cohort sanity check made it structurally visible — at the incident boundary the duplicate lands on the *prior* firmware. Tiny in aggregate (~0.15% of ~1.98M rows) so it never visibly moved a metric, but it fanned out every firmware-joined query (heatmap, calibration drift, roster). Fixed to a half-open **`a.time >= c.start_time AND a.time < c.end_time`** join so each reading matches exactly one interval (the final interval's `end_time` is a far-future sentinel, so all real readings are still admitted). The `getFirmwareLifecycle` boundary-guard comment in `databricksSQL.js` was updated to note the dup is now fixed at source (the guard remains as defense-in-depth). New AGENTS.md §9 captures the general lesson (distrust "it's always worked" in consolidated legacy code).
+
+### Changed — free-name harness Apps via `${var.app_name}`
+- The three harness targets (`gsphere_synth_e2e`, `gsphere_from_table_e2e`, `gsphere_from_source_e2e`) previously hardcoded the App resource `name:` to a composed string (`${var.app_basename}-<mode>-e2e-${var.dev_initials}`, e.g. `glucosphere-source-e2e-mmt`), so `BUNDLE_VAR_app_name` was silently ignored on the sandbox targets. Each harness `resources.apps.glucosphere_app.name` now references **`${var.app_name}`** (matching the production `gsphere` target, which already did). The per-target `variables.app_name` keeps the old composed string as its **default**, so:
+  - **unset** → identical name to before (back-compat);
+  - **`export BUNDLE_VAR_app_name=gsphere-v0-1`** → App deploys under that free name, enabling multiple independent sandbox copies (`gsphere-v0-1`, `-v0-2`, …) to coexist. This works because env-var `BUNDLE_VAR_*` outranks a per-target `variables:` default in [DABs variable precedence](https://docs.databricks.com/aws/en/dev-tools/bundles/variables) (command-line `--var` > `BUNDLE_VAR_*` env > `variable-overrides.json` > target default > top-level default).
+- Mirrored in `databricks.yml`, `databricks.yml.example`, and an updated `.env.bundle.example` example line. App names remain 2–30 chars, lowercase/digits/hyphens. Production `glucosphere-app` is untouched (`${var.app_name}` default).
+
+### Fixed — deterministic `device_model` (cohort gating no longer breaks on fresh deploys)
+- `device_model` was assigned three independent random ways (registry positional `np.random.choice`, telemetry `rand(seed=42)`, and `05`'s read-registry-or-random fallback). On a fresh deploy `05` runs before `raw_patient_registry` exists, so the random fallback fired and biased **all six** device models in both directions — instead of the intended 4/6 (Alpha/Gamma over-read, Beta/Delta under-read, Epsilon/Zeta clean). Now `device_model` is a deterministic `md5(patient_id)` bucket defined once in a shared `_device_model_spec` (`%run` by `05` + the registry + the telemetry generator) — identical everywhere, no read-ordering dependency, no fallback. Registry patient↔device pairing fixed (was zipped from two separate non-deterministic `distinct().toPandas()` orders). `data_sanity_checks` gains three cohort-gating checks that fail the run if this regresses. Validated on a fresh `from_source` sandbox: +cohort = Alpha/Gamma only, −cohort = Beta/Delta only, Epsilon/Zeta clean.
+
+### Fixed — `glucose_out_of_range` is purely glucose-based
+- `transformations.sql` defined the flag as `... when incident_type is null then 0 else 1`, which force-flagged **every** incident reading out-of-range regardless of its glucose — inflating every OOR-rate panel and contradicting the flag's own documented meaning (Genie + Metrics-Explained both describe it as "outside 70–180"). Now `glucose < 70 OR glucose > 180`, consistent with `event_type` and the docs (verified: in-incident OOR dropped from a forced 100% to the real ~42%).
+
+### Changed — Device Support: Device Error by Firmware × Day heatmap
+- Replaced the muddy model×firmware out-of-range-**rate** heatmap (diluted to ~28–38% across all models by the real HUPA-UCM baseline, so it couldn't isolate the fault) with a **firmware × day device-error** heatmap (`mean |observed − true| mg/dL`, reusing `getFirmwareLifecycle`): FW 4.0 lights up on the incident days, 3.14/4.1 stay clean. Clean cells render green (matching the legend), faults red; firmware-days with no data are N/A. Panel flex-fills to balance the Calibration Drift column. Tour + Metrics-Explained updated to match. A roadmap caption flags the richer per-firmware drift **gradient** to come (a data-gen follow-up).
+
+### Added — `AGENTS.md` + `CLAUDE.md`
+- Repo operating principles for AI/human contributors: data-gen determinism (synthetic attributes as deterministic functions of `patient_id`), enforce invariants in the sanity gate, fix-at-source (a column's definition must match its docs), don't mutate shared data for a visualization, validate on a sandbox not the frozen demo, app-deploy hygiene (pin the app name; render before deploy), clinical honesty (rates not counts), and the campsite rule (leave it better; keep this file living). `CLAUDE.md` points to `AGENTS.md`.
+
+### Changed — App UI copy
+- First-visit welcome modal CTA relabeled **"Take the 60-second tour" → "Take a guided tour"** (`AboutModal.jsx`). The button opens the guided tour's **Quick (4-step) / Full (10-step) chooser** (no preset variant), so the old "60-second" label under-described what it launches; the new copy matches the sibling "Take a tour" launchers in the nav rail + landing header. Static bundle rebuilt.
+
+### Validated — end-to-end `from_source` (PR pre-merge)
+- Full setup-job run on an **isolated sandbox** (`gsphere_from_source_e2e` → `mmt_aws_usw2_catalog.glucosphere_from_source_e2e`, app `gsphere-v0-1` via the free-naming above) — all 16 active tasks **SUCCESS** (synthetic branch correctly EXCLUDED), incl. the `data_sanity_checks` gate passing on the real HUPA-UCM path. Gold `gold_patient_device_readings`: glucose range exactly **[40.0, 400.0]**, **1,000** patients, ~1.98M readings. App came up **HTTP 200**, `/api/config` reporting the correct `from_source` provenance + sandbox catalog/schema + resolved Genie space. Confirms the whole Issue-#2 branch deploys, runs, and serves on a fresh workspace. *(Note: device→bias cohorts are random in this run — the known determinism follow-up, not a blocker.)*
+
+## [2026-06-01]
+
+Clinical data-plausibility hardening + near-term-forecast coherence + a sanity gate, surfaced by a pre-demo audit. Fixes live in the data-gen notebooks (apply on the next pipeline run; re-run against the live `from_source` baseline). A full table backup is taken before any re-run.
+
+### Changed — App UI: device-fault prominence, layout, guided tour (app-query-only; no data/pipeline change)
+- **Calibration Drift panel (Device Support → Population Overview):** new panel showing mean `|observed − true|` mg/dL by device model × incident window — the device fault at its true **±40** (Window 1 over-read Alpha/Gamma, Window 2 under-read Beta/Delta, 300 devices each; Epsilon/Zeta clean). It isolates the fault where the whole-window out-of-range rate dilutes it (real HUPA-UCM baseline is ~31–39% OOR even on healthy devices, so a 3-hour fault washes out). New `getCalibrationDrift()` over `pseudo_incident_7d_labeled` ⋈ `silver_patient_registry`.
+- **Population Overview re-layout:** three equal columns — Out-of-Range heatmap · Calibration Drift · Device Pattern Alerts (Regional Distribution dropped; its geo detail survives in Pattern Alerts' per-row region). OOR colorbar moved below the heatmap (horizontal). Added a **dynamic baseline/dilution note** whose number + provenance wording adapt to the deployment's `baseline_source` (real HUPA-UCM vs synthetic vs from_table).
+- **Firmware Lifecycle MAE → in-incident:** the chart now scopes MAE to the affected (in-incident) readings, so the faulty firmware shows its true **~40 mg/dL** instead of a whole-day-diluted ~3.6; clean firmwares stay ~0 (a boundary-reading guard prevents the prior firmware from false-spiking on the rollout day). Faulty-firmware detection + the **"→ ACT: flag for rollback" card** restored (dilution had pushed the daily mean below the alert threshold).
+- **Out-of-Range table:** a "click any row" hint surfaces the previously-hidden row drill-in + AI device analysis.
+- **Guided tour:** a **Quick (4-step) / Full (10-step) chooser** (A/B-ready — variant is a parameter); the Full walkthrough covers every panel incl. drift, the drill-in table, firmware ACT, population risk, and the AI assistant; the tour now returns to the landing page when done.
+
+### Fixed — clinical data plausibility (latent since the buildathon)
+- **Glucose physiological range (both ends, two layers):** the bidirectional incident sim (`05`) applied the ±40 calibration bias with no clamp. Under-read drove readings to 0/negative (real baseline: 32 readings ≤0, 346 <20 mg/dL); and real-baseline hyperglycemia exceeded the CGM ceiling (~1,830 readings >400, max ~448 mg/dL). A real CGM reports "LO" below 40 and "HI" above 400, so **device-observed** glucose can never fall outside [40, 400]. Now clamps the **whole** `glucose_observed` column to **[40, 400]** at the source (`05`; `06` for parity, matching the `01:147` / `04:1006` clamps `05` never inherited), **plus a DLT-silver backstop** (`transformations.sql`: `greatest(least(glucose_observed, 400), 40) as glucose`) so the gold table the app reads is guaranteed physiological regardless of upstream path. `glucose_true` is left unclamped — the underlying physiological value can exceed 400; only the device reading is capped.
+- **Demographics — diagnosis by age:** the patient-registry generator drew `patient_diagnosis` independently of `birth_year`, producing clinically-impossible combinations (Type 2 under 10, gestational over 55 / under 18). Now **age-conditioned**: T1D any age · T2D adult-onset (≥18) · gestational childbearing-age only (18–50). Population mix preserved (~T1D 41 / T2D 50 / gestational 8 — a CGM-monitored-fleet skew, since CGM is standard-of-care for T1D).
+- **Near-term forecast anchor:** `fleet_forecast_incident` was anchored on a random mid-timeline (day 3–5) point, so the Coach "Now (observed)" disagreed with the chart's latest reading (e.g. 94 vs ~40). Now anchored on each patient's **latest reading** — genuinely near-term and consistent with the 7-day chart. Predictions clamped to [40, 400]. Coach panel relabeled **"Forecast baseline"** + a "batch run, not a live tick" note (honest framing; pairs with the streaming roadmap).
+
+### Added — clinical-plausibility sanity gate
+- `Data_DataGen_ModelForecast/utils/data_sanity_checks.py`, wired into the setup-job DAG as `data_sanity_checks` (gates the intelligence/app layer). **Fails the run** if any clinically-impossible record reaches gold — T2D under 13, implausible gestational age, glucose outside [40, 400], or a patient with no forecast row — so implausible data can never silently reach the app/demo again.
+
+### Validated — live `from_source` re-run
+- Full-pipeline re-run against the live `from_source` (real HUPA-UCM) baseline **passed the gate** end-to-end. Confirmed on `gold_patient_device_readings`: glucose range exactly **[40.0, 400.0]** (0 readings outside, ~1.98M readings), High-Risk tile = **176** patients (`<54 OR >250` in the last 3h), firmware **4.0 = 65.8%** out-of-range vs 4.1/3.14 ≈ 34% (the rate view isolates the faulty firmware), **1,000** patients. Demographics + forecast checks clean.
+
+---
+
+## [2026-05-31]
+
+Issue #2 — App UI: control-tower redesign. A front-door app shell + Device Support overhaul, built and validated on an **isolated standalone app** (`glucosphere-app-v0-2`) for side-by-side comparison against the existing app, which is left untouched. Shares the same live governed data; no backend/pipeline changes.
+
+### Added — v0-3 / v0-4 batch (real Coach · assistant engine switch · naming unification)
+
+Built + validated on further isolated standalone apps (`glucosphere-app-v0-3`, then `glucosphere-app-v0-4`); live app + v0-2 untouched. Same live governed data; no pipeline changes.
+
+- **Diabetes Coach — real per-patient view** (search, random/deep-link default, demographics/KPIs from `silver_patient_registry`, real near-term 15/30-min forecast from `fleet_forecast_incident`, masked-severity alert for under-read-during-hyper, 7-day observed-vs-true glucose timeseries with incident shading). Closes #5.
+- **Switchable assistant engine** (`/api/assist`) — a fast app-side **router** (default): one direct call to **Genie** (data) / **Knowledge Assistant** (clinical) / a **foundation model** (`databricks-claude-sonnet-4-6`, device reasoning + fleet-stats enrichment); with a live ⚡ Fast / 🤖 MAS header toggle (localStorage) to the Multi-Agent Supervisor for A/B. Reliable 6–15s vs the MAS's erratic 17s→>300s-under-load (which trips the ~300s Apps gateway → 502/504). MAS endpoint preserved/reversible. New `GlobalAssistant` reset-chat. SP-grant helper `scripts/grant_app_sp.py`.
+- **Chart hover read-outs** (`ChartTooltip.jsx`) on the Coach 24h/7-day profile, Firmware MAE, and Population cohort charts.
+- **Naming unified** → **Glucosphere** (one product name) · *CGM Stream Intelligence* (descriptor; "GlucoStream" = its contraction/feed nickname) · *fleet control tower* (one metaphor, was split with "command center"). Logo links home.
+
+### Fixed — v0-3 / v0-4 batch
+
+- **Data integrity:** `device_model`/`region` now read from `silver_patient_registry` as SSOT across roster + Device-Support heatmap/alerts (was disagreeing with gold for some patients); roster %hypo/%hyper computed over the incident window (was diluted over the whole 7-day window).
+- **Coach back button** returns to the originating page (Population Risk / rail / Home) via history, not always Home.
+- **Docs/correctness:** Metrics Explained now distinguishes the **two MAEs** — model-monitoring forecast error (`|pred − actual|`, the ~3.8/5.9 clean → ~38 incident headline) vs the landing chart's device-error proxy (`ABS(glucose_observed − glucose_true) + 5.0`); "what's simulated vs real" provenance made mode-agnostic (real-by-default; synthetic mode honest).
+
+### Fixed — metric honesty (counts → rates)
+
+Cross-group fleet comparisons now report **rates (% of readings out-of-range)** instead of raw **counts**. `gold_patient_device_readings` is one row per reading (~288/patient/day), so a raw `COUNT` ranks groups by data *volume*, not clinical severity or device quality — and can invert the picture (the smallest cohort often has the highest rate). The rate framing is **data-agnostic** (correct on the real *and* synthetic baselines); only the absolute numbers differ by baseline.
+
+- **Landing "High-Risk Alerts"** — was `COUNT(DISTINCT patient WHERE any <70/>180 in 3h)`; now the Battelino level-2 critical bands (`<54 OR >250`). *(On the real HUPA-UCM baseline this moved the tile from 517 → 176; synthetic skews far lower.)*
+- **Coach per-patient risk band** — symmetric Battelino scheme (very-low `<54` / very-high `>250` escalate to HIGH; ⚠ hypo/hyper flags) instead of TIR-only, which never escalated dangerous hypoglycemia.
+- **Firmware × model heatmap** (`getDeviceHeatmapData`) — `AVG(glucose_out_of_range)*100` rate per cell instead of a raw event count. *(On the real baseline this flipped the apparent "worst firmware" from 3.14 — a volume artifact at 1.59M readings — to 4.0, the actual fault: 66% out-of-range, and 100% of firmware-4.0 devices are the injected-incident cohort. The heatmap now agrees with the already-rate-based Device Pattern Alerts panel.)*
+- **Device-readings table** — glucose value colors by clinical severity (`<54`/`>250` → rose, mild out-of-range → amber), matching the Range badge + risk score (was `<70 ? amber : rose`, which mis-colored critical lows).
+- **CGM Genie space instructions** — steer cross-group questions to rates, Battelino bands for "high risk", and data-completeness (not glucose excursions) for device-health; corrected a stale column-name list in the space's data-context instruction.
+
+### Added
+
+- **Persistent left nav rail** (`App/src/components/AppShell.jsx` + `NavRail.jsx`) — collapsed icon strip that expands on hover and can be **pinned open** (choice persisted in `localStorage`); role entries (Device Support / Diabetes Coach) grouped under a "By role" label; replaces the old bottom persona cards. A "Take a tour" entry reprises the guided walkthrough.
+- **Glucosphere brand mark** (`BrandMark.jsx`) — a glucose pyranose-ring SVG (the sugar molecule a CGM measures) with a live-reading sensor node, used across the rail, page headers, and About; a "The mark" explainer added to the About page.
+- **About page** (`/about`) — platform-vs-product naming, real-vs-simulated data framing, repo link, and role quick-links.
+- **Roadmap page** (`/roadmap`) — the detect·diagnose·assess "fuller control-tower views" preview trio, moved off the operational landing into its own page (rail entry).
+- **Guided Tour** — no-dependency coachmarks keyed to the detect→diagnose→assess pitch beats; first-visit intro modal; replayable from the rail.
+- **Regional Distribution map** (Device Support) — stylized SVG region bubbles sized by monitored footprint and colored by out-of-range volume, from a region-aggregate query (no map dependency).
+
+### Changed
+
+- **Landing reframed as a neutral command-center front door** — hero metrics → recent incident analysis; incident charts compacted to a left-header + responsive-SVG panel layout; verbose chart legends trimmed (detail kept in each chart's subtitle); redundant bottom "Quick Access by Role" cards removed (the rail is the role nav).
+- **Diabetes Coach icon** stethoscope → heart-handshake (coaching, not clinical); "Other Dashboards" placeholder removed from Metrics Explained; glucose-range readout spacing fixed.
+- **Device Support "Population Overview"** is now three equal-height, dynamically balanced panels: out-of-range **heatmap** (with a vertical colorbar) · **regional map** · ranked **device-pattern alerts**.
+
+### Added (v0-3 batch — live Roadmap views, real Coach, unified assistant)
+
+Built + validated on a second isolated standalone app (`glucosphere-app-v0-3`), leaving `v0-2` frozen as a stable demo anchor. Same live governed data; no backend/pipeline changes.
+
+- **Roadmap previews promoted to live views** — **Firmware Lifecycle** (`/firmware-lifecycle`, ② diagnose: device calibration MAE by firmware version over time) + **Population Risk** (`/population-risk`, ③ assess: hypo/hyper exposure by cohort) + an affected-patients/devices **outreach roster** with a "send to triage queue" handoff. All via the existing SQL path — no new backend, no Lakebase.
+- **Diabetes Coach — real per-patient view + working patient search** (`getPatientList` / `getPatientDetail` in `DiabetesCoachDashboard/queries.js`). Replaces the hardcoded "Sarah K." demo panel: live typeahead over the simulated `PSEUDO_*` cohort; per-patient demographics (age/diagnosis/device from `silver_patient_registry`), observed-window KPIs (avg glucose / TIR / hypo / CV), a real 24-hour glucose profile, and a derived-observations list — all from governed tables. **Closes #5.** Patient input is allow-listed before SQL interpolation (injection guard).
+- **Near-term glucose forecast** (Coach) — replaces the non-credible "72-Hour Risk Forecast" with the real XGBoost **15/30-min** predictions (`fleet_forecast_incident.pred_15m/pred_30m`), shown as predicted CGM value + Δ vs now + in-range/hypo/hyper classification. (60-min horizon is a logged modeling follow-up.)
+- **Unified global assistant** (`GlobalAssistant.jsx`, spec D4) — one shell-mounted assistant (FAB → slide-over) on every page, with two modes: **Device support** (Multi-Agent Supervisor, markdown answers) and **CGM data** (Genie, structured table + SQL + follow-ups preserved). Replaces and removes the two former page-local chats (Device Support inline panel + Coach inline Genie box); `AgentChatInterface.jsx` retired.
+
+### Planned / follow-ups (not yet built)
+
+- **Ongoing 5-min MAE monitoring** — continuous device-accuracy detection (rolling MAE → alert table); pairs with Lakebase alert state + the live-alert card.
+- **Regional distribution**: optional toggle to break the view down by device type.
+- **Light/dark theming** via semantic CSS tokens.
+- **Interactive brand mark** — the glucose ring's branches as navigation links to the different views.
+- **Guided Tour** — rework + extend the narrative to the new per-patient Coach view, the live Firmware/Population views, and the global assistant.
+
 ## [2026-05-30]
 
 DABs target generalization: live target renamed `mmt_aws_usw2` → `gsphere` (workspace-agnostic logical name) with `mode: development` for visual parity with harness deploys. Workspace housekeeping: orphaned harness deploys + pre-cutover catalog schemas + the historical `hls_amer` target stanza all cleaned up. New explicit linkage diagram (`.env.bundle` → `~/.databrickscfg` profile → workspace selection) added to `databricks.yml` and `DEPLOY.md`. New full `databricks.yml.example` template mirror.

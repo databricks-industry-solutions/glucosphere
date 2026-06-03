@@ -118,7 +118,7 @@ variants for the same workspace. Treat them differently:
 
 | Catalog form | Example (fevm-mmt-aws-usw2) | Treat as | Why |
 |---|---|---|---|
-| **`<workspace>_catalog`** (with `_catalog` suffix) | `mmt_aws_usw2_catalog` | **dev / staging** | Workspace-default catalog — tied to the specific fevm workspace. Use for harness e2e validation, exploratory deploys, throwaway runs. Bundle's harness targets (`*_synth_e2e`, `*_from_source_e2e`, `*_from_table_e2e`) write here per `databricks.yml`. |
+| **`<workspace>_catalog`** (with `_catalog` suffix) | `mmt_aws_usw2_catalog` | **dev / staging** | Workspace-default catalog — tied to the specific fevm workspace. Use for harness e2e validation, exploratory deploys, throwaway runs. The harness targets (`*_synth_e2e`, `*_from_source_e2e`, `*_from_table_e2e`) write here when `BUNDLE_VAR_catalog` points at this catalog in `.env.bundle` — they differ from the live target only by their `_*_e2e` schema suffix (set in `databricks.yml`), not by catalog. |
 | **`<workspace>`** (no `_catalog` suffix, standalone) | `mmt_aws_usw2` | **production / live demo** | Standalone catalog — created independently of the workspace, portable across workspaces if needed. Use for the canonical live demo deploy, customer-facing recordings, anything that needs to survive a workspace migration. Live target writes here per `.env.bundle` (`BUNDLE_VAR_catalog=mmt_aws_usw2`). |
 
 In short: **the `_catalog`-suffixed name is dev; the standalone name is

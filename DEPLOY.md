@@ -24,7 +24,7 @@ flowchart TD
     A[Step 6 — bundle deploy pass 1<br/><i>creates warehouse + jobs + pipelines + app stub</i>]:::cmd
     B[Step 6 — scripts/render_app_yaml.py<br/><i>writes WAREHOUSE_ID into App/databricks/app.yaml</i>]:::cmd
     C[Step 6 — bundle deploy pass 2<br/><i>picks up rendered app.yaml</i>]:::cmd
-    D[Step 7 — bundle run glucosphere_full_setup<br/><i>16-task pipeline; see Job DAG below</i>]:::wait
+    D[Step 7 — bundle run glucosphere_full_setup<br/><i>17-task pipeline; see Job DAG below</i>]:::wait
     E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
     F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
     G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
@@ -37,7 +37,7 @@ flowchart TD
     S4 -.-> S5
 ```
 
-The Step 7 pipeline job is itself a 16-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
+The Step 7 pipeline job is itself a 17-task DAG — see [Step 7 § Job DAG](#step-7-run-the-setup-job) below.
 
 > **If you're an agent following this guide:** do not skip steps and do not
 > assume prior workspace state. Verify each step's output before moving on,
@@ -148,11 +148,19 @@ Top-level bundle variables (defined in `databricks.yml`):
 | `app_name` | `.env.bundle` (optional) | `glucosphere-app` | Databricks App display name |
 | `dev_initials` | `.env.bundle` (optional) | `user` | Harness target suffix for collision avoidance when sharing a workspace; ≤7 chars |
 | `app_basename` | `.env.bundle` (optional) | `glucosphere` | Harness base name (shorten to fit the 30-char App limit if needed) |
+| `harness_suffix` | `.env.bundle` (`HARNESS_TYPE` block) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
 
 `warehouse_id` is **not** a bundle variable. The bundle declares a
 `sql_warehouses.glucosphere_warehouse` resource that creates the warehouse
 on first deploy. `scripts/render_app_yaml.py` discovers it by deterministic
 name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
+
+> **Assistant engine.** The Device-support assistant calls `/api/assist` with a switchable
+> engine — `ASSIST_ENGINE=direct` (default; a fast router → Genie / Knowledge Assistant /
+> foundation model `FM_ENDPOINT`) or `mas` (the Multi-Agent Supervisor). The app SP needs
+> `CAN_QUERY` on the FM endpoint too; `scripts/grant_app_sp.py` auto-discovers it from
+> `app.yaml`. Rationale + the latency root-cause: [`App/README.md`](App/README.md). Standalone
+> apps need the SP grant after `apps create` (see `scripts/grant_app_sp.py --help`).
 
 > **Deploying to a different workspace**: you do NOT need to edit
 > `databricks.yml`. The committed target stanzas have no hardcoded
@@ -192,7 +200,7 @@ name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 cd App
 npm install
 npm run build
-# This produces App/databricks/dist/ which the Flask app serves
+# This produces App/databricks/static/ which the Flask app serves
 ```
 
 ---
@@ -247,6 +255,7 @@ flowchart TD
     I1[create_patient_registry]
     I2[create_device_telemetry]
     J[run_dlt_pipeline<br/><i>silver/gold from pipeline_data</i>]
+    SANITY["data_sanity_checks<br/><i>clinical-plausibility gate: T2D share, glucose 40–400, firmware cohorts — fails the job on violation</i>"]
     K[create_genie_ka_mas<br/><i>08_*: KA + Genie + MAS endpoints</i>]
     L[check_post_endpoint_grants<br/><i>verify KA/MAS/Genie exist before grant</i>]
     M[grant_app_permissions<br/><i>09_*: app SP access on UC + endpoints + warehouse</i>]
@@ -265,9 +274,9 @@ flowchart TD
     I1 --> J
     I2 --> J
     G2 --> J
-    J --> K --> L --> M
+    J --> SANITY --> K --> L --> M
 
-    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,K,L,M plain
+    class A,B,C,D1,D2,E,F,G1,G2,H,I1,I2,J,SANITY,K,L,M plain
 ```
 
 The validate + sanity tasks (added in C.5) are fail-fast guards: they catch
@@ -313,6 +322,24 @@ This single command does both `apps deploy` + `apps start` atomically and matche
 
 Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows "App is unavailable" until you either run the command above OR click Deploy in the UI.)
 
+### Grant the app service principal (after any deploy that skips the setup job)
+
+The app SP's grants come **only** from the setup job's `09_grant_app_permissions.py` task. Any deploy path that does **not** re-run `glucosphere_full_setup` leaves the SP under-granted, so every data/agent call returns `403 PERMISSION_DENIED` (blank metrics, "no data", `403` from the MAS/Genie assistants). Two common cases:
+
+- **Standalone (A/B) apps** — `databricks apps create glucosphere-app-v0-N` → `databricks apps deploy …` mints a fresh SP with **no** grants.
+- **Fast-iteration bundle redeploy** — a bare `databricks bundle deploy` + `databricks bundle run glucosphere_app` (e.g. shipping a UI tweak without the ~40-min full-setup job) does **not** run task `09`. If the app's name/SP changed (e.g. a new `dev_initials` → `glucosphere-<base>-fw-v2-user`), `bundle run` even mints a **brand-new** SP with zero grants.
+
+In **either** case, run the deploy-host helper once after deploying:
+
+```bash
+# Entitles the app SP exactly like notebook 09 (UC catalog/schema/SELECT + READ VOLUME,
+# warehouse CAN_USE, MAS+KA CAN_QUERY, Genie CAN_RUN). Idempotent; effective per-request.
+uv run python scripts/grant_app_sp.py --app <deployed-app-name> --profile <profile>
+# --dry-run prints the planned grants (resolved SP + resource IDs from app.yaml) without applying
+```
+
+It reads the resource IDs from `App/databricks/app.yaml` (no hardcoding), so render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request.
+
 ---
 
 ## Step 10: Smoke-test the deployed app
@@ -337,7 +364,7 @@ Open the app URL from `databricks apps get glucosphere-app --output json | jq -r
 
 - [ ] **Home page loads** — no blank screen, no JS console errors. (If blank: React frontend wasn't built; run `npm run build` in `App/` then re-run `databricks bundle run glucosphere_app -t <target>`.)
 - [ ] **Navigate to "Device Support Dashboard"** in the left sidebar. Device table populates with rows. (If empty: gold table `${catalog}.${schema}.gold_patient_device_readings` not populated → DLT pipeline didn't run successfully.)
-- [ ] **Click a device row → "Run Clinical Analysis"** — wait ~30-60s. Text analysis appears with device-specific glucose stats. (If 404 ENDPOINT_NOT_FOUND: `app.yaml` references a deleted MAS endpoint — re-render with current `mas-<hash>-endpoint`. If 403 PERMISSION_DENIED: re-run `grant_app_permissions` task.)
+- [ ] **Click a device row → "Run Clinical Analysis"** — with the default ⚡ Fast engine this returns in ~6–10s (a foundation-model call + fleet-stats enrichment via `/api/assist`); on the 🤖 MAS toggle it can take 30–60s+ or 502/504 under load. (If 403 PERMISSION_DENIED on the FM/KA/MAS endpoint: re-run `grant_app_permissions` / `scripts/grant_app_sp.py`. If the MAS toggle 404s: `app.yaml` references a deleted `mas-<hash>-endpoint` — re-render.)
 - [ ] **Open Genie (or Chat / Ask) panel** and ask a natural-language question like *"How many distinct devices reported in the last hour?"* — response should include a SQL query and a result. (If errors: GENIE_SPACE_ID points at a non-existent space → re-render app.yaml with current Genie space ID.)
 - [ ] **Refresh metrics tiles on the home page** — patient count, device count, high-risk alert count should update without errors. (If errors: app SP missing `USE CATALOG` / `SELECT` on gold tables → re-run `grant_app_permissions` or check Catalog Explorer permissions.)
 - [ ] **Export to Chart button** (Device Support → Clinical Analysis section) — currently shows "(placeholder)" + disabled; tooltip on hover. Future feature; not a failure.
@@ -420,6 +447,53 @@ databricks bundle deploy -t gsphere_from_source_e2e
 **Why HARNESS_TYPE in `.env.bundle` rather than per-target `schema:` in `databricks.yml`?** DABs precedence puts `BUNDLE_VAR_*` above per-target `variables:` blocks, so an env-side override is the only mechanism that actually wins for harness schema isolation. Per-target overrides would be silently shadowed.
 
 **Concurrent deployers in the same workspace**: edit your local `.env.bundle` `case` block to append a personal suffix (e.g. `${BUNDLE_VAR_schema}_synth_e2e_<myname>`) to avoid schema collisions with other deployers.
+
+### Creating new / separate agent resources (Genie / KA / MAS)
+
+`08_genie_ka_mas.py` looks up the Knowledge Assistant, Genie space, and Multi-Agent Supervisor **by name** — it reuses them if a tile/space with that name already exists, and only creates fresh ones otherwise. The names are `Glucosphere_KA${harness_suffix}` / `Glucosphere_Intelligence${harness_suffix}` / `Glucosphere_Supervisor${harness_suffix}` (and the forecast endpoints are `Glucosphere_Forecast_15min/30min${harness_suffix}`). So **`harness_suffix` is the lever for creating new agents**: a value the workspace hasn't seen forces fresh creation. It renames *only* these workspace-global resources — it does **not** change the schema/data (that stays `var.schema`).
+
+**Scenario A — fully isolated deployment (new agents + their own data).** Use a [harness target](#harness-targets-gsphere_synth_e2e--gsphere_from_table_e2e--gsphere_from_source_e2e--parallel-validation-deploys): its `HARNESS_TYPE` block sets both `harness_suffix` and an isolated schema, so the setup job builds everything fresh under the suffix. Nothing else to do.
+
+**Scenario B — new agents on EXISTING (e.g. live) data, without regenerating it.** Keep the schema, set only the suffix, and run *only* the agent-creation step so the data-gen tasks don't re-run:
+
+```bash
+source .env.bundle                       # live catalog/schema; suffix stays ""
+export BUNDLE_VAR_harness_suffix=_v2      # YOUR chosen suffix — must be set at DEPLOY time
+databricks bundle deploy -t gsphere       # bakes the _v2 names into the job's base_parameters
+
+# Create ONLY the agents — do NOT run the full glucosphere_full_setup job (that re-runs
+# 04/05 data-gen and would regenerate your live data). Instead run 08_genie_ka_mas.py on
+# its own: open it in the workspace and Run All with widgets CATALOG_NAME/SCHEMA_NAME set
+# to your live values and KA_NAME/GENIE_NAME/MAS_NAME set to the _v2 names. It prints the
+# new KA endpoint, MAS endpoint, and Genie space id.
+
+# Point the app at the new agents + redeploy (IDs from the 08 output above):
+uv run python scripts/render_app_yaml.py --target gsphere \
+  --ka-endpoint    <new-ka-endpoint> \
+  --mas-endpoint   <new-mas-endpoint> \
+  --genie-space-id <new-genie-space-id>
+databricks bundle deploy -t gsphere       # app now points at the _v2 agents
+```
+
+**Worked example — what `harness_suffix=_v2` produces.** Running `08` under `_v2` creates the following (and leaves the bare-named live agents untouched):
+
+| Resource | Name it creates |
+|---|---|
+| Knowledge Assistant **tile** | `Glucosphere_KA_v2` |
+| Genie **space** | `Glucosphere_Intelligence_v2` |
+| Multi-Agent Supervisor **tile** | `Glucosphere_Supervisor_v2` |
+| Forecast serving endpoints | `Glucosphere_Forecast_15min_v2`, `Glucosphere_Forecast_30min_v2` |
+
+> **Watch the tile-vs-endpoint distinction.** The `_v2` suffix names the **tile / space**. But the KA and MAS **serving-endpoint** names are auto-generated by Agent Bricks as `ka-<hex>-endpoint` / `mas-<hex>-endpoint` (e.g. `ka-9f3a1c7d-endpoint` / `mas-2b8e4f60-endpoint`) — those endpoint names (not the tile names) are what `08` prints and what `render_app_yaml.py` needs. (The committed `app.yaml` ships generic placeholders — `your-ka-endpoint` / `your-mas-endpoint` — which render rewrites per-target.) The Genie value is its **space id** (hex). So a real render call with concrete-shaped values looks like:
+
+```bash
+uv run python scripts/render_app_yaml.py --target gsphere \
+  --ka-endpoint    ka-9f3a1c7d-endpoint \
+  --mas-endpoint   mas-2b8e4f60-endpoint \
+  --genie-space-id 01f0a1b2c3d4e5f6a7b8c9d0e1f23456
+```
+
+> ⚠️ **Cost + scope.** A new KA and MAS are **billed Agent Bricks serving endpoints** and take provisioning time to become ready. The target's bundle-managed app (`glucosphere-app` for `gsphere`) is **repointed** at the new agents on the final `bundle deploy` — to stand up a *separate* app instead of repointing the live one, set a different `app_name` (and grant its SP with `scripts/grant_app_sp.py`).
 
 ### ⚠️ `--var baseline_source` placement (gotcha)
 
@@ -604,7 +678,7 @@ databricks jobs run-now --profile <profile> \
   --json "{\"job_id\": ${JOB_ID}, \"notebook_params\": {\"DEMO_WEEK_START\": \"2026-05-01\"}}"
 ```
 
-The override applies only to that single run — subsequent runs without `notebook_params` revert to YAML's `'auto'` resolution automatically. The pinned date produces a gold-table time range of exactly `2026-05-01T00:00:00 → 2026-05-07T23:55:00` with 3 distinct firmware values (`3.14`, `4.0`, `4.1`) — the full firmware-event narrative (baseline → transient fault → fix) fires inside the window.
+The override applies only to that single run — subsequent runs without `notebook_params` revert to YAML's `'auto'` resolution automatically. The pinned date produces a gold-table time range of exactly `2026-05-01T00:00:00 → 2026-05-07T23:55:00` with 4 distinct firmware values (`3.14`, `4.0`, `4.0.3`, `4.1`) — the full firmware-event narrative (baseline → over-read fault on `4.0` → under-read hotfix on `4.0.3` → recall/fixed on `4.1`) fires inside the window.
 
 ### Which to use
 
