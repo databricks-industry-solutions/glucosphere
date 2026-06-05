@@ -350,7 +350,7 @@ uv run python scripts/grant_app_sp.py --app <deployed-app-name> --profile <profi
 # --dry-run prints the planned grants (resolved SP + resource IDs from app.yaml) without applying
 ```
 
-It reads the resource IDs from `App/databricks/app.yaml` (no hardcoding), so render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request.
+You specify only `--app` (the deployed app's name) and `--profile`; the script **discovers** everything else — the app's own service principal from `databricks apps get`, and every resource id from `App/databricks/app.yaml` (no hardcoding). Render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request. (Its sibling, *Grant the audience* below, grants the human/SP **audience** rather than the app's own SP.)
 
 ---
 
@@ -542,26 +542,53 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
-### Grant the audience (so the About-page "Under the hood" deep-links open)
+### Grant the audience (so they can open the app + its "Under the hood" deep-links)
 
-The app runs as its **service principal** (above), so the dashboards work for anyone with the app
-URL. But the About page deep-links to the underlying workspace objects (DLT pipeline, Unity
-Catalog, MLflow, Model Serving, Agent-Bricks KA/MAS, AI/BI Genie) — those open only for principals
-that have been granted access. `scripts/grant_viewers.py` grants a **user, group, or service
-principal** view-level access across that whole object set (verified levels: UC `SELECT`/`USE`/
-`EXECUTE`/`READ VOLUME`; pipelines/jobs `CAN_VIEW`; experiments `CAN_READ`; serving-endpoints +
-KA/MAS tiles `CAN_QUERY`; Genie `CAN_RUN`):
+A deployed Databricks App is **not** open to everyone with the URL — a non-admin needs `CAN_USE`
+on the app to open it. And the About page deep-links out to the underlying workspace objects (DLT
+pipeline, Unity Catalog, MLflow, Model Serving, Agent-Bricks KA/MAS, AI/BI Genie), which open only
+for principals granted access to each. (The app renders its data through its own **service
+principal** — granted separately, above — so a viewer with `CAN_USE` sees the dashboards without
+needing their own UC grants; their UC/agent grants only matter when they follow a deep-link out.)
+`scripts/grant_viewers.py` grants a **user, group, or service principal** the whole set in one
+shot — `CAN_USE` on the app itself (via the dedicated `apps update-permissions`, since apps aren't
+in the generic `permissions update` enum), plus view-level access across the deep-link objects
+(verified levels: app `CAN_USE`; UC `SELECT`/`USE`/`EXECUTE`/`READ VOLUME`; pipelines/jobs
+`CAN_VIEW`; experiments `CAN_READ`; serving-endpoints + KA/MAS tiles `CAN_QUERY`; Genie `CAN_RUN`):
 
 ```bash
 # Grant a group once (recommended) — dry-run by default; add --apply to grant:
 uv run python scripts/grant_viewers.py --principal <group> \
     --target <target> --catalog <catalog> --schema <schema> --profile <profile> --apply
-# A user: --principal alice@databricks.com   ·   a service principal: --principal <app-id>
+# A user: --principal <name>@email.com   ·   a service principal: --principal <app-id>
 #   (principal type auto-detects: '@'→user, UUID→service-principal, else group; override with --principal-type)
+
+# Concrete example — grant a group on the live `gsphere` (prod) target:
+uv run python scripts/grant_viewers.py --principal <group> \
+    --target gsphere --catalog mmt_aws_usw2 --schema glucosphere \
+    --profile <profile> --apply
 ```
 
+One `--principal` per run — grant a **group** once (recommended) rather than looping over users.
 On a managed workspace where the audience is fronted by a **service principal** (e.g. the DAIS
 booth), pass that SP's application-id as `--principal` and it's granted as `service_principal_name`.
+
+**What you specify vs. what's discovered.** You supply only `--principal` (who) plus `--target` /
+`--catalog` / `--schema` / `--profile` (which deploy); the script **discovers** every resource id
+from `databricks bundle summary -t <target>` plus by-name lookups for the agents/Genie space. This
+mirrors `grant_app_sp.py` above — there you name the *app* and it discovers the app's own SP. The
+audience principal is intentionally **not** part of `.env.bundle.<target>`: deploy config answers
+*what/where to deploy*, while *who gets access* is a grant-time choice that varies by workspace and
+event (a group on prod, the booth SP on DAIS), so it stays a `--principal` argument.
+
+> ⚠️ **Sharing to the whole workspace (`--principal users`):** the built-in `users` group is a
+> **workspace-local** group, so it works for the app + workspace-ACL deep-links (pipeline, job,
+> notebook, endpoints, KA/MAS, Genie) but **cannot hold Unity Catalog grants** — UC needs an
+> **account-level** principal. A `users`-group grant therefore lets everyone *open the app* and
+> follow most deep-links, but the **Catalog/data deep-link** opens only for named users or an
+> account-level group. (The app's own dashboards still render for everyone, since the app queries
+> as its service principal — only the direct Catalog Explorer link is gated.) `grant_viewers.py`
+> surfaces the failed UC grant explicitly rather than silently when the principal isn't a UC identity.
 
 ---
 

@@ -40,7 +40,7 @@ Mode-by-mode model performance (clean ~5 mg/dL MAE → +631% incident-period deg
 ├── REPO_LAYOUT.md                    # Full navigation guide (what file does what)
 ├── App/                              # React + Flask Databricks App
 ├── Data_DataGen_ModelForecast/       # Notebooks: ingest, modeling, agents, grants
-├── scripts/                          # render_app_yaml.py · smoke_test.py · grant_app_sp.py
+├── scripts/                          # render_app_yaml.py · smoke_test.py · grant_app_sp.py · grant_viewers.py · teardown_target.py
 └── docs/                             # Maintainer-specific notes
 ```
 
@@ -88,6 +88,11 @@ uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
 End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy variants (`baseline_source=synthetic` for CI / restricted-egress, `DEMO_WEEK_START` override for reproducible runs, distribution-comparison job), see [`DEPLOY.md`](DEPLOY.md).
+
+**Granting access.** Two principals, two scripts (both documented in [`DEPLOY.md`](DEPLOY.md)):
+
+- The app serves data through its **own service principal** — entitle it with [`scripts/grant_app_sp.py`](scripts/grant_app_sp.py) (re-run after any deploy that skips the setup job; you name the app, it discovers the SP).
+- To let an **audience** open the app and follow its About-page "Under the hood" deep-links, grant them with [`scripts/grant_viewers.py`](scripts/grant_viewers.py) — a user, group, or service principal you pass via `--principal`. The audience is a grant-time choice, not deploy config, so it is **not** part of `.env.bundle.<target>`.
 
 ## See also
 
