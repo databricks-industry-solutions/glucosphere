@@ -3,15 +3,16 @@ bundle:
 
 variables:
   # ───────────────────────────────────────────────────────────────────────
-  # Operator-facing variables. ALL values come from `.env.bundle` (gitignored)
-  # via BUNDLE_VAR_<name> env vars. See `.env.bundle.example` for the contract.
+  # Operator-facing variables. ALL values come from a per-target config file
+  # `.env.bundle.<target>` (gitignored) via BUNDLE_VAR_<name> env vars — one file
+  # per deploy target. See `.env.bundle.example` for the contract.
   # Defaults below are GENERIC placeholders — operator overrides per workspace.
   # ───────────────────────────────────────────────────────────────────────
   catalog:
-    description: Unity Catalog catalog (set via BUNDLE_VAR_catalog in .env.bundle)
+    description: Unity Catalog catalog (set via BUNDLE_VAR_catalog in .env.bundle.<target>)
     default: your_workspace_catalog
   schema:
-    description: UC schema / database (set via BUNDLE_VAR_schema in .env.bundle)
+    description: UC schema / database (set via BUNDLE_VAR_schema in .env.bundle.<target>)
     default: glucosphere
   baseline_source:
     description: |
@@ -36,14 +37,14 @@ variables:
     description: |
       Personal initials suffix for harness target App + DB instance name
       isolation. Default `user` is safe for single-deployer use. Set in
-      .env.bundle (e.g. `mmt`) when sharing a workspace with other deployers
+      .env.bundle.<target> (e.g. `mmt`) when sharing a workspace with other deployers
       so harness Apps and DB instances don't collide. Keep ≤7 chars — bounded
       by the 30-char App name limit on the longest harness App.
     default: user
   app_basename:
     description: |
       Base name for harness target App + DB instance resources. Default
-      `glucosphere`. Override in .env.bundle to a shorter alias (e.g.
+      `glucosphere`. Override in .env.bundle.<target> to a shorter alias (e.g.
       `your_workspace_target`) if long `dev_initials` push App names past the 30-char limit.
       DB instance names allow up to 63 chars (DNS-compliant), so the
       constraint is App-side only.
@@ -62,24 +63,23 @@ variables:
     description: |
       Suffix appended to workspace-global resource names (KA/MAS tile,
       Genie space title, forecast serving endpoints) to isolate harness
-      deploys from the live deploy. Default `""` for live; the
-      HARNESS_TYPE conditional in `.env.bundle` sets it to `_synth_e2e` /
-      `_from_table_e2e` / `_from_source_e2e` for the corresponding harness
-      targets. Interpolated in `base_parameters` of the tasks that pass
-      KA_NAME/MAS_NAME/GENIE_NAME/ENDPOINT_15M/ENDPOINT_30M downstream.
+      deploys from the live deploy. Default `""` for live; each harness
+      target's `.env.bundle.<target>` sets it explicitly (e.g. `_synth_e2e` /
+      `_from_table_e2e` / `_from_source_e2e`). Interpolated in `base_parameters`
+      of the tasks that pass KA_NAME/MAS_NAME/GENIE_NAME/ENDPOINT_15M/ENDPOINT_30M downstream.
     default: ""
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
   # Live deploy targets. ALL operator-specific config (workspace + data
-  # variables) comes from the operator's `.env.bundle`:
+  # variables) comes from the target's `.env.bundle.<target>` file:
   #   - Workspace selection: `DATABRICKS_CONFIG_PROFILE` selects a profile
   #     in `~/.databrickscfg`; that profile's `host` becomes the deploy target.
   #   - Data variables (catalog, schema, etc.): `BUNDLE_VAR_*` env vars
   #     override the `variables:` defaults above.
   # `workspace.host` is intentionally NOT hardcoded per target — operators
-  # deploy to whichever workspace their sourced `.env.bundle` profile points
-  # at. Target names just identify which set of data-variable defaults apply.
+  # deploy to whichever workspace the sourced `.env.bundle.<target>` profile
+  # points at. Target names just identify which set of data-variable defaults apply.
   #
   # `mode: development` on live targets (parallel to harness targets below):
   #   - Auto-prefixes jobs/pipelines/warehouse with `[dev <deployer>]` for
@@ -97,7 +97,7 @@ targets:
   # rejects user-home deploy paths). See Databricks docs:
   # https://docs.databricks.com/dev-tools/bundles/deployment-modes.html
   #
-  # Deploy: `source .env.bundle && databricks bundle deploy -t <target>`.
+  # Deploy: `source .env.bundle.<target> && databricks bundle deploy -t <target>`.
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
   your_workspace_target:
@@ -105,7 +105,7 @@ targets:
 
   # ─── Adding a new live target ─────────────────────────────────────────
   # Append a stanza like the two above (`name:\n    mode: development`).
-  # The operator's `.env.bundle` provides workspace host (via
+  # The target's `.env.bundle.<target>` provides workspace host (via
   # `DATABRICKS_CONFIG_PROFILE` → ~/.databrickscfg profile.host) and data
   # variables (`BUNDLE_VAR_catalog` / `BUNDLE_VAR_schema` / etc.). Adding
   # a `variables:` block here would defeat the SSOT design.
@@ -113,7 +113,8 @@ targets:
   # ─── Sandbox harness targets ─────────────────────────────────────────────
   #
   # Harness targets share the same `mode: development` as live targets but
-  # add a `_<mode>_e2e` suffix to BUNDLE_VAR_schema for data isolation:
+  # use their own isolated BUNDLE_VAR_schema + BUNDLE_VAR_harness_suffix
+  # (set in each target's `.env.bundle.<target>` file) for data isolation:
   #   - jobs + pipelines auto-prefixed `[dev <username>]` (same as live)
   #   - schedules + triggers paused (N/A — no schedules defined)
   #   - distinguished from live by the `${bundle.target}` suffix in names
@@ -135,28 +136,27 @@ targets:
   #   # bundle destroy does not auto-drop UC schemas — drop manually if needed:
   #   #   DROP SCHEMA <catalog>.<schema> CASCADE
   #
-  # Harness schema isolation comes from a `HARNESS_TYPE` env var that the
-  # `.env.bundle` conditional appends as a suffix to BUNDLE_VAR_schema
+  # Harness schema isolation comes from each target's `.env.bundle.<target>`
+  # file setting BUNDLE_VAR_schema + BUNDLE_VAR_harness_suffix explicitly
   # (NOT from per-target `schema:` overrides — those are beaten by
   # BUNDLE_VAR_* env vars in DABs precedence).
   #
   # Operator runs:
-  #   HARNESS_TYPE=synth_e2e source .env.bundle
+  #   source .env.bundle.your_workspace_target_synth_e2e
   #   databricks bundle deploy -t your_workspace_target_synth_e2e
   #
-  # See `.env.bundle.example` for the conditional block. Two operators
-  # sharing the workspace can personalize the suffix in their local copies
+  # See `.env.bundle.example` for the template. Two operators sharing the
+  # workspace give their files personal schema/suffix values
   # (e.g. `<base>_synth_e2e_<myname>`) to avoid schema collisions.
   your_workspace_target_synth_e2e:
     mode: development
     variables:
-      # catalog inherits from BUNDLE_VAR_catalog (operator's .env.bundle).
-      # schema isolation: run `HARNESS_TYPE=synth_e2e source .env.bundle`
-      # before deploying — the conditional block in .env.bundle appends
-      # `_synth_e2e` to BUNDLE_VAR_schema so the harness writes to its own
-      # schema. (No per-target `schema:` override here — DABs precedence
-      # puts BUNDLE_VAR_* above per-target variables, so the env-side
-      # override is the authoritative source of truth.)
+      # catalog + schema come from BUNDLE_VAR_* in
+      # .env.bundle.your_workspace_target_synth_e2e. That file sets
+      # BUNDLE_VAR_schema=<base>_synth_e2e (its own isolated schema) +
+      # BUNDLE_VAR_harness_suffix=_synth_e2e explicitly. (No per-target `schema:`
+      # override here — DABs precedence puts BUNDLE_VAR_* above per-target
+      # variables, so the env-side value is the source of truth.)
       baseline_source: synthetic
       # Default harness App name (used when BUNDLE_VAR_app_name is unset).
       # resources.apps.glucosphere_app.name below references ${var.app_name},
@@ -185,14 +185,12 @@ targets:
   your_workspace_target_from_table_e2e:
     mode: development
     variables:
-      # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
-      # schema + source_schema isolation: run
-      #   HARNESS_TYPE=from_table_e2e source .env.bundle
-      # before deploying — the conditional block in .env.bundle sets
-      # `BUNDLE_VAR_schema=<base>_from_table_e2e` AND
-      # `BUNDLE_VAR_source_schema=<base>_synth_e2e` (CTAS-copies from the
-      # synth_e2e harness output). No per-target schema overrides here
-      # (BUNDLE_VAR_* beats per-target variables in DABs precedence).
+      # catalog + schema come from BUNDLE_VAR_* in
+      # .env.bundle.your_workspace_target_from_table_e2e. That file sets
+      # BUNDLE_VAR_schema=<base>_from_table_e2e AND
+      # BUNDLE_VAR_source_schema=<base>_synth_e2e (CTAS-copies from the synth_e2e
+      # harness output) + BUNDLE_VAR_harness_suffix=_from_table_e2e. No per-target
+      # schema overrides here (BUNDLE_VAR_* beats per-target variables in DABs precedence).
       baseline_source: from_table
       source_catalog: ${var.catalog}
       source_table: diabetes_data
@@ -216,11 +214,10 @@ targets:
   your_workspace_target_from_source_e2e:
     mode: development
     variables:
-      # catalog inherits from BUNDLE_VAR_catalog (.env.bundle).
-      # schema isolation: run
-      #   HARNESS_TYPE=from_source_e2e source .env.bundle
-      # before deploying — the conditional block in .env.bundle appends
-      # `_from_source_e2e` to BUNDLE_VAR_schema. (No per-target `schema:`
+      # catalog + schema come from BUNDLE_VAR_* in
+      # .env.bundle.your_workspace_target_from_source_e2e. That file sets
+      # BUNDLE_VAR_schema=<base>_from_source_e2e +
+      # BUNDLE_VAR_harness_suffix=_from_source_e2e explicitly. (No per-target `schema:`
       # override; BUNDLE_VAR_* beats per-target variables in DABs precedence.)
       baseline_source: from_source
       # Default harness App name; resources.apps.glucosphere_app.name below

@@ -25,12 +25,12 @@ The entire deployable surface is described by a single file: [`databricks.yml`](
 | Read | What it does |
 |---|---|
 | [`DEPLOY.md`](DEPLOY.md) | step-by-step first-time deploy guide with troubleshooting |
-| [`.env.bundle.example`](.env.bundle.example) | template you `cp` to local `.env.bundle` (operator-owned) and fill in 3 tokens |
+| [`.env.bundle.example`](.env.bundle.example) | template you `cp` to a per-target `.env.bundle.<target>` (operator-owned, one per deploy target) and fill in 3 tokens |
 | [`databricks.yml`](databricks.yml) | the bundle definition — `targets`, `variables`, `resources` (all of them) |
 | [`scripts/render_app_yaml.py`](scripts/render_app_yaml.py) | rewrites `App/databricks/app.yaml` per target (discovers bundle-managed warehouse by name) |
 | [`scripts/smoke_test.py`](scripts/smoke_test.py) | pre-PR automated smoke test — 8 checks covering App state + URL + warehouse + gold table data + KA/MAS endpoints + Genie space + firmware-variety + MetricsExplained UC-asset PNG |
 
-Quick deploy sequence (after `source .env.bundle`):
+Quick deploy sequence (after `source .env.bundle.<target>`):
 
 ```bash
 databricks bundle deploy -t <target>                       # pass 1 — creates warehouse
@@ -154,7 +154,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ### Deployment glue
 
 - `databricks.yml` — bundle definition (targets, variables, resources)
-- `.env.bundle.example` — template for operator's local `.env.bundle`
+- `.env.bundle.example` — template for the operator's per-target `.env.bundle.<target>` files
 - `scripts/render_app_yaml.py` — per-target App config rewriter
 - `DEPLOY.md` — deploy guide
 
@@ -192,7 +192,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 
 Anything not in git is invisible to PRs — it lives only on the operator's filesystem. The full list of ignored patterns is in [`.gitignore`](.gitignore); the load-bearing ones for new operators:
 
-- **`.env.bundle`** — your per-workspace config (catalog / schema / profile). You create it from `.env.bundle.example`. Never committed.
+- **`.env.bundle.<target>`** — your per-target deploy config (catalog / schema / profile), one file per target (e.g. `.env.bundle.gsphere`). You create each from `.env.bundle.example`. All `.env.bundle.*` files are gitignored (only `.env.bundle.example` is committed); never commit your own.
 - **`ref_notes/`** — your local scratchpad for session notes, design drafts, test scripts, internal explainers. When a doc matures into something team-shareable, promote it (`git mv ref_notes/<file>.md docs/<file>.md` on a docs branch).
 - **Credentials** (`.databrickscfg`, `*.token`, `.env*`, `config/databricks_config*.json`, `.npmrc`, `.pip/pip.conf`) — never commit. The `.gitignore` covers these as a safety net.
 - **Build artifacts** (`App/node_modules/`, `__pycache__/`, `dist/`, `.vite/`, `*.pyc`, `.pytest_cache/`, etc.) — regenerate locally.

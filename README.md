@@ -35,12 +35,12 @@ Mode-by-mode model performance (clean ~5 mg/dL MAE → +631% incident-period deg
 /
 ├── databricks.yml                    # Bundle config (targets, resources)
 ├── databricks.yml.example            # Template for external deployers
-├── .env.bundle.example               # Per-deployer config template
+├── .env.bundle.example               # Template → cp to .env.bundle.<target> (one per deploy target)
 ├── DEPLOY.md                         # Step-by-step deploy guide
 ├── REPO_LAYOUT.md                    # Full navigation guide (what file does what)
 ├── App/                              # React + Flask Databricks App
 ├── Data_DataGen_ModelForecast/       # Notebooks: ingest, modeling, agents, grants
-├── scripts/                          # render_app_yaml.py · smoke_test.py · grant_app_sp.py
+├── scripts/                          # render_app_yaml.py · smoke_test.py · grant_app_sp.py · grant_viewers.py · teardown_target.py
 └── docs/                             # Maintainer-specific notes
 ```
 
@@ -60,13 +60,13 @@ Full file-by-file inventory + "I want to…" task index in [`REPO_LAYOUT.md`](RE
 
 ## Getting started
 
-Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers should add a target stanza per [`databricks.yml.example`](databricks.yml.example) and fill in `.env.bundle` per [`.env.bundle.example`](.env.bundle.example).
+Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers should add a target stanza per [`databricks.yml.example`](databricks.yml.example) and create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example).
 
 Canonical deploy sequence (full 8-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
 
 ```bash
-# load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE
-source .env.bundle                                                
+# load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE (one file per target — name = target key)
+source .env.bundle.<target>                                       
 
 # pass 1 — creates the warehouse
 databricks bundle deploy -t <target> --profile <profile>          
@@ -88,6 +88,11 @@ uv run python scripts/smoke_test.py --target <target> --profile <profile>
 ```
 
 End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy variants (`baseline_source=synthetic` for CI / restricted-egress, `DEMO_WEEK_START` override for reproducible runs, distribution-comparison job), see [`DEPLOY.md`](DEPLOY.md).
+
+**Granting access.** Two principals, two scripts (both documented in [`DEPLOY.md`](DEPLOY.md)):
+
+- The app serves data through its **own service principal** — entitle it with [`scripts/grant_app_sp.py`](scripts/grant_app_sp.py) (re-run after any deploy that skips the setup job; you name the app, it discovers the SP).
+- To let an **audience** open the app and follow its About-page "Under the hood" deep-links, grant them with [`scripts/grant_viewers.py`](scripts/grant_viewers.py) — a user, group, or service principal you pass via `--principal`. The audience is a grant-time choice, not deploy config, so it is **not** part of `.env.bundle.<target>`.
 
 ## See also
 

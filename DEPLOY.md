@@ -17,7 +17,7 @@ flowchart TD
     classDef opt fill:#fafafa,stroke:#999,stroke-width:1px,stroke-dasharray:3 3,color:#555
 
     S1[Step 1 — databricks auth login]:::cmd
-    S2[Step 2 — cp .env.bundle.example<br/><i>fill in catalog / schema / profile</i>]:::cmd
+    S2[Step 2 — cp .env.bundle.example .env.bundle.&lt;target&gt;<br/><i>fill in catalog / schema / profile</i>]:::cmd
     S3[Step 3 — optional MAS pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S4[Step 4 — optional Genie pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S5[Step 5 — npm install + npm run build<br/><i>skip if App/databricks/static/ is fresh</i>]:::cmd
@@ -123,32 +123,44 @@ export DATABRICKS_TOKEN=<your-token>
 
 ---
 
-## Step 2: Configure Variables via `.env.bundle`
+## Step 2: Configure Variables via `.env.bundle.<target>`
 
-Per-operator workspace-specific values live in `.env.bundle` (gitignored).
-Copy the template and fill in your three required values:
+Per-operator workspace-specific values live in a **per-target** config file,
+`.env.bundle.<target-key>` (all gitignored). Keep **one file per deploy target**
+— named for the `databricks.yml` target key — so a `source` always carries that
+target's complete coords. There is no shared mutable file and no `HARNESS_TYPE`
+conditional, so you can never "source the wrong one last" and silently deploy a
+target with another target's catalog/schema (the root cause of past
+wrong-schema / SQL-403 drift).
 
 ```bash
-cp .env.bundle.example .env.bundle
-# edit .env.bundle and fill in (note: `export` is REQUIRED — without it the
+# Make one file per target you deploy (gitignored). Name = the databricks.yml target key.
+cp .env.bundle.example .env.bundle.gsphere      # live target
+# edit .env.bundle.gsphere and fill in (note: `export` is REQUIRED — without it the
 # variables stay shell-local and the databricks CLI subprocess does not see them):
 #   export BUNDLE_VAR_catalog=<your-catalog>
 #   export BUNDLE_VAR_schema=<your-schema>
 #   export DATABRICKS_CONFIG_PROFILE=<your-profile>
+
+# Deploy with name parity — source the file that matches the target:
+#   source .env.bundle.gsphere && databricks bundle deploy -t gsphere
 ```
+
+A harness/sandbox target gets its own file (e.g. `.env.bundle.gsphere_from_source_e2e`)
+with its own isolated `BUNDLE_VAR_schema` and a non-empty `BUNDLE_VAR_harness_suffix`.
 
 Top-level bundle variables (defined in `databricks.yml`):
 
 | Variable | Where set | Default | Notes |
 |---|---|---|---|
-| `catalog` | `.env.bundle` (`BUNDLE_VAR_catalog`) | `glucosphere_catalog` (placeholder) | Operator's UC catalog |
-| `schema` | `.env.bundle` (`BUNDLE_VAR_schema`) | `glucosphere_schema` (placeholder) | UC schema |
-| `baseline_source` | `.env.bundle` (optional) | `from_source` | `synthetic` / `from_source` / `from_table` |
-| `source_catalog` / `source_schema` / `source_table` | `.env.bundle` (optional) | `""` | Used by `from_table` mode; empty triggers auto-detect |
-| `app_name` | `.env.bundle` (optional) | `glucosphere-app` | Databricks App display name |
-| `dev_initials` | `.env.bundle` (optional) | `user` | Harness target suffix for collision avoidance when sharing a workspace; ≤7 chars |
-| `app_basename` | `.env.bundle` (optional) | `glucosphere` | Harness base name (shorten to fit the 30-char App limit if needed) |
-| `harness_suffix` | `.env.bundle` (`HARNESS_TYPE` block) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
+| `catalog` | `.env.bundle.<target>` (`BUNDLE_VAR_catalog`) | `glucosphere_catalog` (placeholder) | Operator's UC catalog |
+| `schema` | `.env.bundle.<target>` (`BUNDLE_VAR_schema`) | `glucosphere_schema` (placeholder) | UC schema (set the full schema explicitly per target) |
+| `baseline_source` | `.env.bundle.<target>` (optional) | `from_source` | `synthetic` / `from_source` / `from_table` |
+| `source_catalog` / `source_schema` / `source_table` | `.env.bundle.<target>` (optional) | `""` | Used by `from_table` mode; empty triggers auto-detect |
+| `app_name` | `.env.bundle.<target>` (optional) | `glucosphere-app` | Databricks App display name |
+| `dev_initials` | `.env.bundle.<target>` (optional) | `user` | Harness target suffix for collision avoidance when sharing a workspace; ≤7 chars |
+| `app_basename` | `.env.bundle.<target>` (optional) | `glucosphere` | Harness base name (shorten to fit the 30-char App limit if needed) |
+| `harness_suffix` | `.env.bundle.<target>` (`BUNDLE_VAR_harness_suffix`) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
 
 `warehouse_id` is **not** a bundle variable. The bundle declares a
 `sql_warehouses.glucosphere_warehouse` resource that creates the warehouse
@@ -165,9 +177,9 @@ name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 > **Deploying to a different workspace**: you do NOT need to edit
 > `databricks.yml`. The committed target stanzas have no hardcoded
 > `workspace.host` — DABs uses the host from the profile selected by
-> `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle`. Set up a profile
-> via `databricks configure --profile <name>` for your workspace, point
-> `.env.bundle` at it, and run `bundle deploy -t <existing-target>`.
+> `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle.<target>`. Set up a profile
+> via `databricks configure --profile <name>` for your workspace, point that
+> target's file at it, and run `source .env.bundle.<target> && bundle deploy -t <target>`.
 
 ---
 
@@ -213,15 +225,15 @@ discovers it by name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 The second deploy syncs the updated app.yaml to the workspace.
 
 ```bash
-# Make sure .env.bundle is filled in (see Step 2), then:
-source .env.bundle
+# Make sure .env.bundle.<target> is filled in (see Step 2), then:
+source .env.bundle.<target>
 databricks bundle deploy -t <target>            # Pass 1: creates warehouse + apps + jobs
 uv run python scripts/render_app_yaml.py --target <target>    # Discover warehouse + rewrite app.yaml
 databricks bundle deploy -t <target>            # Pass 2: sync updated app.yaml
 ```
 
 Subsequent deploys are single-pass (warehouse already exists; render still
-useful when catalog/schema/etc. change in `.env.bundle`).
+useful when catalog/schema/etc. change in `.env.bundle.<target>`).
 
 `-t <target>` is always required — no `default: true` target exists.
 
@@ -295,7 +307,7 @@ of downstream modeling compute.
 The Step 7 setup job ran `08_genie_ka_mas.py` which created (or reused) the KA, MAS, and Genie space. Capture their IDs from the job logs, then re-run `render_app_yaml.py` with the override flags to bake them into `App/databricks/app.yaml`, then redeploy:
 
 ```bash
-source .env.bundle
+source .env.bundle.<target>
 uv run python scripts/render_app_yaml.py \
     --target <target> \
     --profile <profile> \
@@ -314,7 +326,7 @@ On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the e
 **Required.** Apps have an independent lifecycle from Jobs in DABs — the setup job in Step 7 does NOT deploy the App's source code or start its compute. This step uploads `App/` into the App container and starts it.
 
 ```bash
-source .env.bundle
+source .env.bundle.<target>
 databricks bundle run glucosphere_app -t <target> --profile <profile>
 ```
 
@@ -338,7 +350,7 @@ uv run python scripts/grant_app_sp.py --app <deployed-app-name> --profile <profi
 # --dry-run prints the planned grants (resolved SP + resource IDs from app.yaml) without applying
 ```
 
-It reads the resource IDs from `App/databricks/app.yaml` (no hardcoding), so render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request.
+You specify only `--app` (the deployed app's name) and `--profile`; the script **discovers** everything else — the app's own service principal from `databricks apps get`, and every resource id from `App/databricks/app.yaml` (no hardcoding). Render `app.yaml` first if the IDs aren't current. No redeploy is needed afterward — grants take effect on the next request. (Its sibling, *Grant the audience* below, grants the human/SP **audience** rather than the app's own SP.)
 
 ---
 
@@ -377,10 +389,10 @@ If all 5 functional checks pass, the deployment is verified end-to-end. Any fail
 
 ### How workspace selection works (linkage diagram)
 
-The target key in `databricks.yml` is a **logical label**, not a workspace identifier. Workspace selection is **profile-driven** — operators deploy to whichever workspace their sourced `.env.bundle` profile points at:
+The target key in `databricks.yml` is a **logical label**, not a workspace identifier. Workspace selection is **profile-driven** — operators deploy to whichever workspace the sourced `.env.bundle.<target>` profile points at:
 
 ```
-.env.bundle (gitignored)              ──┐
+.env.bundle.<target> (gitignored)     ──┐
   export DATABRICKS_CONFIG_PROFILE=…    │
   export BUNDLE_VAR_catalog=…           │
   export BUNDLE_VAR_schema=…            ├──► DABs deploy target = profile's host
@@ -390,10 +402,10 @@ The target key in `databricks.yml` is a **logical label**, not a workspace ident
     host = https://<workspace>.cloud.databricks.com
                                         │
 `databricks bundle deploy -t gsphere` ──┘
-  selects the YAML stanza for mode + harness suffix
+  selects the YAML stanza for that target
 ```
 
-External deployers don't need to edit `databricks.yml` or add a target stanza — just point `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle` at your own profile and use `-t gsphere` (live) or `-t gsphere_<mode>_e2e` (harness) as-is. The profile's host becomes the deploy target.
+External deployers don't need to edit `databricks.yml` or add a target stanza — just point `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle.<target>` at your own profile and use `-t gsphere` (live) or `-t gsphere_<mode>_e2e` (harness) as-is. The profile's host becomes the deploy target.
 
 ### Live target `gsphere`
 
@@ -420,44 +432,50 @@ databricks bundle run glucosphere_app -t gsphere
 
 ### Harness targets (`gsphere_synth_e2e` / `gsphere_from_table_e2e` / `gsphere_from_source_e2e`) — parallel-validation deploys
 
-Use these to validate the 3 baseline modes (synthetic / from_table / from_source) without touching the live target's data. Each harness writes to its OWN schema (`<base>_synth_e2e`, `<base>_from_table_e2e`, `<base>_from_source_e2e`) — isolation is driven by a `HARNESS_TYPE` env var that the `.env.bundle` conditional block appends as a suffix to `BUNDLE_VAR_schema`.
+Use these to validate the 3 baseline modes (synthetic / from_table / from_source) without touching the live target's data. Each harness writes to its OWN schema and uses its OWN non-empty `harness_suffix` (so its KA/MAS/Genie/forecast endpoints don't collide with the live ones). Each target gets its own `.env.bundle.<target>` file with those values set explicitly — `cp .env.bundle.example .env.bundle.<target>` once, then deploy with name parity.
 
 Step-by-step:
 
 ```bash
-# 1. Live deploy as usual (no HARNESS_TYPE set)
-source .env.bundle
+# 1. Live deploy as usual
+source .env.bundle.gsphere
 databricks bundle deploy -t gsphere
 
-# 2. Harness synth_e2e (writes to <base>_synth_e2e schema)
-HARNESS_TYPE=synth_e2e source .env.bundle
+# 2. Harness synth_e2e — .env.bundle.gsphere_synth_e2e sets
+#    BUNDLE_VAR_schema=<base>_synth_e2e, BUNDLE_VAR_baseline_source=synthetic,
+#    BUNDLE_VAR_harness_suffix=_synth_e2e
+source .env.bundle.gsphere_synth_e2e
 databricks bundle deploy -t gsphere_synth_e2e
 databricks bundle run    glucosphere_full_setup -t gsphere_synth_e2e
 
-# 3. Harness from_table_e2e (writes to <base>_from_table_e2e,
-#    CTAS-copies from <base>_synth_e2e — run step 2 first)
-HARNESS_TYPE=from_table_e2e source .env.bundle
+# 3. Harness from_table_e2e — .env.bundle.gsphere_from_table_e2e sets
+#    BUNDLE_VAR_schema=<base>_from_table_e2e, baseline_source=from_table,
+#    BUNDLE_VAR_source_schema=<base>_synth_e2e (CTAS-copies — run step 2 first),
+#    BUNDLE_VAR_harness_suffix=_from_table_e2e
+source .env.bundle.gsphere_from_table_e2e
 databricks bundle deploy -t gsphere_from_table_e2e
 
-# 4. Harness from_source_e2e (writes to <base>_from_source_e2e)
-HARNESS_TYPE=from_source_e2e source .env.bundle
+# 4. Harness from_source_e2e — .env.bundle.gsphere_from_source_e2e sets
+#    BUNDLE_VAR_schema=<base>_from_source_e2e, baseline_source=from_source,
+#    BUNDLE_VAR_harness_suffix=_from_source_e2e
+source .env.bundle.gsphere_from_source_e2e
 databricks bundle deploy -t gsphere_from_source_e2e
 ```
 
-**Why HARNESS_TYPE in `.env.bundle` rather than per-target `schema:` in `databricks.yml`?** DABs precedence puts `BUNDLE_VAR_*` above per-target `variables:` blocks, so an env-side override is the only mechanism that actually wins for harness schema isolation. Per-target overrides would be silently shadowed.
+**Why set `BUNDLE_VAR_schema` / `BUNDLE_VAR_harness_suffix` in the env file rather than per-target `schema:` in `databricks.yml`?** DABs precedence puts `BUNDLE_VAR_*` above per-target `variables:` blocks, so the env-side value is the only mechanism that actually wins for harness isolation. Per-target overrides would be silently shadowed.
 
-**Concurrent deployers in the same workspace**: edit your local `.env.bundle` `case` block to append a personal suffix (e.g. `${BUNDLE_VAR_schema}_synth_e2e_<myname>`) to avoid schema collisions with other deployers.
+**Concurrent deployers in the same workspace**: give your harness files a personal schema/suffix (e.g. `BUNDLE_VAR_schema=<base>_synth_e2e_<myname>`) to avoid collisions with other deployers.
 
 ### Creating new / separate agent resources (Genie / KA / MAS)
 
 `08_genie_ka_mas.py` looks up the Knowledge Assistant, Genie space, and Multi-Agent Supervisor **by name** — it reuses them if a tile/space with that name already exists, and only creates fresh ones otherwise. The names are `Glucosphere_KA${harness_suffix}` / `Glucosphere_Intelligence${harness_suffix}` / `Glucosphere_Supervisor${harness_suffix}` (and the forecast endpoints are `Glucosphere_Forecast_15min/30min${harness_suffix}`). So **`harness_suffix` is the lever for creating new agents**: a value the workspace hasn't seen forces fresh creation. It renames *only* these workspace-global resources — it does **not** change the schema/data (that stays `var.schema`).
 
-**Scenario A — fully isolated deployment (new agents + their own data).** Use a [harness target](#harness-targets-gsphere_synth_e2e--gsphere_from_table_e2e--gsphere_from_source_e2e--parallel-validation-deploys): its `HARNESS_TYPE` block sets both `harness_suffix` and an isolated schema, so the setup job builds everything fresh under the suffix. Nothing else to do.
+**Scenario A — fully isolated deployment (new agents + their own data).** Use a [harness target](#harness-targets-gsphere_synth_e2e--gsphere_from_table_e2e--gsphere_from_source_e2e--parallel-validation-deploys): its `.env.bundle.<target>` file sets both `harness_suffix` and an isolated schema, so the setup job builds everything fresh under the suffix. Nothing else to do.
 
 **Scenario B — new agents on EXISTING (e.g. live) data, without regenerating it.** Keep the schema, set only the suffix, and run *only* the agent-creation step so the data-gen tasks don't re-run:
 
 ```bash
-source .env.bundle                       # live catalog/schema; suffix stays ""
+source .env.bundle.gsphere               # live catalog/schema; suffix stays ""
 export BUNDLE_VAR_harness_suffix=_v2      # YOUR chosen suffix — must be set at DEPLOY time
 databricks bundle deploy -t gsphere       # bakes the _v2 names into the job's base_parameters
 
@@ -524,15 +542,81 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
+### Grant the audience (so they can open the app + its "Under the hood" deep-links)
+
+A deployed Databricks App is **not** open to everyone with the URL — a non-admin needs `CAN_USE`
+on the app to open it. And the About page deep-links out to the underlying workspace objects (DLT
+pipeline, Unity Catalog, MLflow, Model Serving, Agent-Bricks KA/MAS, AI/BI Genie), which open only
+for principals granted access to each. (The app renders its data through its own **service
+principal** — granted separately, above — so a viewer with `CAN_USE` sees the dashboards without
+needing their own UC grants; their UC/agent grants only matter when they follow a deep-link out.)
+`scripts/grant_viewers.py` grants a **user, group, or service principal** the whole set in one
+shot — `CAN_USE` on the app itself (via the dedicated `apps update-permissions`, since apps aren't
+in the generic `permissions update` enum), plus view-level access across the deep-link objects
+(verified levels: app `CAN_USE`; UC `SELECT`/`USE`/`EXECUTE`/`READ VOLUME`; pipelines/jobs
+`CAN_VIEW`; experiments `CAN_READ`; serving-endpoints + KA/MAS tiles `CAN_QUERY`; Genie `CAN_RUN`):
+
+```bash
+# Grant a group once (recommended) — dry-run by default; add --apply to grant:
+uv run python scripts/grant_viewers.py --principal <group> \
+    --target <target> --catalog <catalog> --schema <schema> --profile <profile> --apply
+# A user: --principal <name>@email.com   ·   a service principal: --principal <app-id>
+#   (principal type auto-detects: '@'→user, UUID→service-principal, else group; override with --principal-type)
+
+# Concrete example — grant a group on the live `gsphere` (prod) target:
+uv run python scripts/grant_viewers.py --principal <group> \
+    --target gsphere --catalog mmt_aws_usw2 --schema glucosphere \
+    --profile <profile> --apply
+```
+
+One `--principal` per run — grant a **group** once (recommended) rather than looping over users.
+On a managed workspace where the audience is fronted by a **service principal** (e.g. the DAIS
+booth), pass that SP's application-id as `--principal` and it's granted as `service_principal_name`.
+
+**What you specify vs. what's discovered.** You supply only `--principal` (who) plus `--target` /
+`--catalog` / `--schema` / `--profile` (which deploy); the script **discovers** every resource id
+from `databricks bundle summary -t <target>` plus by-name lookups for the agents/Genie space. This
+mirrors `grant_app_sp.py` above — there you name the *app* and it discovers the app's own SP. The
+audience principal is intentionally **not** part of `.env.bundle.<target>`: deploy config answers
+*what/where to deploy*, while *who gets access* is a grant-time choice that varies by workspace and
+event (a group on prod, the booth SP on DAIS), so it stays a `--principal` argument.
+
+> ⚠️ **Sharing to the whole workspace (`--principal users`):** the built-in `users` group is a
+> **workspace-local** group, so it works for the app + workspace-ACL deep-links (pipeline, job,
+> notebook, endpoints, KA/MAS, Genie) but **cannot hold Unity Catalog grants** — UC needs an
+> **account-level** principal. A `users`-group grant therefore lets everyone *open the app* and
+> follow most deep-links, but the **Catalog/data deep-link** opens only for named users or an
+> account-level group. (The app's own dashboards still render for everyone, since the app queries
+> as its service principal — only the direct Catalog Explorer link is gated.) `grant_viewers.py`
+> surfaces the failed UC grant explicitly rather than silently when the principal isn't a UC identity.
+
 ---
 
 ## Teardown
 
+`bundle destroy` removes only the **bundle-managed** resources; the setup job's
+notebooks create workspace-global resources + a UC schema that it does **not** touch.
+A full teardown is three parts:
+
 ```bash
-databricks bundle destroy
+# 1. Workspace-global resources the bundle does NOT manage (KA + MAS Agent-Bricks
+#    tiles + their serving endpoints, the two Glucosphere_Forecast_{15,30}min
+#    endpoints, and the Genie space). scripts/teardown_target.py deletes them by
+#    harness_suffix (sandbox) or exact name (live). Dry-run by default; --apply to delete:
+uv run python scripts/teardown_target.py --profile <profile> --suffix _<harness_suffix>          # sandbox
+#   live (empty suffix) → match exact names instead:
+uv run python scripts/teardown_target.py --profile <profile> \
+    --names Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min
+
+# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app):
+source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-approve
+
+# 3. Unity Catalog schema + its tables/volumes/models (NOT removed by the above; needs a warehouse):
+#    DROP SCHEMA <catalog>.<schema> CASCADE;
 ```
 
-This removes the job, DLT pipeline, and app resource from the workspace. It does **not** delete Unity Catalog tables, volumes, or registered models.
+`bundle destroy` alone does **not** delete the Agent-Bricks tiles/endpoints, the Genie
+space, or any UC tables / volumes / registered models — run steps 1 + 3 too for a clean slate.
 
 ---
 

@@ -25,8 +25,8 @@ RUN SEQUENCE
     uv run python scripts/grant_app_sp.py --app <app> --profile <profile>
 
 USAGE
-    uv run python scripts/grant_app_sp.py --app glucosphere-app-v0-3 --profile fevm-mmt-aws-usw2
-    # profile defaults to $DATABRICKS_CONFIG_PROFILE (e.g. via `source .env.bundle`)
+    uv run python scripts/grant_app_sp.py --app glucosphere-app --profile <profile>
+    # profile defaults to $DATABRICKS_CONFIG_PROFILE (e.g. via `source .env.bundle.<target>`)
     # --dry-run prints the planned grants without applying them
 """
 
@@ -79,7 +79,7 @@ def app_yaml_serving_endpoints(content: str) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Grant a Databricks App's SP the Glucosphere runtime resources.")
-    ap.add_argument("--app", required=True, help="App name, e.g. glucosphere-app-v0-3")
+    ap.add_argument("--app", required=True, help="App name, e.g. glucosphere-app")
     ap.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE"),
                     help="CLI profile (default: $DATABRICKS_CONFIG_PROFILE)")
     ap.add_argument("--dry-run", action="store_true", help="Print planned grants without applying")
