@@ -15,7 +15,7 @@ This application provides:
 
 - **Frontend**: React + Vite + Tailwind CSS
 - **Backend**: Flask (proxy server for Databricks APIs)
-- **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in `.env.bundle`; see repo-root `.env.bundle.example`)
+- **Data Source**: Databricks Unity Catalog (`${CATALOG_NAME}.${SCHEMA_NAME}` — set per-deployment via `BUNDLE_VAR_catalog` + `BUNDLE_VAR_schema` in the target's `.env.bundle.<target>` file; see repo-root `.env.bundle.example`)
 - **AI assistant**: switchable — a fast app-side **router** (Genie / Knowledge Assistant / foundation model, called directly; default) or the Databricks **Multi-Agent Supervisor** (toggle). See *Assistant engine switch* below.
 
 ### Agent endpoints — Genie / KA / MAS (often confused)

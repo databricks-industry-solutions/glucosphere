@@ -101,7 +101,7 @@ if BASELINE_SOURCE == "from_table":
     #   1. If SOURCE_CATALOG/SCHEMA/TABLE widgets are ALL explicitly set,
     #      use them verbatim (deterministic; this is what the e2e harness
     #      targets use, and what an operator gets when they override via
-    #      `BUNDLE_VAR_source_schema=…` in .env.bundle).
+    #      `BUNDLE_VAR_source_schema=…` in .env.bundle.<target>).
     #   2. Otherwise iterate a fixed priority list under CATALOG_NAME and
     #      pick the first `<schema>.<table>` that exists. Priority is
     #      real-data harness first, then synth harness — workspace-agnostic

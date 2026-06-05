@@ -19,6 +19,17 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-04]
+
+Deploy-config hygiene: replace the single mutable `.env.bundle` (+ its in-place `HARNESS_TYPE` schema-mutation conditional) with **one explicit `.env.bundle.<target>` file per deploy target**. The old shared-file model meant whichever coords were `source`d last won — the root cause of past wrong-schema / SQL-403 drift when switching between the live and sandbox/harness targets. The per-target convention is the foundation for clean, repeatable from-scratch deploys (e.g. rehearsing a blank workspace).
+
+### Changed — per-target `.env.bundle.<target>` deploy-config convention
+- **`.gitignore`** — `.env.bundle` exact-match widened to `.env.bundle` + `.env.bundle.*` with `!.env.bundle.example`, so every per-target file (`.env.bundle.gsphere`, `.env.bundle.gsphere_from_source_e2e`, …) is ignored while the committed template stays tracked. (Previously the exact-match left `.env.bundle.<target>` files committable — a workspace-coord leak risk.)
+- **`.env.bundle.example`** rewritten around the one-file-per-target model: name = the `databricks.yml` target key; `source .env.bundle.<target> && databricks bundle deploy -t <target>` (name parity); the `HARNESS_TYPE` conditional removed in favor of each file setting `BUNDLE_VAR_schema` / `BUNDLE_VAR_harness_suffix` explicitly. Internal-history dates stripped per the external-audience asset convention.
+- **Docs propagated** — `DEPLOY.md` (Step 2, deploy steps, workspace-linkage diagram, the whole harness-targets section, Scenario A/B), `README.md`, `App/README.md`, `REPO_LAYOUT.md`, `docs/internal-setup.md`, `CONTRIBUTING.md` all updated from `.env.bundle` → `.env.bundle.<target>`. (Historical CHANGELOG entries below are left intact — they document the prior state at their release dates.)
+- **`databricks.yml` + `databricks.yml.example` comment refresh** — variable/target comments that narrated the removed `HARNESS_TYPE` conditional now describe the per-target `.env.bundle.<target>` model (each harness target sets `BUNDLE_VAR_schema` + `BUNDLE_VAR_harness_suffix` in its own file). `.example` uses its `your_workspace_target*` naming.
+- **Code-comment refresh** — stale `.env.bundle` / `HARNESS_TYPE` references in `scripts/render_app_yaml.py`, `scripts/grant_app_sp.py`, `Data_DataGen_ModelForecast/07_deploy_serving_endpoints.py`, and `02_ingest_real_baseline.py` updated to `.env.bundle.<target>`. Repo-wide verified: zero stale bare `.env.bundle` / `HARNESS_TYPE` outside intentional prose. (15 files total.)
+
 ## [2026-06-03]
 
 Cross-referencing drill-downs across the three operator views, an About-page platform overview, chart legibility polish, a Device-error heatmap **metric-scope toggle** (In-incident ⇄ Fleet-wide) with a tuned color curve, an About-page **real-world-extrapolation** note, dependency-security bumps, and a public-repo hygiene pass that turns the committed `app.yaml` into a generic template. Advances GitHub **#2** (app display update — device/coach tabs + about info) and **#5** (Coach on real patient data) — both close when this branch reaches `main`.

@@ -21,13 +21,13 @@ If you are contributing on behalf of an organization, you confirm that you have 
 
 1. **Read [`DEPLOY.md`](DEPLOY.md)** for the full deployment walkthrough — get a working deploy on your own Databricks workspace before proposing changes, so you can validate your contribution end-to-end.
 2. **Local Python env via [`uv`](https://docs.astral.sh/uv/)** — `uv sync` once in the repo root creates the project venv (Python 3.11 per `.python-version`) used by `scripts/render_app_yaml.py` and `scripts/smoke_test.py`.
-3. **Configure your workspace** — `cp .env.bundle.example .env.bundle` and fill in the three required tokens (catalog, schema, profile).
+3. **Configure your workspace** — `cp .env.bundle.example .env.bundle.<target>` (one file per deploy target, named for the `databricks.yml` target key, e.g. `.env.bundle.gsphere`) and fill in the three required tokens (catalog, schema, profile).
 
 > **Internal Databricks contributors** (using a `fevm-*` workspace): see [`docs/internal-setup.md`](docs/internal-setup.md) for the catalog naming convention — the `*_catalog`-suffixed catalog is workspace-default ("dev"), and the standalone non-suffixed catalog is the portable "prod" / live-demo target. Don't mix them.
 
 ## Adapting for your own workspace
 
-The committed `databricks.yml` includes target stanzas pointed at maintainer workspaces (Databricks-internal `fevm-*` hosts). External deployers should add their own target stanza before deploying — see [`databricks.yml.example`](databricks.yml.example) for the pattern. Also copy [`.env.bundle.example`](.env.bundle.example) → `.env.bundle` and fill in your catalog / schema / `~/.databrickscfg` profile. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
+The committed `databricks.yml` includes target stanzas pointed at maintainer workspaces (Databricks-internal `fevm-*` hosts). External deployers should add their own target stanza before deploying — see [`databricks.yml.example`](databricks.yml.example) for the pattern. Also copy [`.env.bundle.example`](.env.bundle.example) → `.env.bundle.<target>` (one per deploy target) and fill in your catalog / schema / `~/.databrickscfg` profile. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
 
 ## Where to contribute
 
