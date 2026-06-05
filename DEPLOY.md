@@ -546,11 +546,29 @@ The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of th
 
 ## Teardown
 
+`bundle destroy` removes only the **bundle-managed** resources; the setup job's
+notebooks create workspace-global resources + a UC schema that it does **not** touch.
+A full teardown is three parts:
+
 ```bash
-databricks bundle destroy
+# 1. Workspace-global resources the bundle does NOT manage (KA + MAS Agent-Bricks
+#    tiles + their serving endpoints, the two Glucosphere_Forecast_{15,30}min
+#    endpoints, and the Genie space). scripts/teardown_target.py deletes them by
+#    harness_suffix (sandbox) or exact name (live). Dry-run by default; --apply to delete:
+uv run python scripts/teardown_target.py --profile <profile> --suffix _<harness_suffix>          # sandbox
+#   live (empty suffix) → match exact names instead:
+uv run python scripts/teardown_target.py --profile <profile> \
+    --names Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min
+
+# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app):
+source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-approve
+
+# 3. Unity Catalog schema + its tables/volumes/models (NOT removed by the above; needs a warehouse):
+#    DROP SCHEMA <catalog>.<schema> CASCADE;
 ```
 
-This removes the job, DLT pipeline, and app resource from the workspace. It does **not** delete Unity Catalog tables, volumes, or registered models.
+`bundle destroy` alone does **not** delete the Agent-Bricks tiles/endpoints, the Genie
+space, or any UC tables / volumes / registered models — run steps 1 + 3 too for a clean slate.
 
 ---
 

@@ -19,6 +19,14 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-05]
+
+Teardown tooling to complement the per-target deploy convention.
+
+### Added — `scripts/teardown_target.py` + DEPLOY.md teardown section
+- **`scripts/teardown_target.py`** — deletes the workspace-global resources that `databricks bundle destroy` leaves behind: Agent-Bricks **KA + MAS tiles** (`/api/2.0/tiles/{id}`) and their serving endpoints, the **`Glucosphere_Forecast_{15,30}min`** forecast endpoints, and the **Genie space** (`/api/2.0/data-rooms/{id}`). Matches by `--suffix` (harness/sandbox) or `--names` (exact, for the live empty-suffix deploy — suffix-matching is unsafe with `""`). **Dry-run by default**; `--apply` to delete. Each resource is GET-verified before deletion.
+- **`DEPLOY.md` "Teardown"** rewritten to the 3-part reality: (1) `teardown_target.py` for the non-bundle-managed agents/endpoints/Genie, (2) `bundle destroy -t <target>`, (3) `DROP SCHEMA … CASCADE`. (The old one-liner implied `bundle destroy` was sufficient — it isn't.)
+
 ## [2026-06-04]
 
 Deploy-config hygiene: replace the single mutable `.env.bundle` (+ its in-place `HARNESS_TYPE` schema-mutation conditional) with **one explicit `.env.bundle.<target>` file per deploy target**. The old shared-file model meant whichever coords were `source`d last won — the root cause of past wrong-schema / SQL-403 drift when switching between the live and sandbox/harness targets. The per-target convention is the foundation for clean, repeatable from-scratch deploys (e.g. rehearsing a blank workspace).
