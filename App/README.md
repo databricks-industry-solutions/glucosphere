@@ -242,7 +242,18 @@ as the underlying value is set. There are two classes, and it matters for a fres
   these deep-links work too — the panel adds no new portability burden.
 - **Access:** every link opens the Databricks workspace and is OAuth-gated — a signed-in user with
   object access clicks straight through; without it they hit sign-in / 403. The inline one-liner on
-  each node keeps the panel readable without workspace access.
+  each node keeps the panel readable without workspace access. To grant the demo audience that object
+  access in one shot — `CAN_USE` on the app itself plus view-level access across all of these
+  deep-link targets — run `scripts/grant_viewers.py` (see DEPLOY.md "Grant the audience"). The app's
+  *own* data access is separate: it renders through its service principal, entitled by
+  `scripts/grant_app_sp.py`.
+
+```bash
+# Audience: CAN_USE on the app + view access to every deep-link target (dry-run by default; --apply to grant).
+# --principal is a user (user@example.com), group, or service-principal app-id (type auto-detected).
+uv run python scripts/grant_viewers.py --principal <user|group|sp-app-id> \
+    --target <target> --catalog <catalog> --schema <schema> --profile <profile> --apply
+```
 
 See `scripts/render_app_yaml.py` (the `discover_*` helpers) for the by-name lookups, and
 `App/databricks/app.py` `GET /api/config` for how each field is assembled.

@@ -19,7 +19,7 @@ Resources are matched by the deploy's `harness_suffix` (e.g. `_from_source_e2e`)
 (empty-suffix) and other targets' resources are never touched. Every resource is GET-verified
 before deletion, and the script is DRY-RUN by default — pass --apply to actually delete.
 
-Endpoints used (all verified against fevm-mmt-aws-usw2, 2026-06-05):
+Endpoints used (verified against a live workspace):
   GET  /api/2.0/tiles                  → list tiles (the tile_type query param is ignored; filter by name)
   GET  /api/2.0/tiles/{tile_id}        → tile detail (name, serving_endpoint_name, tile_type)
   DELETE /api/2.0/tiles/{tile_id}      → delete KA/MAS tile (+ its serving endpoint) — per agent-bricks gotcha
@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--names", default=None,
                     help="comma-separated EXACT resource names to delete — use for the LIVE deploy (empty suffix), e.g. "
                          "Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min")
-    ap.add_argument("--profile", required=True, help="databricks CLI profile (e.g. fevm-mmt-aws-usw2)")
+    ap.add_argument("--profile", required=True, help="databricks CLI profile (e.g. your-workspace-profile)")
     ap.add_argument("--apply", action="store_true", help="actually delete (default: dry-run, deletes nothing)")
     args = ap.parse_args()
     profile, apply = args.profile, args.apply
