@@ -542,6 +542,27 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
+### Grant the audience (so the About-page "Under the hood" deep-links open)
+
+The app runs as its **service principal** (above), so the dashboards work for anyone with the app
+URL. But the About page deep-links to the underlying workspace objects (DLT pipeline, Unity
+Catalog, MLflow, Model Serving, Agent-Bricks KA/MAS, AI/BI Genie) — those open only for principals
+that have been granted access. `scripts/grant_viewers.py` grants a **user, group, or service
+principal** view-level access across that whole object set (verified levels: UC `SELECT`/`USE`/
+`EXECUTE`/`READ VOLUME`; pipelines/jobs `CAN_VIEW`; experiments `CAN_READ`; serving-endpoints +
+KA/MAS tiles `CAN_QUERY`; Genie `CAN_RUN`):
+
+```bash
+# Grant a group once (recommended) — dry-run by default; add --apply to grant:
+uv run python scripts/grant_viewers.py --principal <group> \
+    --target <target> --catalog <catalog> --schema <schema> --profile <profile> --apply
+# A user: --principal alice@databricks.com   ·   a service principal: --principal <app-id>
+#   (principal type auto-detects: '@'→user, UUID→service-principal, else group; override with --principal-type)
+```
+
+On a managed workspace where the audience is fronted by a **service principal** (e.g. the DAIS
+booth), pass that SP's application-id as `--principal` and it's granted as `service_principal_name`.
+
 ---
 
 ## Teardown
