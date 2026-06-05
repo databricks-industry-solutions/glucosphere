@@ -65,8 +65,8 @@ dbutils.widgets.text("CONFIG_FILE", "configs/baseline_config.yaml", "Config File
 dbutils.widgets.text("NUM_PSEUDO_OVERRIDE", "", "Num Pseudo Override (optional)")
 dbutils.widgets.text("DEMO_WEEK_START", "", "Demo Week Start override (empty = use YAML 'auto'/specific date)")
 # Endpoint names — workspace-global. databricks.yml injects the harness_suffix
-# from .env.bundle's HARNESS_TYPE conditional so harness deploys don't collide
-# with the live forecast endpoints.
+# from the target's .env.bundle.<target> (BUNDLE_VAR_harness_suffix) so harness
+# deploys don't collide with the live forecast endpoints.
 dbutils.widgets.text("ENDPOINT_15M", "Glucosphere_Forecast_15min", "15-min forecast endpoint name")
 dbutils.widgets.text("ENDPOINT_30M", "Glucosphere_Forecast_30min", "30-min forecast endpoint name")
 

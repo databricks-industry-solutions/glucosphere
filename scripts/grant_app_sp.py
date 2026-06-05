@@ -26,7 +26,7 @@ RUN SEQUENCE
 
 USAGE
     uv run python scripts/grant_app_sp.py --app glucosphere-app-v0-3 --profile fevm-mmt-aws-usw2
-    # profile defaults to $DATABRICKS_CONFIG_PROFILE (e.g. via `source .env.bundle`)
+    # profile defaults to $DATABRICKS_CONFIG_PROFILE (e.g. via `source .env.bundle.<target>`)
     # --dry-run prints the planned grants without applying them
 """
 

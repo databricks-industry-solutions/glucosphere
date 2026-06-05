@@ -27,7 +27,7 @@ Usage:
         --ka-endpoint    glucosphere-ka-endpoint \\
         --genie-space-id 01a2b3c4d5e6...
 
-    # Override profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)
+    # Override profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle.<target>`)
     uv run python scripts/render_app_yaml.py --target gsphere
 """
 
@@ -76,7 +76,7 @@ def discover_bundle_warehouse_id(target: str, profile: str | None) -> str:
 
     Profile resolution: explicit `--profile` flag wins; otherwise falls back to
     the `DATABRICKS_CONFIG_PROFILE` env var (the SSOT-pattern source via
-    `.env.bundle`). CLI v0.297.2's `warehouses list` does NOT inherit the env
+    `.env.bundle.<target>`). CLI v0.297.2's `warehouses list` does NOT inherit the env
     var when run from a bundle directory — it requires explicit `-p <profile>`
     or fails with "please specify target".
 
@@ -93,7 +93,7 @@ def discover_bundle_warehouse_id(target: str, profile: str | None) -> str:
     if result.returncode != 0:
         print(f"[FATAL] `databricks warehouses list` failed:\n{result.stderr}", file=sys.stderr)
         print(f"[FATAL] Cannot discover bundle-managed warehouse for target={target}.", file=sys.stderr)
-        print(f"[FATAL] Hint: pass --profile <name> or set DATABRICKS_CONFIG_PROFILE in .env.bundle (with `export` prefix).", file=sys.stderr)
+        print(f"[FATAL] Hint: pass --profile <name> or set DATABRICKS_CONFIG_PROFILE in .env.bundle.<target> (with `export` prefix).", file=sys.stderr)
         sys.exit(1)
     warehouses = json.loads(result.stdout)
     expected_suffix = f"glucosphere-warehouse-{target}"
@@ -208,7 +208,7 @@ def discover_forecast_endpoint(harness_suffix: str, profile: str | None) -> str:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", required=True, help="DABs target name (e.g. gsphere)")
-    p.add_argument("--profile", default=None, help="databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle`)")
+    p.add_argument("--profile", default=None, help="databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle.<target>`)")
     p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (overrides env + resource block)")
     p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (overrides resource block)")
     p.add_argument("--genie-space-id", default=None, help="Genie space ID (overrides env)")

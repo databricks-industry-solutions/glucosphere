@@ -106,8 +106,13 @@ config/databricks_config_*.json
 # App env (do not commit secrets)
 App/.env
 
-# Per-operator bundle config (workspace-specific BUNDLE_VAR_* overrides + DATABRICKS_CONFIG_PROFILE)
+# Per-operator bundle config (workspace-specific BUNDLE_VAR_* overrides + DATABRICKS_CONFIG_PROFILE).
+# One file per deploy target — e.g. .env.bundle.gsphere, .env.bundle.gsphere_fw_v2 — so a
+# `source .env.bundle.<target>` carries exactly that target's coords (no in-place mutation, no
+# "which did I source last" drift). The committed .env.bundle.example template is the only tracked one.
 .env.bundle
+.env.bundle.*
+!.env.bundle.example
 
 # uv-managed virtualenv (pyproject.toml + .python-version + uv.lock ARE committed)
 .venv/
