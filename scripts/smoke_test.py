@@ -17,10 +17,15 @@ What's automated (8 checks):
        `existing_warehouse_id`, e.g. the DAIS booth — pass `--warehouse-id` or let it resolve).
     4. Gold table: `SELECT COUNT(*) FROM <catalog>.<schema>.gold_patient_device_readings`
        returns > 0 (proves DLT silver/gold pipeline succeeded + SP can read).
-    5. KA + MAS serving endpoints: `databricks serving-endpoints list` contains
-       endpoint names matching the App's `app.yaml` references.
-    6. Genie space: `databricks api get /api/2.0/data-rooms` contains a room with the
-       configured display name.
+    5. KA + MAS serving endpoints: the App's ACTUAL `mas_endpoint`/`ka_endpoint`
+       (resolved bundle vars — the same values render writes into app.yaml) both exist
+       AND are READY. Falls back to a prefix-existence check (and WARNS) only when those
+       vars aren't set (e.g. the ids were passed to render as one-off --flags); a bare
+       prefix match is ambiguous when the workspace holds multiple mas-/ka- endpoints
+       (e.g. a `_fw_v2` sandbox set alongside the live agents — exactly that case bit us
+       2026-06-06: prefix-match silently validated the sandbox pair, not the App's).
+    6. Genie space: matches the App's resolved `genie_space_id` (falls back to a
+       display-name substring match, and WARNS, only when that var isn't set).
     7. Firmware variety: gold table has >= 3 distinct firmware_version values
        (catches the demo_week_start vs firmware-event-timestamp drift regression —
        2026-05-28 cycle 2 silently dropped from 3 → 2 firmware values).
@@ -140,24 +145,59 @@ def _warehouse_id(target: str, profile: str, warehouse_id: str | None = None) ->
     return match.get("id") if match else None
 
 
-def check_serving_endpoints(profile: str, expected_prefixes: tuple[str, ...] = ("mas-", "ka-")) -> tuple[bool, str]:
+def _endpoint_ready(name: str, profile: str) -> str:
+    """Return a serving endpoint's `state.ready` ('READY' / 'NOT_READY' / 'MISSING')."""
+    try:
+        d = _databricks(["serving-endpoints", "get", name], profile)
+    except subprocess.CalledProcessError:
+        return "MISSING"
+    return (d.get("state") or {}).get("ready", "?")
+
+
+def check_serving_endpoints(profile: str, mas_endpoint: str = "", ka_endpoint: str = "") -> tuple[bool, str]:
+    """Verify the App's ACTUAL MAS + KA endpoints exist and are READY.
+
+    `mas_endpoint`/`ka_endpoint` are the resolved bundle vars — the exact names render
+    writes into app.yaml. When set, check THOSE specific endpoints (unambiguous even when
+    the workspace holds multiple mas-/ka- endpoints, e.g. a `_fw_v2` sandbox set). When NOT
+    set (ids passed to render as --flags, or env not sourced), fall back to a prefix-
+    existence check and WARN that it cannot confirm which endpoint the App points at.
+    """
+    expected = {"MAS": mas_endpoint, "KA": ka_endpoint}
+    if all(expected.values()):
+        readiness = {role: (name, _endpoint_ready(name, profile)) for role, name in expected.items()}
+        bad = {role: f"{name}={st}" for role, (name, st) in readiness.items() if st != "READY"}
+        if bad:
+            return False, f"App endpoint(s) not READY: {bad}"
+        return True, "App endpoints READY: " + ", ".join(f"{role}={name}" for role, (name, _) in readiness.items())
+    # Fallback (vars not set): prefix existence only — ambiguous, so WARN loudly.
     d = _databricks(["serving-endpoints", "list"], profile)
     eps = d.get("endpoints", []) if isinstance(d, dict) else d
     names = [e.get("name", "") for e in eps]
-    missing = [p for p in expected_prefixes if not any(n.startswith(p) for n in names)]
-    if missing:
-        return False, f"missing endpoints with prefix(es): {missing}; have {names[:5]}…"
-    matched = {p: next(n for n in names if n.startswith(p)) for p in expected_prefixes}
-    return True, f"found {matched}"
+    for prefix in ("mas-", "ka-"):
+        if not any(n.startswith(prefix) for n in names):
+            return False, f"no endpoint with prefix {prefix!r}; have {names[:5]}…"
+    matches = {p: [n for n in names if n.startswith(p)] for p in ("mas-", "ka-")}
+    return True, (f"WARN: mas_endpoint/ka_endpoint bundle vars not set — prefix-existence only, "
+                  f"cannot confirm the App's actual endpoint. matches={matches}")
 
 
-def check_genie_space(profile: str, expected_name_contains: str = "Glucosphere") -> tuple[bool, str]:
+def check_genie_space(profile: str, space_id: str = "", expected_name_contains: str = "Glucosphere") -> tuple[bool, str]:
+    """Verify the App's ACTUAL Genie space exists. Matches the resolved `genie_space_id`
+    when set (unambiguous); else falls back to a display-name substring match and WARNS."""
     d = _databricks_api("GET", "/api/2.0/data-rooms", profile)
     rooms = d.get("data_rooms", [])
+    if space_id:
+        match = next((r for r in rooms if (r.get("space_id") or r.get("id")) == space_id), None)
+        if match is None:
+            return False, (f"App's genie_space_id {space_id!r} not found among data-rooms; "
+                           f"have {[(r.get('display_name',''), r.get('space_id') or r.get('id')) for r in rooms[:5]]}…")
+        return True, f"id={space_id} display_name={match.get('display_name')!r}"
     match = next((r for r in rooms if expected_name_contains.lower() in r.get("display_name", "").lower()), None)
     if match is None:
         return False, f"no Genie space matching '*{expected_name_contains}*'; have {[r.get('display_name','') for r in rooms[:5]]}…"
-    return True, f"display_name={match.get('display_name')!r}, id={match.get('space_id') or match.get('id')!r}"
+    return True, (f"WARN: genie_space_id bundle var not set — name-substring match only. "
+                  f"display_name={match.get('display_name')!r}, id={match.get('space_id') or match.get('id')!r}")
 
 
 def check_firmware_variety(catalog: str, schema: str, warehouse_id: str, profile: str,
@@ -228,7 +268,7 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     return True, f"path={full_path}: HTTP 200, {len(body)} bytes, valid PNG header"
 
 
-def _resolved_vars(target: str, profile: str) -> tuple[str, str, str, str]:
+def _resolved_vars(target: str, profile: str) -> dict[str, str]:
     out = subprocess.check_output(
         ["databricks", "bundle", "validate", "-t", target, "--profile", profile, "-o", "json"],
         text=True, env=_DATABRICKS_ENV,
@@ -236,9 +276,17 @@ def _resolved_vars(target: str, profile: str) -> tuple[str, str, str, str]:
     d = json.loads(out)
     v = d.get("variables", {})
     g = lambda k: (v.get(k, {}) or {}).get("value", "")
-    # app_name + existing_warehouse_id resolved too so `smoke_test --target dais` works
-    # without extra flags (dais reuses an existing warehouse + a non-default app name).
-    return g("catalog"), g("schema"), g("app_name"), g("existing_warehouse_id")
+    # app_name + existing_warehouse_id resolved so `smoke_test --target dais` works without
+    # extra flags (dais reuses an existing warehouse + a non-default app name). mas/ka/genie
+    # ids resolved so checks 5+6 assert the App's ACTUAL endpoints/space (what render writes
+    # into app.yaml), not a fuzzy prefix/name match. Each is "" when the target supplies it to
+    # render as a --flag instead of BUNDLE_VAR_* (or isn't sourced) — checks 5/6 then fall back.
+    return {
+        "catalog": g("catalog"), "schema": g("schema"), "app_name": g("app_name"),
+        "existing_warehouse_id": g("existing_warehouse_id"),
+        "mas_endpoint": g("mas_endpoint"), "ka_endpoint": g("ka_endpoint"),
+        "genie_space_id": g("genie_space_id"),
+    }
 
 
 def main() -> int:
@@ -258,12 +306,13 @@ def main() -> int:
         print("ERROR: --profile required (or set DATABRICKS_CONFIG_PROFILE)", file=sys.stderr)
         return 2
 
-    # Resolve bundle vars once (catalog/schema/app_name/existing_warehouse_id); explicit flags win.
-    r_cat, r_sch, r_app, r_wh = _resolved_vars(args.target, args.profile)
-    args.catalog = args.catalog or r_cat
-    args.schema = args.schema or r_sch
-    args.app_name = args.app_name or r_app or "glucosphere-app"
-    args.warehouse_id = args.warehouse_id or r_wh or None
+    # Resolve bundle vars once (catalog/schema/app_name/existing_warehouse_id + mas/ka/genie
+    # ids for checks 5/6); explicit flags win.
+    rv = _resolved_vars(args.target, args.profile)
+    args.catalog = args.catalog or rv["catalog"]
+    args.schema = args.schema or rv["schema"]
+    args.app_name = args.app_name or rv["app_name"] or "glucosphere-app"
+    args.warehouse_id = args.warehouse_id or rv["existing_warehouse_id"] or None
 
     print(f"Smoke test: target={args.target} catalog={args.catalog} schema={args.schema}")
     print(f"           profile={args.profile} app={args.app_name} "
@@ -296,8 +345,8 @@ def main() -> int:
         print("  [SKIP] 4. Gold table data: no warehouse_id (check 3 must pass first)")
         fails += 1
 
-    run("5. Serving endpoints",     lambda: check_serving_endpoints(args.profile))
-    run("6. Genie space",           lambda: check_genie_space(args.profile))
+    run("5. Serving endpoints",     lambda: check_serving_endpoints(args.profile, rv["mas_endpoint"], rv["ka_endpoint"]))
+    run("6. Genie space",           lambda: check_genie_space(args.profile, rv["genie_space_id"]))
 
     if wh_id:
         run("7. Firmware variety",  lambda: check_firmware_variety(args.catalog, args.schema, wh_id, args.profile))
