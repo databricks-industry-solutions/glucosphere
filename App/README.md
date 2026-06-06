@@ -188,6 +188,14 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 - **Pattern Alerts**: Emerging anomalies across device cohorts
 - **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
+### Firmware Lifecycle
+- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~3-hour fault isn't diluted by a whole-day average
+- **Calibration drift panel**: per-firmware over-/under-read direction and magnitude, with a deep-link to the affected cohort on Population Risk
+
+### Population Risk
+- **Cohort exposure → fault classification**: each cohort's device-reported %hypo/%hyper bars sit above an aligned 3×3 confusion matrix (Under-read · Baseline-control · Over-read), normalizable by share-of-all (default) or per-true-band — separating what the device *reported* from what was *truly* happening during the fault window
+- **Affected-patient roster**: the worst-N firmware-recall-cohort patients ranked by clinical burden (filterable by region / device model), each deep-linking to the Diabetes Coach
+
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)
 - Deeper per-device Clinical Analysis (fast FM + fleet-stats enrichment by default)

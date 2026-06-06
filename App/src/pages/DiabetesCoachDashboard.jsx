@@ -349,7 +349,7 @@ export default function DiabetesCoachDashboard() {
                 value={searchText}
                 onChange={(e) => handleSearch(e.target.value)}
                 onFocus={() => setSearchOpen(true)}
-                placeholder="Search patient ID (e.g. PSEUDO_0000530) — simulated cohort, no real PHI"
+                placeholder="Search patient ID (e.g. PSEUDO_0000355) — simulated cohort, no real PHI"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
               {searchOpen && patientOptions.length > 0 && (

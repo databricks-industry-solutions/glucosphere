@@ -68,6 +68,32 @@ variables:
       `_from_table_e2e` / `_from_source_e2e`). Interpolated in `base_parameters`
       of the tasks that pass KA_NAME/MAS_NAME/GENIE_NAME/ENDPOINT_15M/ENDPOINT_30M downstream.
     default: ""
+  existing_warehouse_id:
+    description: |
+      Reuse an EXISTING SQL warehouse instead of creating a bundle-managed one.
+      Default "" → the target creates its own `glucosphere-warehouse-<target>` (via
+      the `&glucosphere_warehouse` anchor on the create-own targets below). Set to an
+      existing warehouse id (in `.env.bundle.<target>` → BUNDLE_VAR_existing_warehouse_id)
+      for workspaces where the deploy identity lacks SQL-warehouse-create entitlement
+      (e.g. a shared booth that reuses a pre-provisioned warehouse). When set,
+      `render_app_yaml.py --warehouse-id` and `09_grant_app_permissions.py` use this id
+      directly instead of discovering the bundle warehouse by name, and the target omits
+      the `sql_warehouses` resource so nothing is created.
+    default: ""
+  mas_endpoint:
+    description: |
+      App-assistant agent-endpoint coords. Normally passed to render_app_yaml.py as
+      --mas-endpoint / --ka-endpoint / --genie-space-id flags. Set these in
+      `.env.bundle.<target>` (BUNDLE_VAR_mas_endpoint / _ka_endpoint / _genie_space_id)
+      for a target that renders from its env file alone (e.g. a reuse/booth target) so
+      render auto-fills app.yaml without flags. Empty → render leaves app.yaml unchanged
+      for that field. Names are Agent-Bricks hex (ka-<hex>-endpoint / mas-<hex>-endpoint);
+      genie_space_id is a Genie space id. Update if the agents are ever recreated.
+    default: ""
+  ka_endpoint:
+    default: ""
+  genie_space_id:
+    default: ""
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
@@ -101,6 +127,36 @@ targets:
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
   gsphere:
+    mode: development
+    resources:
+      # Create-own targets get their own bundle-managed warehouse. Defined ONCE here
+      # with a YAML anchor; the harness targets below reuse this exact spec via
+      # `*glucosphere_warehouse` (DRY). `dais` omits this block and reuses an existing
+      # warehouse (BUNDLE_VAR_existing_warehouse_id) since the booth identity can't
+      # create warehouses. Discovered by name `glucosphere-warehouse-<target>` by
+      # render_app_yaml.py + 09_grant_app_permissions.py.
+      sql_warehouses:
+        glucosphere_warehouse: &glucosphere_warehouse
+          name: glucosphere-warehouse-${bundle.target}
+          cluster_size: "2X-Small"
+          enable_serverless_compute: true
+          warehouse_type: PRO
+          # auto_stop_mins=30 keeps the warehouse warm during demo sessions — the
+          # landing page hits it on every page load; cold-start adds ~5-15 sec.
+          auto_stop_mins: 30
+          min_num_clusters: 1
+          max_num_clusters: 1
+
+  # DAIS 2026 HLS booth target. All coords (workspace host via profile, catalog,
+  # schema, baseline_source, app_name, warehouse) live in its gitignored
+  # `.env.bundle.dais` — same env-driven SSOT as every other target, so nothing
+  # workspace-specific is committed here. Two booth specifics worth noting: the
+  # deploy identity can't create SQL warehouses (so this target reuses an existing
+  # one via BUNDLE_VAR_existing_warehouse_id — see the variable above — and omits
+  # the `sql_warehouses` block), and audience UC grants need an account-level
+  # principal / SP because a workspace-local `users` group can't hold UC grants
+  # (see scripts/grant_viewers.py).
+  dais:
     mode: development
 
   # ─── Adding a new live target ─────────────────────────────────────────
@@ -167,6 +223,8 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
       # database_instances Lakebase override deferred — see resources.database_instances
       # block below (commented out until app code wires Lakebase in, issue #3).
       # database_instances:
@@ -200,6 +258,8 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
       # database_instances Lakebase override deferred — see issue #3.
       # database_instances:
       #   glucosphere_oltp:
@@ -225,6 +285,8 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
       # database_instances Lakebase override deferred — see issue #3.
       # database_instances:
       #   glucosphere_oltp:
@@ -248,6 +310,8 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
 
 resources:
 
@@ -573,9 +637,10 @@ resources:
           description: >
             Grant the deployed app's service principal access to the catalog,
             all serving endpoints, the SQL warehouse, and the Genie space.
-            WAREHOUSE_ID is left empty so the notebook discovers the
-            bundle-managed warehouse by deterministic name (see
-            sql_warehouses.glucosphere_warehouse resource below).
+            WAREHOUSE_ID = ${var.existing_warehouse_id}: empty on create-own
+            targets so the notebook discovers the bundle-managed warehouse by
+            deterministic name; set on reuse targets (e.g. dais) so it grants
+            on the existing warehouse directly.
           max_retries: 0
           depends_on:
             - task_key: check_post_endpoint_grants
@@ -585,10 +650,11 @@ resources:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
               APP_NAME:          ${var.app_name}
-              # WAREHOUSE_ID empty → 09 discovers bundle-managed warehouse by
-              # name pattern `glucosphere-warehouse-${bundle.target}`.
-              # BUNDLE_TARGET passed in so 09 knows which target's warehouse to find.
-              WAREHOUSE_ID:      ""
+              # WAREHOUSE_ID = existing_warehouse_id: empty on create-own targets → 09
+              # discovers the bundle-managed warehouse by name `glucosphere-warehouse-${bundle.target}`;
+              # set on reuse targets (e.g. dais) → 09 grants the app SP CAN_USE on that id directly.
+              # BUNDLE_TARGET drives the by-name discovery in the create-own (empty) case.
+              WAREHOUSE_ID:      ${var.existing_warehouse_id}
               BUNDLE_TARGET:     ${bundle.target}
               # KA/MAS endpoint names and Genie space ID are auto-discovered when
               # left empty. The *_NAME params anchor the discovery to the exact
@@ -670,40 +736,23 @@ resources:
   #     # client is needed for debug / migrations.
 
   # ---------------------------------------------------------------------------
-  # SQL Warehouse: bundle-managed (powers App's /api/sql/query + comparison job)
+  # SQL Warehouse — defined PER-TARGET (no longer a top-level resource)
   # ---------------------------------------------------------------------------
-  # Bundle creates this warehouse on first deploy. Name pattern is
-  # `glucosphere-warehouse-${bundle.target}` (with `[dev USER]` prefix when a
-  # target uses `mode: development`).
+  # Top-level resources deploy to EVERY target, including `dais`, whose booth
+  # identity can't create SQL warehouses. So the bundle-managed warehouse now
+  # lives on each create-own target: defined ONCE with the `&glucosphere_warehouse`
+  # anchor on the `gsphere` target (top of `targets:`), reused by the harness
+  # targets via `*glucosphere_warehouse`. `dais` omits it and reuses an existing
+  # warehouse via BUNDLE_VAR_existing_warehouse_id (see the `existing_warehouse_id`
+  # variable). Unchanged spec: Serverless PRO 2X-Small, name
+  # `glucosphere-warehouse-<target>`.
   #
-  # Configured as a Serverless SQL Warehouse: `warehouse_type: PRO` +
-  # `enable_serverless_compute: true` is the canonical serverless combination
-  # (PRO is the modern warehouse tier; CLASSIC is the legacy non-serverless
-  # tier). `cluster_size: "2X-Small"` is the smallest serverless size —
-  # escalate only on demonstrated workload need.
-  #
-  # Discovery flow:
-  #   - `09_grant_app_permissions.py` discovers this warehouse by name suffix
-  #     and grants CAN_USE to the App SP.
-  #   - `scripts/render_app_yaml.py` discovers by same name + writes
-  #     `WAREHOUSE_ID` into App/databricks/app.yaml's env block.
-  #   - App's `/api/sql/query` uses `WAREHOUSE_ID` env var with the direct
-  #     Statement Execution API to route SQL to this warehouse.
-  sql_warehouses:
-    glucosphere_warehouse:
-      name: glucosphere-warehouse-${bundle.target}
-      cluster_size: "2X-Small"
-      enable_serverless_compute: true
-      warehouse_type: PRO
-      # auto_stop_mins=30 keeps the warehouse warm during demo sessions —
-      # the landing page (IncidentImpactChart + GlucoseAbsoluteChart +
-      # GlucoseTimelineChart) hits the warehouse on every page load, and
-      # cold-start adds ~5-15 sec on top of query time when the warehouse
-      # has stopped. 30 min strikes a balance: warm enough for typical
-      # demo / review sessions without leaving compute idle overnight.
-      auto_stop_mins: 30
-      min_num_clusters: 1
-      max_num_clusters: 1
+  # Discovery flow (create-own targets):
+  #   - 09_grant_app_permissions.py discovers by name suffix → grants CAN_USE to app SP
+  #     (or, when existing_warehouse_id is set, grants on that id directly).
+  #   - render_app_yaml.py discovers by name (or takes --warehouse-id for reuse) →
+  #     writes WAREHOUSE_ID into App/databricks/app.yaml.
+  #   - App's /api/sql/query uses WAREHOUSE_ID via the Statement Execution API.
 
   # ---------------------------------------------------------------------------
   # App: Glucosphere App (front-end branding: "GlucoStream Intelligence")

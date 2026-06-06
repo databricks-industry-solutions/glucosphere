@@ -2,6 +2,12 @@
 # MAGIC %md
 # MAGIC # Glucosphere: Grant App Service Principal Permissions
 # MAGIC
+# MAGIC > ⛔ **Do not run standalone.** This notebook is invoked by the `glucosphere` full_setup job
+# MAGIC > DAG, which injects per-target `CATALOG_NAME` / `SCHEMA_NAME` / `BUNDLE_TARGET` / `APP_NAME` /
+# MAGIC > `KA_NAME` / `MAS_NAME` / `GENIE_NAME`. The widget defaults are intentionally **blank** so a
+# MAGIC > bare manual run aborts (see the guard cell) instead of granting the wrong app/endpoints in
+# MAGIC > the wrong catalog. To run by hand, pass all required params for your target.
+# MAGIC
 # MAGIC Programmatically:
 # MAGIC 1. Look up the Glucosphere App's service principal from the Apps API
 # MAGIC 2. Grant `USE CATALOG`, `USE SCHEMA`, `SELECT` on `{catalog}.{schema}` via SQL
@@ -14,22 +20,26 @@
 # COMMAND ----------
 
 # DBTITLE 1, Parameters
-dbutils.widgets.text("CATALOG_NAME",       "",                            "Catalog (required — set by the bundle job)")
-dbutils.widgets.text("SCHEMA_NAME",        "glucosphere",         "Schema")
-dbutils.widgets.text("APP_NAME",           "glucosphere-app",            "App Name")
-dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",                           "MAS Endpoint Name (empty → looked up by MAS_NAME tile)")
-dbutils.widgets.text("KA_ENDPOINT_NAME",   "",                           "KA Endpoint Name (empty → looked up by KA_NAME tile)")
-dbutils.widgets.text("GENIE_SPACE_ID",     "",                           "Genie Space ID (empty → looked up by GENIE_NAME)")
-dbutils.widgets.text("WAREHOUSE_ID",       "",                           "SQL Warehouse ID (empty → discovered by BUNDLE_TARGET)")
-dbutils.widgets.text("BUNDLE_TARGET",      "",                           "Bundle target name (used to discover warehouse if WAREHOUSE_ID empty)")
-# Canonical KA/MAS/Genie names — match notebook 08's widget defaults exactly.
-# Discovery in this notebook uses these names for *exact-equality* matches
-# against the tile catalog / Genie space list, avoiding the substring-match
-# brittleness where unrelated workspace endpoints (e.g. another team's
-# `ka-*-endpoint`) could be picked up by accident.
-dbutils.widgets.text("KA_NAME",            "Glucosphere_KA",            "KA tile name (anchors auto-discovery)")
-dbutils.widgets.text("MAS_NAME",           "Glucosphere_Supervisor",    "MAS tile name (anchors auto-discovery)")
-dbutils.widgets.text("GENIE_NAME",         "Glucosphere_Intelligence",  "Genie space display name (anchors auto-discovery)")
+# Per-target params: defaults are intentionally BLANK so a standalone run (which would otherwise
+# fall back to prod-flavored values and grant the WRONG app/endpoints in the WRONG catalog) trips
+# the guard below. The full_setup job injects all of these via base_parameters, which override the
+# blank widget defaults — so DAG runs are unaffected. (Was: APP_NAME="glucosphere-app",
+# KA_NAME="Glucosphere_KA", etc. — moved to required-from-DAG to close the standalone-run footgun.)
+dbutils.widgets.text("CATALOG_NAME",       "",  "Catalog (required — set by the bundle job)")
+dbutils.widgets.text("SCHEMA_NAME",        "",  "Schema (required — set by the bundle job)")
+dbutils.widgets.text("APP_NAME",           "",  "App Name (required — set by the bundle job)")
+dbutils.widgets.text("MAS_ENDPOINT_NAME",  "",  "MAS Endpoint Name (empty → looked up by MAS_NAME tile)")
+dbutils.widgets.text("KA_ENDPOINT_NAME",   "",  "KA Endpoint Name (empty → looked up by KA_NAME tile)")
+dbutils.widgets.text("GENIE_SPACE_ID",     "",  "Genie Space ID (empty → looked up by GENIE_NAME)")
+dbutils.widgets.text("WAREHOUSE_ID",       "",  "SQL Warehouse ID (empty → discovered by BUNDLE_TARGET)")
+dbutils.widgets.text("BUNDLE_TARGET",      "",  "Bundle target (required — set by the bundle job; also discovers warehouse)")
+# Canonical KA/MAS/Genie names — injected per-target by the job as "Glucosphere_*${harness_suffix}".
+# Discovery uses these for *exact-equality* matches against the tile catalog / Genie space list,
+# avoiding substring-match brittleness (e.g. another team's `ka-*-endpoint`). Defaults BLANK +
+# required (see guard) so a bare run can't silently use the unsuffixed prod anchors.
+dbutils.widgets.text("KA_NAME",            "",  "KA tile name (required — set by the bundle job)")
+dbutils.widgets.text("MAS_NAME",           "",  "MAS tile name (required — set by the bundle job)")
+dbutils.widgets.text("GENIE_NAME",         "",  "Genie space display name (required — set by the bundle job)")
 
 CATALOG_NAME      = dbutils.widgets.get("CATALOG_NAME")
 SCHEMA_NAME       = dbutils.widgets.get("SCHEMA_NAME")
@@ -49,6 +59,24 @@ print(f"MAS endpoint: {MAS_ENDPOINT_NAME}")
 print(f"KA endpoint:  {KA_ENDPOINT_NAME}")
 print(f"Genie space:  {GENIE_SPACE_ID}")
 print(f"Warehouse:    {WAREHOUSE_ID}")
+
+# GUARD — refuse standalone runs. This notebook grants the App SP access to PER-TARGET resources
+# and is meant to run ONLY from the glucosphere full_setup job DAG, which injects the values below
+# for the target being deployed. Run by hand, the widget defaults are blank (see above), so abort
+# loudly here rather than fall back to wrong values and grant the wrong app/endpoints in the wrong
+# catalog. DAG base_parameters override the blank defaults, so job runs are unaffected. To run
+# manually, pass all required params for your target.
+_required = {
+    "CATALOG_NAME": CATALOG_NAME, "SCHEMA_NAME": SCHEMA_NAME, "BUNDLE_TARGET": BUNDLE_TARGET,
+    "APP_NAME": APP_NAME, "KA_NAME": KA_NAME, "MAS_NAME": MAS_NAME, "GENIE_NAME": GENIE_NAME,
+}
+_missing = [k for k, v in _required.items() if not (v or "").strip()]
+assert not _missing, (
+    f"Refusing to run: {_missing} not set. 09_grant_app_permissions runs from the glucosphere "
+    f"full_setup job, which injects per-target values. Do NOT run it standalone — the widget "
+    f"defaults are intentionally blank so a bare run aborts here instead of granting the wrong "
+    f"resources. To run by hand, pass all required params for your target."
+)
 
 # COMMAND ----------
 
@@ -88,10 +116,17 @@ if status != 200:
 sp_client_id = app_data.get("service_principal_client_id") or app_data.get("id")
 sp_name      = app_data.get("service_principal_name", str(sp_client_id))
 
-# Unity Catalog GRANT requires the SP's applicationId (UUID), not the display name.
-# The display name (e.g. "app-3jrqvp glucosphere-app") is not a valid UC principal.
-status_scim, scim_data = _api("GET", f"/api/2.0/preview/scim/v2/ServicePrincipals/{app_data.get('service_principal_id')}")
-sp_app_id = scim_data.get("applicationId") or sp_client_id
+# Unity Catalog GRANT requires the SP's applicationId (UUID), not the display name
+# (e.g. "app-3jrqvp glucosphere-app" is not a valid UC principal). The app object's
+# `service_principal_client_id` IS that applicationId UUID, so use it directly.
+#
+# Prior approach (commented out, kept for reference — NOT deleted): a SCIM
+# ServicePrincipals lookup on `service_principal_id`. It was redundant (the client_id
+# above already is the applicationId) AND crashed with JSONDecodeError when
+# `service_principal_id` is absent from the app object, as on the DAIS booth workspace:
+#   status_scim, scim_data = _api("GET", f"/api/2.0/preview/scim/v2/ServicePrincipals/{app_data.get('service_principal_id')}")
+#   sp_app_id = scim_data.get("applicationId") or sp_client_id
+sp_app_id = sp_client_id
 
 print(f"App SP client ID:    {sp_client_id}")
 print(f"App SP display name: {sp_name}")

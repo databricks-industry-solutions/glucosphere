@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import ChartTooltip from './ChartTooltip';
+import React from 'react';
 
 // Multi-line chart: device calibration error (MAE = |observed − true| glucose)
 // per firmware version over time. Faulty firmwares spike during their incident
@@ -13,7 +12,6 @@ const FAULT_COLORS = ['#f43f5e', '#fb923c'];                       // culprits: 
 const CLEAN_COLORS = ['#22c55e', '#22d3ee', '#a78bfa', '#ec4899']; // clean: green/cyan/…
 
 export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
-  const [hover, setHover] = useState(null);
   if (!data.length) {
     return <div className="flex items-center justify-center h-64 text-slate-500 text-sm">No firmware data</div>;
   }
@@ -82,12 +80,6 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
               <g key={i}>
                 <circle cx={x(p.day)} cy={y(p.v)} r="3.5" fill={color} />
                 <text x={x(p.day)} y={y(p.v) - 7} textAnchor="middle" fontSize="8" fontFamily="monospace" fill={color}>{p.v}</text>
-                {/* invisible hover hit-target (bigger than the dot for easy targeting) */}
-                <circle
-                  cx={x(p.day)} cy={y(p.v)} r="8" fill="transparent" style={{ cursor: 'pointer' }}
-                  onMouseEnter={() => setHover({ ax: x(p.day), ay: y(p.v), color, title: `FW ${ver}`, rows: [`${fmtDay(p.day)} · MAE ${p.v} mg/dL`] })}
-                  onMouseLeave={() => setHover(null)}
-                />
               </g>
             ))}
           </g>
@@ -111,8 +103,6 @@ export default function FirmwareLifecycleChart({ data = [], faultyFws = [] }) {
           );
         });
       })()}
-
-      {hover && <ChartTooltip {...hover} W={W} H={H} />}
     </svg>
   );
 }

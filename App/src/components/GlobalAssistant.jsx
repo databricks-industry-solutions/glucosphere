@@ -7,7 +7,8 @@ import { getEngine, setEngine } from '../api/assistEngine';
 
 // Default assistant mode for the current route: device-domain pages open to the
 // Device-support (MAS) agent, everything else to CGM-data (Genie). A manual
-// toggle overrides this and sticks across navigation (see manualMode below).
+// toggle overrides this WITHIN a page; navigating resets to the new page's default
+// so the panel always opens to where you are (see manualMode + reset effect below).
 const routeDefaultMode = (pathname) =>
   (pathname.startsWith('/device-support') || pathname.startsWith('/firmware-lifecycle') || pathname.startsWith('/population-risk'))
     ? 'mas' : 'genie';
@@ -31,7 +32,9 @@ const MODES = {
     label: 'Device support',
     icon: Wrench,
     greeting: "👋 I'm the Device Troubleshooting Assistant (powered by Databricks AI agents). Ask about sensor drift, calibration errors, firmware, or troubleshooting steps.",
-    suggestions: ['Sensor drift in cold temperatures', 'Calibration error troubleshooting', 'Adhesive failure solutions', 'Battery drain issues'],
+    // All shown at once in the open assistant — alert-scenario prompts + general
+    // device-troubleshooting topics.
+    suggestions: ["What does a CGM 'sensor error' / 'wait 10 minutes' alert mean?", 'When should a sensor be replaced vs left to recover?', 'Sensor erroring for 3–4 hours — what are the options?', 'Should a patient finger-prick during a sensor error if symptomatic?', 'Sensor drift in cold temperatures', 'Calibration error troubleshooting', 'Adhesive failure solutions', 'Battery drain issues'],
   },
   genie: {
     label: 'CGM data (Genie)',
@@ -129,7 +132,8 @@ function GenieResult({ payload, onFollowUp }) {
 export default function GlobalAssistant() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  // null = follow the route default; set once the user picks a mode (sticky).
+  // null = follow the route default; set when the user picks a mode. Reset on
+  // navigation (effect below) so each page opens to its own default.
   const [manualMode, setManualMode] = useState(null);
   const mode = manualMode ?? routeDefaultMode(location.pathname);
   // Engine for the Device-support chat: 'direct' (fast router) or 'mas' (supervisor).
@@ -153,9 +157,35 @@ export default function GlobalAssistant() {
   const messages = threads[mode];
   const ModeIcon = MODES[mode].icon;
 
+  // Clear the manual override on navigation so the assistant opens to the new page's
+  // natural default (Genie on data/clinical pages, MAS on device pages) — a manual tab
+  // pick only sticks while you stay on that page. The tour's auto-open steps are
+  // unaffected: each dispatches the mode that already equals its destination's default.
+  useEffect(() => { setManualMode(null); }, [location.pathname]);
+
   useEffect(() => {
     if (open && messages.length > 1) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [threads, open, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tour automation: a guided-tour step can open/close the assistant (and set its mode) via
+  // a window event, so the engine toggle / Genie tab exist for the spotlight without a manual
+  // click. Same pattern can drive other view toggles later.
+  useEffect(() => {
+    const onTour = (e) => {
+      const { open: o = true, mode: m } = e.detail || {};
+      setOpen(!!o);
+      if (o && m) setManualMode(m);
+    };
+    window.addEventListener('glucosphere:assistant', onTour);
+    return () => window.removeEventListener('glucosphere:assistant', onTour);
+  }, []);
+
+  // Broadcast the panel's open/closed state so the guided tour can reposition its Resume
+  // button (clear of the open slide-over) regardless of whether the panel was opened by the
+  // tour or by the user clicking the FAB.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('glucosphere:assistant-state', { detail: { open } }));
+  }, [open]);
 
   const pushMsg = (m, msg) => setThreads((t) => ({ ...t, [m]: [...t[m], msg] }));
 
@@ -264,6 +294,7 @@ export default function GlobalAssistant() {
               return (
                 <button
                   key={key}
+                  data-tour={key === 'genie' ? 'assistant-genie-tab' : undefined}
                   onClick={() => setManualMode(key)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors ${
                     mode === key ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -276,6 +307,7 @@ export default function GlobalAssistant() {
             {/* Engine switch — only meaningful for the Device-support agent */}
             {mode === 'mas' && (
               <button
+                data-tour="assistant-engine"
                 onClick={toggleEngine}
                 title={engine === 'direct' ? 'Fast router (Genie/KA/FM) — click for Multi-Agent Supervisor' : 'Multi-Agent Supervisor — click for fast router'}
                 className={`ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-mono border transition-colors ${
