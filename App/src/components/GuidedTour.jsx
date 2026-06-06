@@ -148,9 +148,12 @@ export default function GuidedTour() {
       // nav rail is on the left, so center is the only corner clear of both (the whole point
       // of pausing is to click the FAB / open the assistant — the pill must not sit on top of it).
       // Prominent (solid amber border + glow) so it doesn't blend into the dark page — matches
-      // the in-card "Try it yourself" button's amber language.
+      // the in-card "Try it yourself" button's amber language. The inline backgroundColor forces a
+      // fully-opaque slate-900: the paused state has no dim backdrop, so a translucent bg (Tailwind
+      // bg utilities carry --tw-bg-opacity) would let the live page bleed through the button.
       <button onClick={() => setPaused(false)}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 px-6 py-3 bg-slate-900 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:bg-amber-500/15">
+        style={{ backgroundColor: '#0f172a' }}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125">
         ▶ Resume tour <span className="text-[11px] font-mono font-normal text-slate-400">Step {i + 1}/{steps.length}</span>
       </button>
     );
