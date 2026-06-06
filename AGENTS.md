@@ -66,6 +66,13 @@ principal grants. For sandbox deploys: render `app.yaml` for the target *before*
 production defaults in git). New App service principals need UC + warehouse + endpoint
 grants (`scripts/grant_app_sp.py`).
 
+Keep **workspace-specific coords out of committed files**: catalog / schema / profile /
+app name / warehouse id belong only in the gitignored `.env.bundle.<target>` (the single
+source of truth), never hardcoded in `databricks.yml` target stanzas **or their comments**,
+nor in committed `app.yaml`. The committed `databricks.yml` and `app.yaml` carry generic
+placeholders so the public repo never leaks a real workspace — describe a target by the
+*mechanism* (env-driven, reuse-vs-create-own) in comments, not by its literal values.
+
 ## 7. Clinical honesty
 
 Report **rates, not raw counts** (a model with more patients isn't "worse" for having more
