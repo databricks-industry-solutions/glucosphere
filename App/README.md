@@ -172,6 +172,8 @@ databricks bundle deploy -t <target>           # pass 2 — picks up the rendere
 databricks bundle run glucosphere_app -t <target>
 ```
 
+> **Re-deploying an app/frontend change?** `render_app_yaml.py` must run **before every deploy** — the committed `app.yaml` is a placeholder template that's reverted after each deploy (so the repo never leaks a workspace). It auto-discovers warehouse/job/pipeline by name and reads `catalog`/`schema` (+ the KA/MAS/Genie ids if baked into `.env.bundle.<target>` as `BUNDLE_VAR_mas_endpoint`/`ka_endpoint`/`genie_space_id`) — otherwise pass those three as `--mas-endpoint`/`--ka-endpoint`/`--genie-space-id`. See [`DEPLOY.md`](../DEPLOY.md) → *Re-deploying after a code or frontend change*.
+
 This builds the production frontend, then bundle-deploys the Flask backend + static bundle as the Databricks App. The deployed URL derives from the App name (`${var.app_name}`, default `glucosphere-app`): `https://glucosphere-app-{workspace-id}.databricksapps.com`.
 
 ## Key Features
