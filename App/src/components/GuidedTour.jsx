@@ -13,6 +13,7 @@ export default function GuidedTour() {
   const [cardStyle, setCardStyle] = useState(null);
   const [paused, setPaused] = useState(false); // interactive variant: overlay steps aside so the page is clickable; Resume returns to the same step
   const [assistantOpen, setAssistantOpen] = useState(false); // mirrors the assistant panel's real open state (broadcast by GlobalAssistant) → reposition Resume clear of the open slide-over
+  const [justResumed, setJustResumed] = useState(false); // true right after Resume → highlight Next so the eye knows to continue; cleared on Next/Back/pause/close
   const cardRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -20,7 +21,7 @@ export default function GuidedTour() {
   useEffect(() => {
     // Start the tour. A launcher may preset the variant (e.g. {detail:{variant:'full'}})
     // — used for A/B; with no variant we show the Quick/Full chooser first.
-    const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setPaused(false); setActive(true); };
+    const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setPaused(false); setJustResumed(false); setActive(true); };
     window.addEventListener('glucosphere:start-tour', start);
     return () => window.removeEventListener('glucosphere:start-tour', start);
   }, []);
@@ -124,7 +125,7 @@ export default function GuidedTour() {
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
 
-  const close = useCallback(() => { setActive(false); setVariant(null); setPaused(false); setRect(null); setCardStyle(null); }, []);
+  const close = useCallback(() => { setActive(false); setVariant(null); setPaused(false); setJustResumed(false); setRect(null); setCardStyle(null); }, []);
   if (!active) return null;
 
   // Quick/Full chooser (A/B) — shown when the tour starts without a preset variant.
@@ -172,7 +173,7 @@ export default function GuidedTour() {
       // (solid amber border + glow) so it doesn't blend into the dark page — matches the in-card
       // "Try it yourself" button. Inline backgroundColor forces a fully-opaque slate-900: the paused
       // state has no dim backdrop, so a translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
-      <button onClick={() => setPaused(false)}
+      <button onClick={() => { setPaused(false); setJustResumed(true); }}
         style={{ backgroundColor: '#0f172a' }}
         className={`fixed bottom-6 ${assistantOpen ? 'right-[456px]' : 'right-32'} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
         ▶ Resume tour <span className="text-[11px] font-mono font-normal text-slate-400">Step {i + 1}/{steps.length}</span>
@@ -196,7 +197,7 @@ export default function GuidedTour() {
         {/* In the Interactive variant EVERY step is pausable — its defining feature. The per-step
             `interactive` flag in steps.js now only drives the "▶ Try it:" copy cue, not this button. */}
         {variant === 'interactive' && (
-          <button onClick={() => setPaused(true)}
+          <button onClick={() => { setPaused(true); setJustResumed(false); }}
             className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
             ⏸ {step.openAssistant ? "Explore — I'll wait here" : "Try it yourself — I'll wait here"}
           </button>
@@ -204,9 +205,10 @@ export default function GuidedTour() {
         <div className="flex justify-between items-center mt-4">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
-            {i > 0 && <button onClick={() => setI(i - 1)} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}
+            {i > 0 && <button onClick={() => { setI(i - 1); setJustResumed(false); }} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}
             {i < steps.length - 1
-              ? <button onClick={() => setI(i + 1)} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Next</button>
+              ? <button onClick={() => { setI(i + 1); setJustResumed(false); }}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${justResumed ? 'bg-cyan-500 text-slate-950 font-semibold border border-cyan-400 ring-2 ring-cyan-400/50' : 'text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/10'}`}>Next</button>
               : <button onClick={() => { close(); navigate('/'); }} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
           </div>
         </div>
