@@ -116,11 +116,13 @@ export default function GuidedTour() {
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
           <div className="flex flex-col gap-2 mt-4">
-            <button onClick={() => { setVariant('quick'); setI(0); }}
+            {/* Quick overview commented out for now (booth choice = Full + Interactive). TOUR_STEPS
+                still backs the default fallback; un-comment this button to restore the 5-step path. */}
+            {/* <button onClick={() => { setVariant('quick'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Quick overview
               <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess</span>
-            </button>
+            </button> */}
             <button onClick={() => { setVariant('full'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Full walkthrough
