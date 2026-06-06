@@ -31,7 +31,7 @@ const MODES = {
     label: 'Device support',
     icon: Wrench,
     greeting: "👋 I'm the Device Troubleshooting Assistant (powered by Databricks AI agents). Ask about sensor drift, calibration errors, firmware, or troubleshooting steps.",
-    suggestions: ['Sensor drift in cold temperatures', 'Calibration error troubleshooting', 'Adhesive failure solutions', 'Battery drain issues'],
+    suggestions: ["What does a CGM 'sensor error' / 'wait 10 minutes' alert mean?", 'When should a sensor be replaced vs left to recover?', 'Sensor erroring for 3–4 hours — what are the options?', 'Should a patient finger-prick during a sensor error if symptomatic?'],
   },
   genie: {
     label: 'CGM data (Genie)',
