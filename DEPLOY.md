@@ -331,7 +331,10 @@ uv run python scripts/render_app_yaml.py \
 databricks bundle deploy -t <target> --profile <profile>
 ```
 
-On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the existing KA/MAS/Genie by name, so the IDs in `app.yaml` stay valid — Step 8 is only required on the first deploy to a fresh workspace.
+On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the existing KA/MAS/Genie by name, so **the IDs themselves don't change**. Whether you must re-run this render step on a later deploy depends on how you treat `app.yaml`:
+
+- **If you commit the rendered `app.yaml`** — the IDs persist in it, so later deploys ship them as-is and Step 8 is only needed on the first deploy.
+- **If you follow the repo's hygiene** (recommended) — the committed `app.yaml` ships generic placeholders and is reverted after each deploy ([AGENTS.md §6](AGENTS.md), so the public repo never leaks a workspace). Under that convention `app.yaml` is blank again every time, so you **must re-render before every deploy**. Capture the IDs once into `.env.bundle.<target>` (`BUNDLE_VAR_mas_endpoint` / `BUNDLE_VAR_ka_endpoint` / `BUNDLE_VAR_genie_space_id`) so the re-render is flag-free — see [Re-deploying after a code or frontend change](#re-deploying-after-a-code-or-frontend-change-no-new-setup-job-run).
 
 ---
 
@@ -347,6 +350,27 @@ databricks bundle run glucosphere_app -t <target> --profile <profile>
 This single command does both `apps deploy` + `apps start` atomically and matches the bundle-managed pattern used by every other step here. Expected output ends with `App started successfully` and the App URL.
 
 Or manage through the UI: **Apps → glucosphere-app → Deploy**. (The UI shows "App is unavailable" until you either run the command above OR click Deploy in the UI.)
+
+### Re-deploying after a code or frontend change (no new setup-job run)
+
+Shipping app-only changes (React build, `app.py`, `app.yaml`) doesn't re-run the setup job, so the KA/MAS/Genie/warehouse already exist. But `git checkout App/databricks/app.yaml` (the deploy hygiene in [AGENTS.md §6](AGENTS.md)) restores the committed **placeholder** template — `CATALOG_NAME`, `ENDPOINT_NAME`, `KA_ENDPOINT_NAME`, `GENIE_SPACE_ID`, `WAREHOUSE_ID` all blank — so you **must re-render before every deploy**, not just the first.
+
+`render_app_yaml.py` refills three ways:
+
+- **auto-discovered by deterministic name** — warehouse (`glucosphere-warehouse-<target>`), setup job, DLT pipeline, forecast endpoints. No input needed.
+- **from `BUNDLE_VAR_*`** in the sourced env file — `catalog` / `schema` (and `existing_warehouse_id` if the target reuses a warehouse).
+- **MAS / KA / Genie** — supplied via `--mas-endpoint` / `--ka-endpoint` / `--genie-space-id` flags **or** `BUNDLE_VAR_mas_endpoint` / `BUNDLE_VAR_ka_endpoint` / `BUNDLE_VAR_genie_space_id`. These are **not** auto-discoverable — Agent Bricks generates hex endpoint names (`ka-<hex>-endpoint`; see [the tile-vs-endpoint note](#creating-new--separate-agent-resources-genie--ka--mas)) — so capture them **once** from the Step-7 `08_genie_ka_mas.py` output into `.env.bundle.<target>`, and every later re-render is flag-free. Any field left empty is written through as **blank**: omit the agent vars and the dashboards still work but the assistant / Genie tabs break.
+
+```bash
+set -a && source .env.bundle.<target> && set +a   # incl. the BUNDLE_VAR_* agent ids
+# rebuild the frontend (Step 5) if it changed
+uv run python scripts/render_app_yaml.py --target <target>   # flag-free once the ids live in the env file
+databricks bundle deploy -t <target>
+databricks bundle run   glucosphere_app -t <target>
+git checkout App/databricks/app.yaml              # restore the placeholder template — never commit rendered values
+```
+
+(The app's service principal keeps its grants across a bare redeploy **unless the app name/SP changed** — see the next subsection.)
 
 ### Grant the app service principal (after any deploy that skips the setup job)
 

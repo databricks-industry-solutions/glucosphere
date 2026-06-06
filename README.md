@@ -76,7 +76,8 @@ uv run python scripts/render_app_yaml.py --target <target> --profile <profile>
 databricks bundle deploy -t <target> --profile <profile>
 databricks bundle run glucosphere_full_setup -t <target> --profile <profile>    # ~45 min
 
-# first-deploy-only
+# bake the printed KA/MAS/Genie ids into .env.bundle.<target> (BUNDLE_VAR_*) once,
+# OR pass them as flags here — needed on the first deploy to discover them:
 uv run python scripts/render_app_yaml.py --target <target> --profile <profile> \
     --mas-endpoint <name> --ka-endpoint <name> --genie-space-id <id>           
 
@@ -86,6 +87,11 @@ databricks bundle run glucosphere_app -t <target> --profile <profile>
 # 8-check gate
 uv run python scripts/smoke_test.py --target <target> --profile <profile>      
 ```
+
+> **Re-deploying (app/frontend change, no setup-job re-run):** the committed `app.yaml` ships
+> placeholders and is reverted after each deploy, so **re-render before every deploy** — `catalog`/
+> `schema` + (if baked in) the `BUNDLE_VAR_mas_endpoint`/`ka_endpoint`/`genie_space_id` ids fill it
+> flag-free; warehouse/job/pipeline auto-discover. Full loop in [`DEPLOY.md`](DEPLOY.md) → *Re-deploying after a code or frontend change*.
 
 End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy variants (`baseline_source=synthetic` for CI / restricted-egress, `DEMO_WEEK_START` override for reproducible runs, distribution-comparison job), see [`DEPLOY.md`](DEPLOY.md).
 
