@@ -464,12 +464,22 @@ export async function getPopulationRisk() {
 //     and pseudo_incident.glucose_observed agree). A patient can be under-read AND hyper
 //     (e.g. true glucose ~236, under-read to ~196 → still hyper). The two are independent.
 // device_model/region from silver_patient_registry (SSOT). Simulated, no PHI.
-export async function getCohortAffected(limit = 40) {
+export async function getCohortAffected(limit = 40, filter = null) {
   const { catalog, schema } = await getConfig();
   // Severity-ranked outreach roster. `limit` = integer row cap; pass null/0 for
   // "all" (no LIMIT). Int-coerced + clamped so it can't be SQL-injected.
   const n = Number.isFinite(+limit) ? Math.max(0, Math.min(5000, Math.floor(+limit))) : 40;
   const limitClause = n > 0 ? `LIMIT ${n}` : '';
+  // Optional region/model filter — applied in SQL *before* the LIMIT so "Worst N" means the
+  // worst N WITHIN the filtered cohort (else a global top-N filtered client-side under-shows,
+  // e.g. only the few Beta rows that happen to rank in the global worst 40). `filter` =
+  // { dim: 'region' | 'model', label }. Label is whitelisted (UC enum: NA/EMEA/APAC, Alpha…Zeta)
+  // so it can't be injected.
+  let whereClause = '';
+  if (filter && filter.label && /^[A-Za-z0-9 _-]+$/.test(filter.label)) {
+    const col = filter.dim === 'region' ? 'd.region' : 'd.device_model';
+    whereClause = `WHERE ${col} = '${filter.label}'`;
+  }
   const query = `
     WITH affected AS (
       SELECT patient_id, incident_direction,
@@ -491,6 +501,7 @@ export async function getCohortAffected(limit = 40) {
       d.device_id, d.device_model, d.region
     FROM affected a
     LEFT JOIN dev d ON a.patient_id = d.patient_id
+    ${whereClause}
     ORDER BY GREATEST(a.pct_hypo, a.pct_hyper) DESC
     ${limitClause}
   `;
@@ -516,6 +527,84 @@ export async function getCohortAffected(limit = 40) {
   } catch (error) {
     console.error('Failed to get cohort-affected roster:', error);
     return [];
+  }
+}
+
+// Distinct count of incident-affected patients — the honest denominator for the roster's
+// "showing N of M affected" label. Uses the SAME predicate/universe as getCohortAffected's
+// `affected` CTE above (incident_direction IN positive/negative), NOT the breakdown sum,
+// which INNER-joins silver_patient_registry and would under-count any affected patient
+// missing a registry row.
+export async function getAffectedTotal() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT COUNT(DISTINCT patient_id) AS n
+    FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+    WHERE incident_direction IN ('positive','negative')
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const v = rows[0].values || rows[0];
+      return parseInt(v[0]?.string_value ?? v[0], 10) || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error('Failed to get affected total:', error);
+    return 0;
+  }
+}
+
+// VIEW ③ companion — DEVICE-FAULT classification confusion matrix, per bias direction.
+// Within each device's ~3 h incident window (time in [incident_start_time, incident_end_time)),
+// classify the TRUE glucose and the DEVICE-SHOWN (observed) glucose into Low (<70) / In-range /
+// High (>180), and return the RAW READING COUNT in each (truth, device) cell. Normalization
+// (row-wise: "of truly-X readings, what % did the device show as Y") is done in the UI from
+// these counts, so the cells stay an exact source of truth and can be re-normalized without a
+// query change. The diagonal = device agreed with truth; off-diagonal = the fault's
+// misclassifications — false alarms (device over-flags a band) vs missed real events (device
+// under-flags). Scoped to the in-incident readings so the ±40 mg/dL bias shows at full effect;
+// over the full week these errors wash to ~0.5 pp (which is why this is its own window-scoped
+// view, not a roster column). Reads existing columns — no pipeline change. Returns
+// { positive: {'truth|device': count, ...}, negative: {...}, baseline: {...} }:
+//   positive/negative = each cohort's IN-INCIDENT readings (the ~3h fault window) → the fault.
+//   baseline          = ALL out-of-incident readings (device ≈ truth, ~95% diagonal) → the control,
+//                       the unaffected reference the two fault matrices are compared against.
+export async function getFaultConfusionMatrix() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    WITH d AS (
+      SELECT
+        CASE WHEN incident_direction IN ('positive','negative')
+                  AND time >= incident_start_time AND time < incident_end_time
+             THEN incident_direction ELSE 'baseline' END AS cohort,
+        CASE WHEN glucose_true < 70 THEN 'Low' WHEN glucose_true > 180 THEN 'High' ELSE 'In-range' END AS truth,
+        CASE WHEN glucose_observed < 70 THEN 'Low' WHEN glucose_observed > 180 THEN 'High' ELSE 'In-range' END AS device
+      FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+    )
+    SELECT cohort, truth, device, COUNT(*) AS cnt
+    FROM d
+    GROUP BY cohort, truth, device
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    const out = { positive: {}, negative: {}, baseline: {} };
+    if (rows && rows.length > 0) {
+      rows.forEach(r => {
+        const v = r.values || r;
+        const cohort = v[0]?.string_value ?? v[0];
+        const truth = v[1]?.string_value ?? v[1];
+        const device = v[2]?.string_value ?? v[2];
+        const cnt = parseInt(v[3]?.string_value ?? v[3], 10) || 0;
+        if (out[cohort]) out[cohort][`${truth}|${device}`] = cnt;
+      });
+    }
+    return out;
+  } catch (error) {
+    console.error('Failed to get fault confusion matrix:', error);
+    return { positive: {}, negative: {}, baseline: {} };
   }
 }
 

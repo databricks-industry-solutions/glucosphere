@@ -21,7 +21,19 @@ grouped by date rather than semver tags.
 
 ## [2026-06-05]
 
-Teardown tooling to complement the per-target deploy convention.
+Population Risk fault-impact redesign, a deploy target for workspaces that can't create their own SQL warehouse, and teardown tooling for the per-target convention.
+
+### Changed — Population Risk: combined cohort-exposure → fault-classification panel
+- New **`App/src/components/CohortFaultPanel.jsx`** merges the old cohort exposure chart and the separate fault-matrix section into one aligned panel: each cohort's device-reported **%hypo / %hyper bars** sit directly above its **confusion matrix** (Under-read · Baseline-control · Over-read), columns lined up. The bars are the matrix's device-column totals; the matrix splits each by what was *truly* happening — making explicit that the firmware fault corrupts the *reading*, not the patient's glucose (truth rows stay ≈ baseline; device columns diverge).
+- **Three matrices including a Baseline control** (`getFaultConfusionMatrix` now returns positive / negative / **baseline**; baseline = out-of-incident readings, ~95% on-diagonal, off-diagonal rendered as neutral sensor noise rather than fault).
+- **Normalizable** by share-of-all readings (default) or per-true-band recall; **calibration-plot orientation** (device Low→High left→right, truth High→Low top→bottom, so agreement runs bottom-left → top-right).
+- **Affected-patient roster** "Worst N" now filters **within** the selected region / device model in SQL (was: global worst-N then client-filtered, which under-showed a filtered cohort); honest count denominator.
+- New **Metrics Explained** card (`#me-firmware-fault-impact`) deriving burden-roster vs in-incident-fault and how a more granular monitoring system would sharpen it; the panel deep-links to it.
+- **Firmware Lifecycle**: removed the oversized, redundant hover tooltip on the MAE timeline (value already on the point, unit on the axis, firmware in the legend).
+
+### Added — `dais` deploy target + `existing_warehouse_id` warehouse-reuse
+- **`existing_warehouse_id`** bundle variable: for workspaces where the deploy identity lacks SQL-warehouse-create entitlement (e.g. a shared booth), a target can **reuse** a pre-provisioned warehouse instead of creating one. The bundle-managed warehouse moved from a single top-level resource to a **per-target** resource (defined once via the `&glucosphere_warehouse` YAML anchor, reused across create-own targets) so it isn't force-created on reuse targets. `scripts/render_app_yaml.py` gained `--warehouse-id`; `09_grant_app_permissions.py` grants `CAN_USE` on the supplied id directly; `scripts/smoke_test.py` is reuse-aware. DEPLOY.md Step 2 + Step 6 updated.
+- **`09_grant_app_permissions.py`** hardened against standalone runs: blanked the prod-flavored widget defaults and added a fail-fast guard so a manual run can't silently grant the wrong app / endpoints (the full-setup job injects the real per-target values).
 
 ### Added — `scripts/teardown_target.py` + DEPLOY.md teardown section
 - **`scripts/teardown_target.py`** — deletes the workspace-global resources that `databricks bundle destroy` leaves behind: Agent-Bricks **KA + MAS tiles** (`/api/2.0/tiles/{id}`) and their serving endpoints, the **`Glucosphere_Forecast_{15,30}min`** forecast endpoints, and the **Genie space** (`/api/2.0/data-rooms/{id}`). Matches by `--suffix` (harness/sandbox) or `--names` (exact, for the live empty-suffix deploy — suffix-matching is unsafe with `""`). **Dry-run by default**; `--apply` to delete. Each resource is GET-verified before deletion.
