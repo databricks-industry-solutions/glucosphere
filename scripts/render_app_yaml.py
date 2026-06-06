@@ -17,6 +17,16 @@ Run sequence:
     # Second deploy syncs updated app.yaml:
     databricks bundle deploy -t <target>
 
+Run this BEFORE EVERY deploy, not just the first: the committed app.yaml ships
+generic placeholders and the deploy hygiene reverts it after each deploy
+(AGENTS.md §6), so it's blank again every time. catalog/schema (BUNDLE_VAR_*) and
+warehouse/job/pipeline/forecast (auto-discovered by name) refill automatically;
+MAS/KA/Genie come from --flags or BUNDLE_VAR_mas_endpoint/ka_endpoint/genie_space_id.
+Fields left empty are written through as blank (catalog/schema/warehouse/agents are
+gated on a non-empty value and left UNCHANGED; job/pipeline/forecast always write,
+empty allowed), so a render with no agent ids ships an app whose dashboards work but
+whose assistant/Genie tabs are empty.
+
 Usage:
     # Render for gsphere with auto-discovered warehouse_id
     uv run python scripts/render_app_yaml.py --target gsphere

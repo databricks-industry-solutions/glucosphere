@@ -61,9 +61,17 @@ result (query the gold tables, check the sanity gate passed) before declaring su
 The Databricks App resource is named `${var.app_name}`. **Always pass the same
 `BUNDLE_VAR_app_name` on every deploy** — deploying with a different (or default) name
 renames/recreates the app resource, which tears down its endpoint (DNS) and service
-principal grants. For sandbox deploys: render `app.yaml` for the target *before*
-`bundle deploy`, deploy + run the app, then revert the rendered `app.yaml` (it carries
-production defaults in git). New App service principals need UC + warehouse + endpoint
+principal grants. Render `app.yaml` for the target *before* `bundle deploy`, deploy + run
+the app, then revert the rendered `app.yaml` (it carries generic placeholders in git).
+Because that revert restores **blank** ids, you must **re-render before *every* deploy**, not
+just the first — render-with-nothing ships blanks (dashboards point at the placeholder
+catalog, the assistant/Genie tabs go empty). Warehouse / job / pipeline / forecast
+auto-discover by deterministic name; `catalog`/`schema` come from `BUNDLE_VAR_*`; but the
+**KA/MAS/Genie hex ids are not discoverable** — supply them via `--mas-endpoint` /
+`--ka-endpoint` / `--genie-space-id` flags **or** capture them once into
+`.env.bundle.<target>` as `BUNDLE_VAR_mas_endpoint` / `BUNDLE_VAR_ka_endpoint` /
+`BUNDLE_VAR_genie_space_id` so each re-render is flag-free (see DEPLOY.md → *Re-deploying
+after a code or frontend change*). New App service principals need UC + warehouse + endpoint
 grants (`scripts/grant_app_sp.py`).
 
 Keep **workspace-specific coords out of committed files**: catalog / schema / profile /
