@@ -6,6 +6,8 @@ export const TOUR_STEPS = [
   { route: '/device-support', selector: '[data-tour="anomaly-heatmap"]', title: '② Diagnose', body: 'Device error by firmware × day — which firmware drifts, when, and which way (↑ over / ↓ under-read glyphs).' },
   { route: '/diabetes-coach', selector: '[data-tour="coach-risk"]', title: '③ Assess', body: 'See the clinical impact — the selected patient\'s near-term (15/30-min) glucose forecast from the XGBoost model.' },
   { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Ask the assistant', body: 'A built-in AI assistant on every page — device-support troubleshooting + natural-language CGM data queries (Genie).' },
+  { route: '/metrics-explained', selector: '[data-tour="metrics-explained"]', title: 'Every metric, explained', body: 'How every number is computed — burden vs fault, MAE, calibration bias, time-in-range — with the SQL behind it.' },
+  { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', body: 'The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace. Done returns you home.' },
 ];
 
 // Longer "full walkthrough" variant — the same Detect → Diagnose → Assess arc, but

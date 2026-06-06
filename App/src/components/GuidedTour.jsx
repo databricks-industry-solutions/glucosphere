@@ -116,18 +116,18 @@ export default function GuidedTour() {
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
           <div className="flex flex-col gap-2 mt-4">
-            {/* Quick overview commented out for now (booth choice = Full + Interactive). TOUR_STEPS
-                still backs the default fallback; un-comment this button to restore the 5-step path. */}
-            {/* <button onClick={() => { setVariant('quick'); setI(0); }}
+            <button onClick={() => { setVariant('quick'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Quick overview
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess</span>
-            </button> */}
-            <button onClick={() => { setVariant('full'); setI(0); }}
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess → platform</span>
+            </button>
+            {/* Full walkthrough commented out for now: the Interactive variant is Full + pause-to-try
+                + the metrics/about close, so it subsumes Full. Un-comment to restore the read-only path. */}
+            {/* <button onClick={() => { setVariant('full'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Full walkthrough
               <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_FULL.length} steps · every panel + AI assistant</span>
-            </button>
+            </button> */}
             <button onClick={() => { setVariant('interactive'); setI(0); }}
               className="px-3 py-2.5 text-sm text-amber-300 border border-amber-500/50 rounded-lg hover:bg-amber-500/10 text-left">
               Interactive walkthrough
