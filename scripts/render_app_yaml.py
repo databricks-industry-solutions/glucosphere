@@ -4,9 +4,10 @@ render_app_yaml.py — Rewrite App/databricks/app.yaml for a given DABs target.
 
 Reads resolved bundle variables (catalog / schema) from
 `databricks bundle validate -t <target> -o json`, discovers the bundle-managed
-warehouse by deterministic name (`glucosphere-warehouse-<target>`), and
-optionally overrides MAS/KA/Genie IDs. Rewrites App/databricks/app.yaml
-in place via regex.
+warehouse by deterministic name (`glucosphere-warehouse-<target>`), and fills
+MAS/KA/Genie IDs from --flags or, if not passed, the `mas_endpoint` /
+`ka_endpoint` / `genie_space_id` bundle vars (settable in `.env.bundle.<target>`).
+Rewrites App/databricks/app.yaml in place via regex.
 
 Run sequence:
     # First deploy creates the warehouse:
@@ -209,21 +210,37 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", required=True, help="DABs target name (e.g. gsphere)")
     p.add_argument("--profile", default=None, help="databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE env var if set, e.g. via `source .env.bundle.<target>`)")
-    p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (overrides env + resource block)")
-    p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (overrides resource block)")
-    p.add_argument("--genie-space-id", default=None, help="Genie space ID (overrides env)")
+    p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (else `mas_endpoint` bundle var; else app.yaml left unchanged)")
+    p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (else `ka_endpoint` bundle var; else app.yaml left unchanged)")
+    p.add_argument("--genie-space-id", default=None, help="Genie space ID (else `genie_space_id` bundle var; else app.yaml left unchanged)")
+    p.add_argument("--warehouse-id", default=None,
+                   help="Existing SQL warehouse id to write into app.yaml instead of discovering the "
+                        "bundle-managed warehouse by name. Falls back to the `existing_warehouse_id` "
+                        "bundle var, then to by-name discovery. For reuse targets (e.g. the DAIS booth, "
+                        "whose identity can't create warehouses) that point at a shared warehouse.")
     args = p.parse_args()
 
     vars_ = get_bundle_vars(args.target, args.profile)
     catalog = vars_.get("catalog")
     schema = vars_.get("schema")
-    # warehouse_id is NOT a bundle variable anymore — it comes from the
-    # bundle-managed sql_warehouses resource (discovered by deterministic name).
-    # This requires the bundle to have been deployed at least once.
-    warehouse_id = discover_bundle_warehouse_id(args.target, args.profile)
+    # warehouse_id resolution, in precedence order:
+    #   1. --warehouse-id flag (explicit override)
+    #   2. `existing_warehouse_id` bundle var (set in .env.bundle.<target> for reuse
+    #      targets like the DAIS booth, whose identity can't create its own warehouse)
+    #   3. discover the bundle-managed warehouse by deterministic name (create-own
+    #      targets; requires the bundle to have been deployed at least once)
+    warehouse_id = (args.warehouse_id or vars_.get("existing_warehouse_id")
+                    or discover_bundle_warehouse_id(args.target, args.profile))
     setup_job_id = discover_setup_job_id(args.target, args.profile)
     pipeline_id = discover_pipeline_id(args.target, args.profile)
     forecast_endpoint = discover_forecast_endpoint(vars_.get("harness_suffix", ""), args.profile)
+    # Agent-endpoint coords (MAS / KA / Genie): explicit flag wins, else the bundle var
+    # (set in .env.bundle.<target> as BUNDLE_VAR_mas_endpoint / _ka_endpoint / _genie_space_id
+    # for a target that renders from its env file alone, e.g. a reuse/booth target). Mirrors
+    # the warehouse_id precedence above. Empty → app.yaml's existing value is left unchanged.
+    mas_endpoint = args.mas_endpoint or vars_.get("mas_endpoint") or ""
+    ka_endpoint = args.ka_endpoint or vars_.get("ka_endpoint") or ""
+    genie_space_id = args.genie_space_id or vars_.get("genie_space_id") or ""
 
     print(f"Rendering {APP_YAML.relative_to(REPO_ROOT)} for target={args.target}:")
     print(f"  catalog        = {catalog}")
@@ -232,9 +249,9 @@ def main() -> int:
     print(f"  setup_job_id   = {setup_job_id or '(not found — link will fall back to /jobs listing)'}")
     print(f"  pipeline_id    = {pipeline_id or '(not found — link will fall back to /pipelines listing)'}")
     print(f"  forecast_endpt = {forecast_endpoint or '(not found — link will fall back to /ml/endpoints listing)'}")
-    print(f"  mas-endpoint   = {args.mas_endpoint or '(unchanged)'}")
-    print(f"  ka-endpoint    = {args.ka_endpoint or '(unchanged)'}")
-    print(f"  genie-space-id = {args.genie_space_id or '(unchanged)'}")
+    print(f"  mas-endpoint   = {mas_endpoint or '(unchanged)'}")
+    print(f"  ka-endpoint    = {ka_endpoint or '(unchanged)'}")
+    print(f"  genie-space-id = {genie_space_id or '(unchanged)'}")
 
     if not APP_YAML.exists():
         print(f"[FATAL] {APP_YAML} not found", file=sys.stderr)
@@ -281,29 +298,29 @@ def main() -> int:
     # Rewrite BOTH the env var `value:` field AND the
     # resource block so the resource bindings stay declared for SP permissions
     # even though we no longer rely on valueFrom to populate the env value.
-    if args.mas_endpoint:
+    if mas_endpoint:
         content = patch(content,
             r'(- name: ENDPOINT_NAME\s+value: ")[^"]*(")',
-            rf'\g<1>{args.mas_endpoint}\g<2>', "env ENDPOINT_NAME")
+            rf'\g<1>{mas_endpoint}\g<2>', "env ENDPOINT_NAME")
         content = patch(content,
             r'(- name: mas-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
-            rf'\g<1>{args.mas_endpoint}', "resource mas-endpoint.name")
-    if args.ka_endpoint:
+            rf'\g<1>{mas_endpoint}', "resource mas-endpoint.name")
+    if ka_endpoint:
         # Patch BOTH the KA_ENDPOINT_NAME env var (consumed by app.py's assist
         # router) and the ka-endpoint resource binding — mirrors --mas-endpoint.
         content = patch(content,
             r'(- name: KA_ENDPOINT_NAME\s+value: ")[^"]*(")',
-            rf'\g<1>{args.ka_endpoint}\g<2>', "env KA_ENDPOINT_NAME")
+            rf'\g<1>{ka_endpoint}\g<2>', "env KA_ENDPOINT_NAME")
         content = patch(content,
             r'(- name: ka-endpoint\b[\s\S]*?serving_endpoint:\s+name: )\S+',
-            rf'\g<1>{args.ka_endpoint}', "resource ka-endpoint.name")
-    if args.genie_space_id:
+            rf'\g<1>{ka_endpoint}', "resource ka-endpoint.name")
+    if genie_space_id:
         content = patch(content,
             r'(- name: GENIE_SPACE_ID\s+value: ")[^"]*(")',
-            rf'\g<1>{args.genie_space_id}\g<2>', "env GENIE_SPACE_ID")
+            rf'\g<1>{genie_space_id}\g<2>', "env GENIE_SPACE_ID")
         content = patch(content,
             r'(- name: genie-space\b[\s\S]*?genie_space:\s+id: )\S+',
-            rf'\g<1>{args.genie_space_id}', "resource genie-space.id")
+            rf'\g<1>{genie_space_id}', "resource genie-space.id")
 
     APP_YAML.write_text(content)
     print(f"Wrote {APP_YAML.relative_to(REPO_ROOT)}")

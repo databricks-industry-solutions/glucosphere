@@ -97,7 +97,11 @@ export default function FirmwareLifecyclePage() {
             magnitude-over-time view; relocated here from the Device Support overview, which
             now shows the consolidated firmware × day heatmap with direction glyphs. */}
         <section>
-          <CalibrationDriftPanel days={[...new Set(data.map(d => d.day))].sort()} />
+          {/* Gated on parent `loading` (same pattern as the firmware chart above) so the
+              panel mounts only once `data` → the 7-day axis is ready. Without this, it mounts
+              with days=[] during the parent fetch and briefly renders its incident-only
+              2-column fallback (06-01 red / 06-04 blue) before the full 7-day grid. */}
+          {!loading && <CalibrationDriftPanel days={[...new Set(data.map(d => d.day))].sort()} />}
         </section>
 
         {/* → ACT — name every culprit firmware + its recall fleet + the rollback handoff */}

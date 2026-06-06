@@ -169,7 +169,10 @@ export default function AboutPage() {
               className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2"
               title="Why this monitoring stack matters — the platform-value overview">control tower</button> for a
             continuous-glucose-monitor (CGM) device fleet: detect device-accuracy drift, diagnose it to the
-            firmware at fault, and assess the patient-risk impact. <span className="text-slate-500">(The live
+            firmware at fault, and{' '}
+            <button onClick={() => navigate('/metrics-explained#me-firmware-fault-impact')}
+              className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2"
+              title="Clinical burden vs device-fault impact — how the patient-risk numbers are derived">assess the patient-risk impact</button>. <span className="text-slate-500">(The live
             monitoring feed is nicknamed "GlucoStream" — the continuous stream of device readings the platform
             watches.)</span>
           </p>
@@ -187,7 +190,7 @@ export default function AboutPage() {
 
         {/* Under the hood — the platform plumbing as a Data → ML/AI → Agentic pipeline flow,
             each node deep-linking into the deploying workspace. */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        <section data-tour="about-hood" className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
           <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Under the hood — powered by{' '}
             <a href={DBX.home} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">Databricks</a>

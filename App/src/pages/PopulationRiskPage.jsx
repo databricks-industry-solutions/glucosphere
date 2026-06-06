@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
-import PopulationRiskChart from '../components/PopulationRiskChart';
+import CohortFaultPanel from '../components/CohortFaultPanel';
 import { GlucoseAbsoluteChart } from '../components/IncidentCharts';
 import { useGoBack } from '../hooks/useGoBack';
-import { getPopulationRisk, getCohortAffected, getCohortAffectedBreakdown } from '../api/databricksSQL';
+import { getPopulationRisk, getCohortAffected, getCohortAffectedBreakdown, getAffectedTotal, getFaultConfusionMatrix } from '../api/databricksSQL';
 
 // Stacked split bar: affected patients per label, segmented by DEVICE-bias direction —
 // over-read (amber) vs under-read (slate-grey). Deliberately NOT the clinical rose/blue
@@ -43,6 +43,7 @@ function SplitBars({ title, dim, rows, max, activeLabel, onSelect }) {
 }
 
 // ③ Assess — which patient cohorts a device fault pushed into hypo/hyper exposure.
+// (The cohort exposure chart + confusion matrices now live in <CohortFaultPanel>.)
 export default function PopulationRiskPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
@@ -52,6 +53,9 @@ export default function PopulationRiskPage() {
   const [rosterLoading, setRosterLoading] = useState(true);
   const [rosterLimit, setRosterLimit] = useState(40); // 40 | 100 | 250 | null(all) — severity-ranked
   const [breakdown, setBreakdown] = useState({ byRegion: [], byModel: [] });
+  const [confusion, setConfusion] = useState({ positive: {}, negative: {} }); // device-fault classification matrices
+  const [affectedTotal, setAffectedTotal] = useState(0); // distinct affected patients — honest roster denominator
+  const [filter, setFilter] = useState(null); // {dim:'region'|'model', label} — summary→roster cross-filter; declared up here so the roster fetch below can depend on it
 
   useEffect(() => {
     (async () => {
@@ -63,26 +67,39 @@ export default function PopulationRiskPage() {
       try { setBreakdown(await getCohortAffectedBreakdown()); }
       catch (e) { console.error('Cohort breakdown fetch failed:', e); }
     })();
+    (async () => {
+      try { setConfusion(await getFaultConfusionMatrix()); }
+      catch (e) { console.error('Fault confusion-matrix fetch failed:', e); }
+    })();
+    (async () => {
+      try { setAffectedTotal(await getAffectedTotal()); }
+      catch (e) { console.error('Affected-total fetch failed:', e); }
+    })();
   }, []);
 
-  // Roster re-fetches whenever the size selector changes (severity-ranked;
-  // rosterLimit null = "All" → no LIMIT). The breakdown/summary above stays full-cohort.
+  // Roster re-fetches when the size selector OR the region/model filter changes — the filter is
+  // applied in SQL before the LIMIT, so "Worst N" means the worst N WITHIN the filtered cohort
+  // (rosterLimit null = "All" → no LIMIT). The breakdown/summary above stays full-cohort.
   useEffect(() => {
     (async () => {
-      try { setRosterLoading(true); setRoster(await getCohortAffected(rosterLimit)); }
+      try { setRosterLoading(true); setRoster(await getCohortAffected(rosterLimit, filter)); }
       catch (e) { console.error('Cohort roster fetch failed:', e); setRoster([]); }
       finally { setRosterLoading(false); }
     })();
-  }, [rosterLimit]);
+  }, [rosterLimit, filter]);
 
   // Normalize bar widths within each group by its largest total.
   const regionMax = Math.max(1, ...breakdown.byRegion.map((r) => r.total));
   const modelMax = Math.max(1, ...breakdown.byModel.map((r) => r.total));
+  // When a region/model filter is active, the roster's denominator is THAT cohort's affected
+  // count (from the breakdown), not the global affected total — so "showing 40 of 159 in Beta".
+  const filterTotal = filter
+    ? ((filter.dim === 'model' ? breakdown.byModel : breakdown.byRegion).find((x) => x.label === filter.label)?.total ?? null)
+    : null;
 
   // Roster sort + summary→table cross-filter.
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const [filter, setFilter] = useState(null); // {dim:'region'|'model', label}
   // Deep-link from a Calibration-Drift cell (Firmware Lifecycle): ?model=Alpha (or
   // ?region=NA) pre-filters the roster to that cohort on arrival; "✕ show all" clears it.
   const [searchParams] = useSearchParams();
@@ -137,10 +154,10 @@ export default function PopulationRiskPage() {
           <span className="text-xs font-mono px-2.5 py-1 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30">③ ASSESS</span>
           <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Hypo / hyper exposure by cohort</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
-            The clinical question: <span className="text-slate-200">who got pushed into danger</span>. Share of device-reported readings in the
-            <span className="text-blue-300"> hypoglycemic (&lt;70 mg/dL)</span> and <span className="text-rose-300">hyperglycemic (&gt;180 mg/dL)</span> ranges,
-            per cohort. The over-reading cohort is driven into apparent <span className="text-rose-300">highs</span>, the under-reading cohort into apparent
-            <span className="text-blue-300"> lows</span> — both vs the unaffected <span className="text-slate-200">baseline</span>. That gap is the blast radius.
+            The clinical question: <span className="text-slate-200">who got pushed into danger</span>. Share of each cohort's device-reported readings <span className="text-slate-300">during its ~3h fault window</span> in the
+            <span className="text-blue-300"> hypoglycemic (&lt;70 mg/dL)</span> and <span className="text-rose-300">hyperglycemic (&gt;180 mg/dL)</span> ranges.
+            The over-reading cohort is driven into apparent <span className="text-rose-300">highs</span>, the under-reading cohort into apparent
+            <span className="text-blue-300"> lows</span> — both vs the unaffected <span className="text-slate-200">baseline</span> (all out-of-incident readings). That gap is the blast radius.
           </p>
           <p className="text-xs font-mono text-slate-500 mt-3">
             Clinical view — the roster below is for <span className="text-slate-300">care-team outreach</span>. For device-side fleet operations (heatmap, live readings, per-device diagnostics), see{' '}
@@ -148,11 +165,9 @@ export default function PopulationRiskPage() {
           </p>
         </section>
 
-        <section data-tour="pop-risk" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-          {loading
-            ? <div className="flex items-center justify-center h-64 text-slate-500">Loading population risk…</div>
-            : <div className="max-w-4xl mx-auto"><PopulationRiskChart data={data} /></div>}
-        </section>
+        <div data-tour="pop-risk">
+          <CohortFaultPanel data={data} confusion={confusion} loading={loading} />
+        </div>
 
         {/* The full per-cohort actual-vs-device timeline lives on the landing (detect view) —
             link out rather than duplicate it cramped here. */}
@@ -161,8 +176,10 @@ export default function PopulationRiskPage() {
           <button onClick={() => navigate('/')} className="text-cyan-400 hover:text-cyan-300">per-cohort glucose timeline (landing) →</button>
         </p>
 
-        {/* Affected-patient summary — by region + device model, each split by error
-            direction (over-read vs under-read) over the full affected population. */}
+
+        {/* Affected-patient summary — by region + device model, each split by error direction
+            (over-read vs under-read) over the full affected population. Sits directly above the
+            roster: clicking a bar filters the roster immediately below. */}
         {(breakdown.byRegion.length > 0 || breakdown.byModel.length > 0) && (
           <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
             <h2 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Affected-patient summary</h2>
@@ -191,6 +208,7 @@ export default function PopulationRiskPage() {
               <h2 className="text-lg font-semibold text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Affected patients &amp; devices</h2>
               <p className="text-xs text-slate-500 font-mono mt-1">The outreach / recall roster — worst exposure first. <span className="text-cyan-400">Click a row to open the patient →</span> Identifiers simulated (no real PHI).</p>
               <p className="text-[11px] text-slate-600 font-mono mt-1">%hypo/%hyper span each patient's full observed window (~7 days) — same basis as the Coach.</p>
+              <p className="text-[11px] text-slate-600 font-mono mt-1">Direction = the device-fault direction (<span className="text-amber-300">over</span> / <span className="text-slate-400">under-read</span>) — a calibration fact, independent of the % columns.</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={() => setOutreachOpen(true)} className="text-xs font-mono px-3 py-2 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors">
@@ -215,16 +233,16 @@ export default function PopulationRiskPage() {
                 <select
                   value={rosterLimit === null ? 'all' : String(rosterLimit)}
                   onChange={(e) => setRosterLimit(e.target.value === 'all' ? null : Number(e.target.value))}
-                  title="Roster size — severity-ranked (worst exposure first)"
+                  title="How many rows to show — ranked by worst glycemic exposure first"
                   className="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-slate-300 font-mono focus:outline-none focus:border-cyan-500/50"
                 >
-                  <option value="40">Top 40</option>
-                  <option value="100">Top 100</option>
-                  <option value="250">Top 250</option>
+                  <option value="40">Worst 40</option>
+                  <option value="100">Worst 100</option>
+                  <option value="250">Worst 250</option>
                   <option value="all">All</option>
                 </select>
               </label>
-              <span className="text-slate-600">{displayedRoster.length} of {roster.length} shown</span>
+              <span className="text-slate-600">showing {displayedRoster.length}{filter ? ` of ${filterTotal ?? roster.length} in ${filter.label}` : ` · ${affectedTotal || roster.length} affected total`}</span>
             </div>
           </div>
           {rosterLoading ? (
@@ -241,10 +259,11 @@ export default function PopulationRiskPage() {
                       { k: 'deviceId', label: 'Device', align: '' },
                       { k: 'deviceModel', label: 'Model', align: '' },
                       { k: 'region', label: 'Region', align: '' },
+                      { k: 'direction', label: 'Device direction', align: '' },
                       { k: 'pctHypo', label: '% hypo', align: 'text-right' },
                       { k: 'pctHyper', label: '% hyper', align: 'text-right' },
-                    ].map((c, ci) => (
-                      <th key={c.k} className={`py-2 ${ci < 5 ? 'pr-3' : ''} font-normal ${c.align}`}>
+                    ].map((c, ci, arr) => (
+                      <th key={c.k} className={`py-2 ${ci < arr.length - 1 ? 'pr-3' : ''} font-normal ${c.align}`}>
                         <button onClick={() => toggleSort(c.k)} className="hover:text-slate-300 transition-colors">{c.label}{sortIcon(c.k)}</button>
                       </th>
                     ))}
@@ -262,6 +281,7 @@ export default function PopulationRiskPage() {
                       <td className="py-2 pr-3">{r.deviceId}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.deviceModel}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.region}</td>
+                      <td className="py-2 pr-3">{r.direction === 'positive' ? <span className="text-amber-300">↑ over-read</span> : r.direction === 'negative' ? <span className="text-slate-400">↓ under-read</span> : <span className="text-slate-600">—</span>}</td>
                       <td className="py-2 pr-3 text-right text-blue-300">{r.pctHypo}</td>
                       <td className="py-2 text-right text-rose-300">{r.pctHyper}</td>
                     </tr>

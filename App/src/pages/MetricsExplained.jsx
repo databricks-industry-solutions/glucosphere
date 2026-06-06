@@ -73,7 +73,7 @@ export default function MetricsExplained() {
 
       <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Introduction */}
-        <section className="mb-12">
+        <section data-tour="metrics-explained" className="mb-12">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               About This Page
@@ -572,6 +572,78 @@ ORDER BY minute`}
                 </p>
               </div>
               
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
+                <p className="text-sm text-slate-400 font-mono">
+                  Table: <span className="text-cyan-400">{catalog}.{schema}.pseudo_incident_7d_labeled</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Firmware-fault impact — burden vs misclassification (Population Risk page links here) */}
+          <div id="me-firmware-fault-impact" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6 mb-6 scroll-mt-24">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-cyan-400 mb-1">Firmware incident: clinical burden vs fault impact</h3>
+                <p className="text-xs text-slate-500 font-mono">Population Risk page — why the roster %hypo/%hyper and the confusion matrices answer different questions</p>
+              </div>
+              <span className="px-3 py-1 bg-slate-800 rounded text-xs font-mono text-slate-400">CLASSIFICATION</span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">Two questions, two time scopes (kept separate on purpose):</p>
+                <p className="text-sm text-slate-400">
+                  <span className="text-slate-300 font-medium">1 · Clinical burden</span> (the roster's % columns) — the fraction of a patient's readings over their <span className="font-medium">full ~7-day window</span> below 70 (hypo) / above 180 (hyper), on <span className="font-mono">glucose_observed</span>. This describes the <span className="font-medium">patient</span>. Because the ~3-hour calibration fault touches only ~1.8% of weekly readings, it moves this number by ≈0.5&nbsp;<abbr title="percentage points">pp</abbr> — so it is effectively the patient's own true glycemic control, used to triage the recall cohort sickest-first.
+                </p>
+                <p className="text-sm text-slate-400 mt-2">
+                  <span className="text-slate-300 font-medium">2 · Fault impact</span> (the confusion matrices) — restricted to the <span className="font-medium">in-incident readings</span> (<span className="font-mono">time</span> between <span className="font-mono">incident_start_time</span> and <span className="font-mono">incident_end_time</span>). Compares what the device <em>showed</em> (<span className="font-mono">glucose_observed</span>) against the <em>truth</em> (<span className="font-mono">glucose_true</span>), classified into Low (&lt;70) / In-range / High (&gt;180). The diagonal = device agreed with truth; off-diagonal = the fault's misclassifications — <span className="text-amber-300">false alarms</span> (device over-flagged a band) vs <span className="text-rose-300">missed real events</span> (device under-flagged — the clinically dangerous case).
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">SQL — burden (full-window, per patient):</p>
+                <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
+{`SELECT patient_id,
+  ROUND(SUM(CASE WHEN glucose_observed < 70  THEN 1 ELSE 0 END)/COUNT(*)*100,1) AS pct_hypo,
+  ROUND(SUM(CASE WHEN glucose_observed > 180 THEN 1 ELSE 0 END)/COUNT(*)*100,1) AS pct_hyper
+FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+WHERE incident_direction IN ('positive','negative')
+GROUP BY patient_id;   -- ranked ORDER BY GREATEST(pct_hypo, pct_hyper) DESC`}
+                </pre>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">SQL — fault impact (in-window, device-shown vs truth):</p>
+                <pre className="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono text-slate-300 overflow-x-auto">
+{`SELECT incident_direction,
+  CASE WHEN glucose_true     < 70 THEN 'Low' WHEN glucose_true     > 180 THEN 'High' ELSE 'In-range' END AS truth,
+  CASE WHEN glucose_observed < 70 THEN 'Low' WHEN glucose_observed > 180 THEN 'High' ELSE 'In-range' END AS device,
+  COUNT(*) AS readings    -- raw count per cell; UI toggles per-row % (recall) ⇄ share-of-all % from these counts
+FROM ${catalog}.${schema}.pseudo_incident_7d_labeled
+WHERE incident_direction IN ('positive','negative')
+  AND time >= incident_start_time AND time < incident_end_time
+GROUP BY incident_direction, truth, device;`}
+                </pre>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium text-slate-300 mb-2">Key points:</p>
+                <ul className="text-sm text-slate-400 space-y-1 ml-4">
+                  <li>• <span className="font-mono text-emerald-300">Diagonal</span> = device classified the band correctly. <span className="font-mono text-amber-300">Amber</span> = false alarm (true In-range shown as High/Low). <span className="font-mono text-rose-300">Rose ⚠</span> = missed real event (true High/Low shown as In-range).</li>
+                  <li>• An <span className="text-amber-300">over-read</span> device hides real lows (missed hypo) and cries wolf on highs; an <span className="text-slate-300">under-read</span> device hides real highs (missed hyper) and cries wolf on lows.</li>
+                  <li>• <span className="font-mono">pp</span> = percentage points (the gap between two percentages). The fault's effect on the 7-day burden is ≈0.5&nbsp;pp — which is exactly why the misclassification needs its own window-scoped view rather than a roster column.</li>
+                </ul>
+              </div>
+
+              <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-4">
+                <p className="text-sm font-medium text-cyan-300 mb-1">Why finer-grained inputs would sharpen this</p>
+                <p className="text-sm text-slate-400">
+                  The fault-impact matrices are recoverable here only because the simulation carries <span className="font-mono">glucose_true</span> alongside <span className="font-mono">glucose_observed</span>. In production you rarely have ground truth — but the same engine sharpens as real inputs are ingested: per-reading device telemetry (firmware, calibration timestamps), reference fingerstick / lab values for spot-truth, and tighter sampling let you localise a fault to the exact device-hours, quantify false-alarm vs missed-event rates per firmware build, and drive the recall list off the fault's <em>clinical consequence</em>, not just overall burden. Today's ±40&nbsp;mg/dL / ~3-hour windows are illustrative; the architecture scales to whatever resolution the data supports.
+                </p>
+              </div>
+
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Data Source:</p>
                 <p className="text-sm text-slate-400 font-mono">

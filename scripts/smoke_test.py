@@ -12,8 +12,9 @@ What's automated (8 checks):
        and app_status.state == RUNNING.
     2. App URL: HEAD request to the App URL → non-5xx response (auth redirect is fine —
        proves the App is serving HTTP).
-    3. Bundle-managed warehouse: `databricks warehouses list` contains
-       `glucosphere-warehouse-<target>`.
+    3. Warehouse: `databricks warehouses list` contains `glucosphere-warehouse-<target>`
+       (create-own targets), OR the reused warehouse id exists (reuse targets that set
+       `existing_warehouse_id`, e.g. the DAIS booth — pass `--warehouse-id` or let it resolve).
     4. Gold table: `SELECT COUNT(*) FROM <catalog>.<schema>.gold_patient_device_readings`
        returns > 0 (proves DLT silver/gold pipeline succeeded + SP can read).
     5. KA + MAS serving endpoints: `databricks serving-endpoints list` contains
@@ -96,9 +97,14 @@ def check_app_serving(app_name: str, profile: str) -> tuple[bool, str]:
         return False, f"network error: {e}"
 
 
-def check_warehouse(target: str, profile: str) -> tuple[bool, str]:
+def check_warehouse(target: str, profile: str, warehouse_id: str | None = None) -> tuple[bool, str]:
     d = _databricks(["warehouses", "list"], profile)
     whs = d.get("warehouses", []) if isinstance(d, dict) else d
+    if warehouse_id:  # reuse target (e.g. dais): verify the supplied warehouse exists by id
+        match = next((w for w in whs if w.get("id") == warehouse_id), None)
+        if match is None:
+            return False, f"reused warehouse id {warehouse_id!r} not found"
+        return True, f"(reused) name={match['name']!r}, id={match.get('id')!r}, state={match.get('state')!r}"
     expected = f"glucosphere-warehouse-{target}"
     match = next((w for w in whs if w.get("name", "").endswith(expected)), None)
     if match is None:
@@ -124,7 +130,9 @@ def check_gold_table(catalog: str, schema: str, warehouse_id: str, profile: str)
     return n > 0, f"COUNT(*) = {n}"
 
 
-def _warehouse_id(target: str, profile: str) -> str | None:
+def _warehouse_id(target: str, profile: str, warehouse_id: str | None = None) -> str | None:
+    if warehouse_id:  # reuse target: use the supplied id directly
+        return warehouse_id
     d = _databricks(["warehouses", "list"], profile)
     whs = d.get("warehouses", []) if isinstance(d, dict) else d
     expected = f"glucosphere-warehouse-{target}"
@@ -220,14 +228,17 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     return True, f"path={full_path}: HTTP 200, {len(body)} bytes, valid PNG header"
 
 
-def _resolved_vars(target: str, profile: str) -> tuple[str, str]:
+def _resolved_vars(target: str, profile: str) -> tuple[str, str, str, str]:
     out = subprocess.check_output(
         ["databricks", "bundle", "validate", "-t", target, "--profile", profile, "-o", "json"],
         text=True, env=_DATABRICKS_ENV,
     )
     d = json.loads(out)
     v = d.get("variables", {})
-    return v.get("catalog", {}).get("value", ""), v.get("schema", {}).get("value", "")
+    g = lambda k: (v.get(k, {}) or {}).get("value", "")
+    # app_name + existing_warehouse_id resolved too so `smoke_test --target dais` works
+    # without extra flags (dais reuses an existing warehouse + a non-default app name).
+    return g("catalog"), g("schema"), g("app_name"), g("existing_warehouse_id")
 
 
 def main() -> int:
@@ -235,22 +246,28 @@ def main() -> int:
     p.add_argument("--target", required=True, help="Bundle target (e.g. gsphere)")
     p.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE"),
                    help="Databricks CLI profile (default: $DATABRICKS_CONFIG_PROFILE)")
-    p.add_argument("--app-name", default="glucosphere-app", help="App resource name")
+    p.add_argument("--app-name", default=None, help="App resource name (default: resolved app_name bundle var)")
     p.add_argument("--catalog", help="Catalog (default: resolved from bundle validate)")
     p.add_argument("--schema", help="Schema (default: resolved from bundle validate)")
+    p.add_argument("--warehouse-id", default=None,
+                   help="Reused warehouse id for targets that don't create their own (e.g. dais). "
+                        "Default: resolved existing_warehouse_id bundle var; else discover by name.")
     args = p.parse_args()
 
     if not args.profile:
         print("ERROR: --profile required (or set DATABRICKS_CONFIG_PROFILE)", file=sys.stderr)
         return 2
 
-    if not args.catalog or not args.schema:
-        resolved_cat, resolved_sch = _resolved_vars(args.target, args.profile)
-        args.catalog = args.catalog or resolved_cat
-        args.schema = args.schema or resolved_sch
+    # Resolve bundle vars once (catalog/schema/app_name/existing_warehouse_id); explicit flags win.
+    r_cat, r_sch, r_app, r_wh = _resolved_vars(args.target, args.profile)
+    args.catalog = args.catalog or r_cat
+    args.schema = args.schema or r_sch
+    args.app_name = args.app_name or r_app or "glucosphere-app"
+    args.warehouse_id = args.warehouse_id or r_wh or None
 
     print(f"Smoke test: target={args.target} catalog={args.catalog} schema={args.schema}")
-    print(f"           profile={args.profile} app={args.app_name}")
+    print(f"           profile={args.profile} app={args.app_name} "
+          f"warehouse={'(reused) ' + args.warehouse_id if args.warehouse_id else '(bundle-managed)'}")
     print()
 
     fails = 0
@@ -270,9 +287,9 @@ def main() -> int:
 
     run("1. App state",         lambda: check_app_state(args.app_name, args.profile))
     run("2. App URL serving",   lambda: check_app_serving(args.app_name, args.profile))
-    run("3. Bundle warehouse",  lambda: check_warehouse(args.target, args.profile))
+    run("3. Bundle warehouse",  lambda: check_warehouse(args.target, args.profile, args.warehouse_id))
 
-    wh_id = _warehouse_id(args.target, args.profile)
+    wh_id = _warehouse_id(args.target, args.profile, args.warehouse_id)
     if wh_id:
         run("4. Gold table data",       lambda: check_gold_table(args.catalog, args.schema, wh_id, args.profile))
     else:

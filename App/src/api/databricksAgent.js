@@ -103,11 +103,23 @@ export const callAssistant = async (message, opts = {}) => {
     body: JSON.stringify({ messages, conversation_id: conversationId, engine, mode, context }),
   });
   if (!res.ok) {
-    let details;
+    // 502/504 = the app gateway timed out the request — almost always the MAS engine, which
+    // runs several serial agent calls and can exceed the gateway cap under load. Never dump the
+    // raw HTML error page into the chat; give an actionable message (and steer MAS → Fast).
+    if (res.status === 502 || res.status === 504) {
+      throw new Error(
+        engine === 'mas'
+          ? "The Multi-Agent Supervisor timed out — it runs several agent calls and can exceed the gateway limit. Switch to ⚡ Fast for a quick answer, or try again."
+          : 'The request timed out. Please try again.'
+      );
+    }
+    // Other failures: surface only a clean JSON error message, never a raw HTML body.
+    let detail = '';
     const ct = res.headers.get('content-type');
-    try { details = ct && ct.includes('application/json') ? await res.json() : await res.text(); }
-    catch { details = ''; }
-    throw new Error(`API call failed: ${res.status} ${res.statusText}${details ? ' - ' + JSON.stringify(details) : ''}`);
+    if (ct && ct.includes('application/json')) {
+      try { const j = await res.json(); detail = j?.error ? ` — ${j.error}` : ''; } catch { /* ignore */ }
+    }
+    throw new Error(`Assistant request failed (${res.status})${detail}`);
   }
   return res.json();
 };

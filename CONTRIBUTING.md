@@ -94,6 +94,7 @@ fixes) often don't.
   - Device Support page heatmap shows expected firmware variety
 - [ ] Comments / docs updated alongside code changes (avoid orphan stale doc references)
 - [ ] No internal-history breadcrumbs in user-facing assets — workspace-specific paths, dated lapse notes, and internal run IDs belong in `CHANGELOG.md`, not in README/DEPLOY/inline comments
+- [ ] No workspace-specific coords (catalog / schema / profile / app name / warehouse id) in committed `databricks.yml` stanzas **or their comments** — those live only in the gitignored `.env.bundle.<target>`; committed config carries generic placeholders (see `AGENTS.md` §6)
 
 ## PR description
 
