@@ -172,6 +172,13 @@ export default function GlobalAssistant() {
     return () => window.removeEventListener('glucosphere:assistant', onTour);
   }, []);
 
+  // Broadcast the panel's open/closed state so the guided tour can reposition its Resume
+  // button (clear of the open slide-over) regardless of whether the panel was opened by the
+  // tour or by the user clicking the FAB.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('glucosphere:assistant-state', { detail: { open } }));
+  }, [open]);
+
   const pushMsg = (m, msg) => setThreads((t) => ({ ...t, [m]: [...t[m], msg] }));
 
   // Reset the CURRENT mode's thread + conversation id (fresh start, e.g. after an error).

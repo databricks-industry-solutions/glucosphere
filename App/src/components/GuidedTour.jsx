@@ -12,6 +12,7 @@ export default function GuidedTour() {
   const [rect, setRect] = useState(null);
   const [cardStyle, setCardStyle] = useState(null);
   const [paused, setPaused] = useState(false); // interactive variant: overlay steps aside so the page is clickable; Resume returns to the same step
+  const [assistantOpen, setAssistantOpen] = useState(false); // mirrors the assistant panel's real open state (broadcast by GlobalAssistant) → reposition Resume clear of the open slide-over
   const cardRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,6 +23,14 @@ export default function GuidedTour() {
     const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setPaused(false); setActive(true); };
     window.addEventListener('glucosphere:start-tour', start);
     return () => window.removeEventListener('glucosphere:start-tour', start);
+  }, []);
+
+  // Track the assistant panel's real open state (broadcast by GlobalAssistant) so the Resume
+  // button clears the open slide-over whether the panel was opened by the tour or by the user.
+  useEffect(() => {
+    const onState = (e) => setAssistantOpen(!!e.detail?.open);
+    window.addEventListener('glucosphere:assistant-state', onState);
+    return () => window.removeEventListener('glucosphere:assistant-state', onState);
   }, []);
 
   const steps = variant === 'full' ? TOUR_STEPS_FULL
@@ -157,15 +166,15 @@ export default function GuidedTour() {
   // Resume pill brings the user back to THIS step (active + i are preserved → no restart).
   if (paused) {
     return (
-      // Sits just LEFT of the assistant "Ask" FAB (bottom-right), so it's reachable but clear of
-      // it. On assistant steps the panel opens (sm:w-[440px], GlobalAssistant), so shift further
-      // left (right-[456px]) to clear the open panel — only those steps need it. Prominent (solid
-      // amber border + glow) so it doesn't blend into the dark page — matches the in-card "Try it
-      // yourself" button. Inline backgroundColor forces a fully-opaque slate-900: the paused state
-      // has no dim backdrop, so a translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
+      // Sits just LEFT of the assistant "Ask" FAB (bottom-right) by default; when the assistant
+      // panel is actually open (sm:w-[440px] slide-over — tracked via assistantOpen, set whether
+      // the tour or the user opened it), shift further left (right-[456px]) to clear it. Prominent
+      // (solid amber border + glow) so it doesn't blend into the dark page — matches the in-card
+      // "Try it yourself" button. Inline backgroundColor forces a fully-opaque slate-900: the paused
+      // state has no dim backdrop, so a translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
       <button onClick={() => setPaused(false)}
         style={{ backgroundColor: '#0f172a' }}
-        className={`fixed bottom-6 ${step.openAssistant ? 'right-[456px]' : 'right-32'} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
+        className={`fixed bottom-6 ${assistantOpen ? 'right-[456px]' : 'right-32'} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
         ▶ Resume tour <span className="text-[11px] font-mono font-normal text-slate-400">Step {i + 1}/{steps.length}</span>
       </button>
     );
@@ -189,7 +198,7 @@ export default function GuidedTour() {
         {variant === 'interactive' && (
           <button onClick={() => setPaused(true)}
             className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
-            ⏸ Try it yourself — I'll wait here
+            ⏸ {step.openAssistant ? "Explore — I'll wait here" : "Try it yourself — I'll wait here"}
           </button>
         )}
         <div className="flex justify-between items-center mt-4">
