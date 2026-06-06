@@ -5,6 +5,7 @@ export const TOUR_STEPS = [
   { route: '/', selector: '[data-tour="incident-charts"]', title: '① Detect — the signal', body: 'MAE timeline + calibration bias: a direction-agnostic monitor catches over- AND under-reading.' },
   { route: '/device-support', selector: '[data-tour="anomaly-heatmap"]', title: '② Diagnose', body: 'Device error by firmware × day — which firmware drifts, when, and which way (↑ over / ↓ under-read glyphs).' },
   { route: '/diabetes-coach', selector: '[data-tour="coach-risk"]', title: '③ Assess', body: 'See the clinical impact — the selected patient\'s near-term (15/30-min) glucose forecast from the XGBoost model.' },
+  { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Ask the assistant', body: 'A built-in AI assistant on every page — device-support troubleshooting + natural-language CGM data queries (Genie).' },
 ];
 
 // Longer "full walkthrough" variant — the same Detect → Diagnose → Assess arc, but
@@ -46,4 +47,6 @@ export const TOUR_STEPS_INTERACTIVE = [
   { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Open the assistant', interactive: true, body: "A built-in AI assistant on every page. Open it — I'll wait — then resume and I'll point out its engine switch and the Genie data tab." },
   { route: '/diabetes-coach', selector: '[data-tour="assistant-engine"]', title: 'Fast ⇄ MAS engine switch', body: "On Device-support, toggle the engine: ⚡ Fast (a low-latency router → Genie / Knowledge Assistant / foundation model) or 🤖 MAS (the Multi-Agent Supervisor) — same question, two orchestration depths. (Open the assistant on the previous step if this isn't showing.)" },
   { route: '/diabetes-coach', selector: '[data-tour="assistant-genie-tab"]', title: 'Genie — ask the data', body: 'Switch to "CGM data (Genie)" to query the fleet in natural language — Genie writes the SQL and returns the table plus the query it ran.' },
+  { route: '/metrics-explained', selector: '[data-tour="metrics-explained"]', title: 'Every metric, explained', body: 'Each number in the app is defined here — burden vs fault, MAE, calibration bias, time-in-range — with the SQL behind it. Transparency for clinical and device decisions.' },
+  { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', body: "The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace (UC, pipeline, jobs, serving endpoints, Genie). That's the tour — Done returns you home to explore." },
 ];

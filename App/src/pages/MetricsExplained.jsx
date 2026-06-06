@@ -73,7 +73,7 @@ export default function MetricsExplained() {
 
       <main className="max-w-[88rem] mx-auto px-6 py-8">
         {/* Introduction */}
-        <section className="mb-12">
+        <section data-tour="metrics-explained" className="mb-12">
           <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               About This Page

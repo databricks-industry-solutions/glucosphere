@@ -144,8 +144,11 @@ export default function GuidedTour() {
   // Resume pill brings the user back to THIS step (active + i are preserved → no restart).
   if (paused) {
     return (
+      // bottom-CENTER, not bottom-right: the assistant "Ask" FAB lives bottom-right and the
+      // nav rail is on the left, so center is the only corner clear of both (the whole point
+      // of pausing is to click the FAB / open the assistant — the pill must not sit on top of it).
       <button onClick={() => setPaused(false)}
-        className="fixed bottom-6 right-6 z-[110] flex items-center gap-2 px-4 py-2.5 bg-slate-900 border border-amber-500/60 rounded-full shadow-2xl text-sm text-amber-300 hover:bg-amber-500/10">
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 px-4 py-2.5 bg-slate-900 border border-amber-500/60 rounded-full shadow-2xl text-sm text-amber-300 hover:bg-amber-500/10">
         ▶ Resume tour <span className="text-[11px] font-mono text-slate-500">Step {i + 1}/{steps.length}</span>
       </button>
     );

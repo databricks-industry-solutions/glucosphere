@@ -190,7 +190,7 @@ export default function AboutPage() {
 
         {/* Under the hood — the platform plumbing as a Data → ML/AI → Agentic pipeline flow,
             each node deep-linking into the deploying workspace. */}
-        <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        <section data-tour="about-hood" className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
           <h2 className="text-lg font-semibold mb-1 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
             Under the hood — powered by{' '}
             <a href={DBX.home} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">Databricks</a>

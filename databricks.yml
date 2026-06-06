@@ -80,6 +80,20 @@ variables:
       directly instead of discovering the bundle warehouse by name, and the target omits
       the `sql_warehouses` resource so nothing is created.
     default: ""
+  mas_endpoint:
+    description: |
+      App-assistant agent-endpoint coords. Normally passed to render_app_yaml.py as
+      --mas-endpoint / --ka-endpoint / --genie-space-id flags. Set these in
+      `.env.bundle.<target>` (BUNDLE_VAR_mas_endpoint / _ka_endpoint / _genie_space_id)
+      for a target that renders from its env file alone (e.g. a reuse/booth target) so
+      render auto-fills app.yaml without flags. Empty → render leaves app.yaml unchanged
+      for that field. Names are Agent-Bricks hex (ka-<hex>-endpoint / mas-<hex>-endpoint);
+      genie_space_id is a Genie space id. Update if the agents are ever recreated.
+    default: ""
+  ka_endpoint:
+    default: ""
+  genie_space_id:
+    default: ""
 
 targets:
   # ───────────────────────────────────────────────────────────────────────
