@@ -19,6 +19,20 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-06]
+
+Guided-tour interaction polish (Resume placement, pause gating, per-page assistant default) and a graceful assistant-timeout message — refining the Interactive tour introduced on 2026-06-05.
+
+### Changed — guided-tour interaction polish
+- **Resume pill — 3-state dock** (`GuidedTour.jsx`): when a step is paused, the floating Resume button docks **beside the open assistant panel** (`right-[456px]` — just left of the 440px slide-over's tab row), **above the "Ask" FAB** on a paused assistant step whose panel is still closed, otherwise **top-center**. Open-detection keys off the step (`step.openAssistant`) or the panel's real broadcast state (`assistantOpen`), so the auto-open Genie/MAS steps dock correctly without waiting on the `glucosphere:assistant-state` event. *(Supersedes the 2026-06-05 "sits just left of the Ask FAB / `-ml-[220px]`" placement.)*
+- **Pause gated to steps with something to do** — the "⏸ Try it yourself / Explore" button now shows only on toggle steps (`step.interactive` → **"Try it yourself"**), assistant-explore steps (`step.openAssistant` → **"Explore"**), and the read / deep-link pages **Metrics Explained + About "Under the hood"** (`step.explore` → **"Explore"**, each with a "▶ Explore:" body cue). Pure-narrative steps and the **"Open the assistant" FAB step** get a plain **Next** — the next two steps auto-open and drive the assistant, so a manual try-it there was redundant friction. *(Reverses the 2026-06-05 "every Interactive step is pausable" to a flag-driven model.)*
+- **Assistant opens to the current page's natural view** (`GlobalAssistant.jsx`): the manual mode override now **resets on navigation**, so each page opens to its route default (CGM-data / Genie on Coach + data / clinical pages, Device-support / MAS on the device pages); a manual tab pick sticks only while you stay on that page. Fixes the Coach page opening on the Device-support tab after a prior MAS step.
+- **"Next" highlights** (filled cyan, one step) right after Resume, cueing "continue the tour."
+- **Demo patient** for the Assess-per-patient step → **`PSEUDO_0000355`** (an under-read device that masked a true hyperglycemia during the incident, with the forecast climbing back into range); the per-patient search placeholder and the tour cue both point to it.
+
+### Changed — assistant resilience
+- **Graceful MAS-timeout message** (`App/src/api/databricksAgent.js`): a 502 / 504 from the Multi-Agent Supervisor (a multi-hop call that can exceed the gateway cap) now surfaces a clean "MAS timed out — switch to ⚡ Fast" message instead of dumping the raw 502 HTML into the chat thread.
+
 ## [2026-06-05]
 
 Population Risk fault-impact redesign, a deploy target for workspaces that can't create their own SQL warehouse, and teardown tooling for the per-target convention.
