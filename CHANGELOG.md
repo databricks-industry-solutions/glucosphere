@@ -28,7 +28,7 @@ Population Risk fault-impact redesign, a deploy target for workspaces that can't
 - **Three matrices including a Baseline control** (`getFaultConfusionMatrix` now returns positive / negative / **baseline**; baseline = out-of-incident readings, ~95% on-diagonal, off-diagonal rendered as neutral sensor noise rather than fault).
 - **Normalizable** by share-of-all readings (default) or per-true-band recall; **calibration-plot orientation** (device Low→High left→right, truth High→Low top→bottom, so agreement runs bottom-left → top-right).
 - **Affected-patient roster** "Worst N" now filters **within** the selected region / device model in SQL (was: global worst-N then client-filtered, which under-showed a filtered cohort); honest count denominator.
-- New **Metrics Explained** card (`#me-firmware-fault-impact`) deriving burden-roster vs in-incident-fault and how a more granular monitoring system would sharpen it; the panel deep-links to it.
+- New **Metrics Explained** card (`#me-firmware-fault-impact`) deriving burden-roster vs in-incident-fault and how a more granular monitoring system would sharpen it; the Population Risk panel and the About-page intro ("assess the patient-risk impact") both deep-link to it.
 - **Firmware Lifecycle**: removed the oversized, redundant hover tooltip on the MAE timeline (value already on the point, unit on the axis, firmware in the legend).
 
 ### Added — `dais` deploy target + `existing_warehouse_id` warehouse-reuse
