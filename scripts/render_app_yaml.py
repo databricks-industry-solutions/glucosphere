@@ -212,15 +212,24 @@ def main() -> int:
     p.add_argument("--mas-endpoint", default=None, help="MAS serving endpoint name (overrides env + resource block)")
     p.add_argument("--ka-endpoint", default=None, help="KA serving endpoint name (overrides resource block)")
     p.add_argument("--genie-space-id", default=None, help="Genie space ID (overrides env)")
+    p.add_argument("--warehouse-id", default=None,
+                   help="Existing SQL warehouse id to write into app.yaml instead of discovering the "
+                        "bundle-managed warehouse by name. Falls back to the `existing_warehouse_id` "
+                        "bundle var, then to by-name discovery. For reuse targets (e.g. the DAIS booth, "
+                        "whose identity can't create warehouses) that point at a shared warehouse.")
     args = p.parse_args()
 
     vars_ = get_bundle_vars(args.target, args.profile)
     catalog = vars_.get("catalog")
     schema = vars_.get("schema")
-    # warehouse_id is NOT a bundle variable anymore — it comes from the
-    # bundle-managed sql_warehouses resource (discovered by deterministic name).
-    # This requires the bundle to have been deployed at least once.
-    warehouse_id = discover_bundle_warehouse_id(args.target, args.profile)
+    # warehouse_id resolution, in precedence order:
+    #   1. --warehouse-id flag (explicit override)
+    #   2. `existing_warehouse_id` bundle var (set in .env.bundle.<target> for reuse
+    #      targets like the DAIS booth, whose identity can't create its own warehouse)
+    #   3. discover the bundle-managed warehouse by deterministic name (create-own
+    #      targets; requires the bundle to have been deployed at least once)
+    warehouse_id = (args.warehouse_id or vars_.get("existing_warehouse_id")
+                    or discover_bundle_warehouse_id(args.target, args.profile))
     setup_job_id = discover_setup_job_id(args.target, args.profile)
     pipeline_id = discover_pipeline_id(args.target, args.profile)
     forecast_endpoint = discover_forecast_endpoint(vars_.get("harness_suffix", ""), args.profile)

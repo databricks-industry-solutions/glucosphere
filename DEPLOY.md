@@ -161,11 +161,19 @@ Top-level bundle variables (defined in `databricks.yml`):
 | `dev_initials` | `.env.bundle.<target>` (optional) | `user` | Harness target suffix for collision avoidance when sharing a workspace; ≤7 chars |
 | `app_basename` | `.env.bundle.<target>` (optional) | `glucosphere` | Harness base name (shorten to fit the 30-char App limit if needed) |
 | `harness_suffix` | `.env.bundle.<target>` (`BUNDLE_VAR_harness_suffix`) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
+| `existing_warehouse_id` | `.env.bundle.<target>` (optional, `BUNDLE_VAR_existing_warehouse_id`) | `""` | **Reuse** an existing SQL warehouse instead of creating one — for workspaces where the deploy identity lacks SQL-warehouse-create entitlement (e.g. a shared booth). Empty → the target creates its own `glucosphere-warehouse-<target>`. When set, pass the same id to the renderer (`render_app_yaml.py --warehouse-id <id>`) and the target omits the `sql_warehouses` resource. |
 
-`warehouse_id` is **not** a bundle variable. The bundle declares a
-`sql_warehouses.glucosphere_warehouse` resource that creates the warehouse
-on first deploy. `scripts/render_app_yaml.py` discovers it by deterministic
-name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
+`warehouse_id` is **not** a bundle variable. Each create-own target declares
+its own `sql_warehouses.glucosphere_warehouse` resource (defined once via the
+`&glucosphere_warehouse` YAML anchor, reused across targets) that creates a
+`glucosphere-warehouse-<target>` warehouse on first deploy;
+`scripts/render_app_yaml.py` discovers it by deterministic name and writes
+`WAREHOUSE_ID` into `App/databricks/app.yaml`. To **reuse** an existing
+warehouse instead — for a workspace whose deploy identity can't create one —
+set `existing_warehouse_id` (above) in `.env.bundle.<target>` and pass
+`render_app_yaml.py --target <target> --warehouse-id <id>`; that target then
+omits the `sql_warehouses` resource and `09_grant_app_permissions.py` grants
+the app SP `CAN_USE` on that id directly.
 
 > **Assistant engine.** The Device-support assistant calls `/api/assist` with a switchable
 > engine — `ASSIST_ENGINE=direct` (default; a fast router → Genie / Knowledge Assistant /
@@ -219,7 +227,7 @@ npm run build
 
 ## Step 6: Deploy the Bundle (two-pass on first deploy)
 
-On a fresh workspace the first deploy creates the bundle-managed
+On a fresh workspace the first deploy creates the target's bundle-managed
 `sql_warehouses.glucosphere_warehouse` resource. `render_app_yaml.py` then
 discovers it by name and writes `WAREHOUSE_ID` into `App/databricks/app.yaml`.
 The second deploy syncs the updated app.yaml to the workspace.
@@ -231,6 +239,11 @@ databricks bundle deploy -t <target>            # Pass 1: creates warehouse + ap
 uv run python scripts/render_app_yaml.py --target <target>    # Discover warehouse + rewrite app.yaml
 databricks bundle deploy -t <target>            # Pass 2: sync updated app.yaml
 ```
+
+> **Reuse target** (deploy identity can't create warehouses — see
+> `existing_warehouse_id` in Step 2): the target skips warehouse creation, so
+> pass the existing id to the renderer instead of discovering by name:
+> `uv run python scripts/render_app_yaml.py --target <target> --warehouse-id $BUNDLE_VAR_existing_warehouse_id`.
 
 Subsequent deploys are single-pass (warehouse already exists; render still
 useful when catalog/schema/etc. change in `.env.bundle.<target>`).
