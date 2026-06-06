@@ -36,6 +36,17 @@ export default function GuidedTour() {
     if (active && !paused && step && location.pathname !== step.route) navigate(step.route);
   }, [active, paused, i, step, location.pathname, navigate]);
 
+  // Tour automation: open/close the assistant per step (fires on step ENTRY only, so it
+  // doesn't override what the user does during a "try it" pause). Steps that spotlight an
+  // assistant-internal control set `openAssistant` to a mode ('genie' | 'mas'); every other
+  // step closes the panel so it doesn't linger. GlobalAssistant listens for this event.
+  useEffect(() => {
+    if (!active || !step) return;
+    window.dispatchEvent(new CustomEvent('glucosphere:assistant', {
+      detail: { open: !!step.openAssistant, mode: step.openAssistant || undefined },
+    }));
+  }, [active, i, step]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Position the spotlight on the step's target. CLEAR the prior step's rect first so a
   // stale box never lingers at the previous target's coordinates during the search, then
   // retry until the element is present (route change + async data-load guards can delay it),

@@ -159,6 +159,19 @@ export default function GlobalAssistant() {
     if (open && messages.length > 1) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [threads, open, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tour automation: a guided-tour step can open/close the assistant (and set its mode) via
+  // a window event, so the engine toggle / Genie tab exist for the spotlight without a manual
+  // click. Same pattern can drive other view toggles later.
+  useEffect(() => {
+    const onTour = (e) => {
+      const { open: o = true, mode: m } = e.detail || {};
+      setOpen(!!o);
+      if (o && m) setManualMode(m);
+    };
+    window.addEventListener('glucosphere:assistant', onTour);
+    return () => window.removeEventListener('glucosphere:assistant', onTour);
+  }, []);
+
   const pushMsg = (m, msg) => setThreads((t) => ({ ...t, [m]: [...t[m], msg] }));
 
   // Reset the CURRENT mode's thread + conversation id (fresh start, e.g. after an error).
