@@ -12,7 +12,7 @@ export default function GuidedTour() {
   const [rect, setRect] = useState(null);
   const [cardStyle, setCardStyle] = useState(null);
   const [paused, setPaused] = useState(false); // interactive variant: overlay steps aside so the page is clickable; Resume returns to the same step
-  const [assistantOpen, setAssistantOpen] = useState(false); // mirrors the assistant panel's real open state (broadcast by GlobalAssistant) → reposition Resume clear of the open slide-over
+  const [assistantOpen, setAssistantOpen] = useState(false); // mirrors the assistant panel's real open state (broadcast by GlobalAssistant) → dock Resume beside the open slide-over
   const [justResumed, setJustResumed] = useState(false); // true right after Resume → highlight Next so the eye knows to continue; cleared on Next/Back/pause/close
   const cardRef = useRef(null);
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ export default function GuidedTour() {
   }, []);
 
   // Track the assistant panel's real open state (broadcast by GlobalAssistant) so the Resume
-  // button clears the open slide-over whether the panel was opened by the tour or by the user.
+  // button docks beside the open slide-over whether the panel was opened by the tour or by the user.
   useEffect(() => {
     const onState = (e) => setAssistantOpen(!!e.detail?.open);
     window.addEventListener('glucosphere:assistant-state', onState);
@@ -166,17 +166,29 @@ export default function GuidedTour() {
   // Interactive "try it" — the overlay steps aside so the whole page is clickable; a floating
   // Resume pill brings the user back to THIS step (active + i are preserved → no restart).
   if (paused) {
+    // Dock the Resume pill NEAR the Assistant whenever this step is about it; else top-center.
+    // panelShown: the panel is (or is about to be) open — either the tour auto-opens it on this step
+    // (step.openAssistant, e.g. the Genie/MAS steps — keyed off the step itself so the dock doesn't
+    // wait on the assistant-state broadcast) OR the user opened it manually (assistantOpen).
+    // fabStep: a paused step that spotlights an assistant control (data-tour selector contains
+    // "assistant") while the panel is still CLOSED → dock above the Ask FAB. Defensive fallback:
+    // the current FAB step isn't pausable (the next steps auto-open the assistant), so no live step
+    // hits this arm today — it keeps the dock correct if a closed-panel assistant pause is added later.
+    const panelShown = !!step.openAssistant || assistantOpen;
+    const fabStep = (step.selector || '').includes('assistant');
+    const resumePos = panelShown
+      ? 'top-20 right-[456px]'                 // panel OPEN (sm:w-[440px] right slide-over) → beside its tab row (440 + 16 gap)
+      : fabStep
+        ? 'bottom-24 right-6'                  // assistant step, panel still CLOSED → just above the bottom-right "Ask" FAB
+        : 'top-20 left-1/2 -translate-x-1/2';  // everything else → top-center, clear of the FAB and the left nav rail
     return (
-      // TOP-CENTER by default — clear of the bottom-right "Ask" FAB and the left nav rail. When the
-      // assistant panel is actually open (sm:w-[440px] right slide-over — tracked via assistantOpen,
-      // set whether the tour or the user opened it), nudge left by half the panel width (-ml-[220px])
-      // so it re-centers in the visible area left of the panel. Prominent (solid amber border + glow)
-      // so it doesn't blend into the dark page — matches the in-card "Try it yourself" button. Inline
-      // backgroundColor forces a fully-opaque slate-900: the paused state has no dim backdrop, so a
-      // translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
+      // Prominent (solid amber border + glow) so it doesn't blend into the dark page — matches the
+      // in-card "Try it yourself" button. Inline backgroundColor forces a fully-opaque slate-900: the
+      // paused state has no dim backdrop, so a translucent bg (Tailwind --tw-bg-opacity) would let the
+      // page bleed through.
       <button onClick={() => { setPaused(false); setJustResumed(true); }}
         style={{ backgroundColor: '#0f172a' }}
-        className={`fixed top-20 left-1/2 -translate-x-1/2 ${assistantOpen ? '-ml-[220px]' : ''} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
+        className={`fixed ${resumePos} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
         ▶ Resume tour <span className="text-[11px] font-mono font-normal text-slate-400">Step {i + 1}/{steps.length}</span>
       </button>
     );
@@ -195,12 +207,14 @@ export default function GuidedTour() {
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {steps.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
-        {/* In the Interactive variant EVERY step is pausable — its defining feature. The per-step
-            `interactive` flag in steps.js now only drives the "▶ Try it:" copy cue, not this button. */}
-        {variant === 'interactive' && (
+        {/* Pause only where there's something to do: toggle steps (step.interactive → "Try it
+            yourself"), assistant-explore steps (step.openAssistant) and read/deep-link pages
+            (step.explore) → "Explore". Pure-narrative steps and the FAB step — where the next steps
+            auto-open the assistant — get a plain Next, no redundant pause. */}
+        {variant === 'interactive' && (step.interactive || step.openAssistant || step.explore) && (
           <button onClick={() => { setPaused(true); setJustResumed(false); }}
             className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
-            ⏸ {step.openAssistant ? "Explore — I'll wait here" : "Try it yourself — I'll wait here"}
+            ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
           </button>
         )}
         <div className="flex justify-between items-center mt-4">

@@ -7,7 +7,8 @@ import { getEngine, setEngine } from '../api/assistEngine';
 
 // Default assistant mode for the current route: device-domain pages open to the
 // Device-support (MAS) agent, everything else to CGM-data (Genie). A manual
-// toggle overrides this and sticks across navigation (see manualMode below).
+// toggle overrides this WITHIN a page; navigating resets to the new page's default
+// so the panel always opens to where you are (see manualMode + reset effect below).
 const routeDefaultMode = (pathname) =>
   (pathname.startsWith('/device-support') || pathname.startsWith('/firmware-lifecycle') || pathname.startsWith('/population-risk'))
     ? 'mas' : 'genie';
@@ -131,7 +132,8 @@ function GenieResult({ payload, onFollowUp }) {
 export default function GlobalAssistant() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  // null = follow the route default; set once the user picks a mode (sticky).
+  // null = follow the route default; set when the user picks a mode. Reset on
+  // navigation (effect below) so each page opens to its own default.
   const [manualMode, setManualMode] = useState(null);
   const mode = manualMode ?? routeDefaultMode(location.pathname);
   // Engine for the Device-support chat: 'direct' (fast router) or 'mas' (supervisor).
@@ -154,6 +156,12 @@ export default function GlobalAssistant() {
 
   const messages = threads[mode];
   const ModeIcon = MODES[mode].icon;
+
+  // Clear the manual override on navigation so the assistant opens to the new page's
+  // natural default (Genie on data/clinical pages, MAS on device pages) — a manual tab
+  // pick only sticks while you stay on that page. The tour's auto-open steps are
+  // unaffected: each dispatches the mode that already equals its destination's default.
+  useEffect(() => { setManualMode(null); }, [location.pathname]);
 
   useEffect(() => {
     if (open && messages.length > 1) endRef.current?.scrollIntoView({ behavior: 'smooth' });
