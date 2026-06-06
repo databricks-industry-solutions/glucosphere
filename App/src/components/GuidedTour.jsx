@@ -167,15 +167,16 @@ export default function GuidedTour() {
   // Resume pill brings the user back to THIS step (active + i are preserved → no restart).
   if (paused) {
     return (
-      // Sits just LEFT of the assistant "Ask" FAB (bottom-right) by default; when the assistant
-      // panel is actually open (sm:w-[440px] slide-over — tracked via assistantOpen, set whether
-      // the tour or the user opened it), shift further left (right-[456px]) to clear it. Prominent
-      // (solid amber border + glow) so it doesn't blend into the dark page — matches the in-card
-      // "Try it yourself" button. Inline backgroundColor forces a fully-opaque slate-900: the paused
-      // state has no dim backdrop, so a translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
+      // TOP-CENTER by default — clear of the bottom-right "Ask" FAB and the left nav rail. When the
+      // assistant panel is actually open (sm:w-[440px] right slide-over — tracked via assistantOpen,
+      // set whether the tour or the user opened it), nudge left by half the panel width (-ml-[220px])
+      // so it re-centers in the visible area left of the panel. Prominent (solid amber border + glow)
+      // so it doesn't blend into the dark page — matches the in-card "Try it yourself" button. Inline
+      // backgroundColor forces a fully-opaque slate-900: the paused state has no dim backdrop, so a
+      // translucent bg (Tailwind --tw-bg-opacity) would let the page bleed through.
       <button onClick={() => { setPaused(false); setJustResumed(true); }}
         style={{ backgroundColor: '#0f172a' }}
-        className={`fixed bottom-6 ${assistantOpen ? 'right-[456px]' : 'right-32'} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
+        className={`fixed top-20 left-1/2 -translate-x-1/2 ${assistantOpen ? '-ml-[220px]' : ''} z-[110] flex items-center gap-2 px-6 py-3 border-2 border-amber-400 rounded-lg shadow-2xl shadow-amber-500/30 text-base font-semibold text-amber-300 hover:brightness-125`}>
         ▶ Resume tour <span className="text-[11px] font-mono font-normal text-slate-400">Step {i + 1}/{steps.length}</span>
       </button>
     );
