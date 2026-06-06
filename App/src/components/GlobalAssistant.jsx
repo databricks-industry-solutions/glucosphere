@@ -264,6 +264,7 @@ export default function GlobalAssistant() {
               return (
                 <button
                   key={key}
+                  data-tour={key === 'genie' ? 'assistant-genie-tab' : undefined}
                   onClick={() => setManualMode(key)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors ${
                     mode === key ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -276,6 +277,7 @@ export default function GlobalAssistant() {
             {/* Engine switch — only meaningful for the Device-support agent */}
             {mode === 'mas' && (
               <button
+                data-tour="assistant-engine"
                 onClick={toggleEngine}
                 title={engine === 'direct' ? 'Fast router (Genie/KA/FM) — click for Multi-Agent Supervisor' : 'Multi-Agent Supervisor — click for fast router'}
                 className={`ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-mono border transition-colors ${

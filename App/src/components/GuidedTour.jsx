@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TOUR_STEPS, TOUR_STEPS_FULL } from '../tour/steps';
+import { TOUR_STEPS, TOUR_STEPS_FULL, TOUR_STEPS_INTERACTIVE } from '../tour/steps';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
@@ -11,6 +11,7 @@ export default function GuidedTour() {
   const [i, setI] = useState(0);
   const [rect, setRect] = useState(null);
   const [cardStyle, setCardStyle] = useState(null);
+  const [paused, setPaused] = useState(false); // interactive variant: overlay steps aside so the page is clickable; Resume returns to the same step
   const cardRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -18,18 +19,22 @@ export default function GuidedTour() {
   useEffect(() => {
     // Start the tour. A launcher may preset the variant (e.g. {detail:{variant:'full'}})
     // — used for A/B; with no variant we show the Quick/Full chooser first.
-    const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setActive(true); };
+    const start = (e) => { setVariant(e?.detail?.variant ?? null); setI(0); setPaused(false); setActive(true); };
     window.addEventListener('glucosphere:start-tour', start);
     return () => window.removeEventListener('glucosphere:start-tour', start);
   }, []);
 
-  const steps = variant === 'full' ? TOUR_STEPS_FULL : TOUR_STEPS;
+  const steps = variant === 'full' ? TOUR_STEPS_FULL
+    : variant === 'interactive' ? TOUR_STEPS_INTERACTIVE
+    : TOUR_STEPS;
   const step = variant ? steps[i] : null;
 
   // Ensure we're on the right route for this step.
   useEffect(() => {
-    if (active && step && location.pathname !== step.route) navigate(step.route);
-  }, [active, i, step, location.pathname, navigate]);
+    // While paused (interactive "try it"), don't yank the user back to the step's route —
+    // they may be exploring elsewhere; resuming re-runs this and returns them to the step.
+    if (active && !paused && step && location.pathname !== step.route) navigate(step.route);
+  }, [active, paused, i, step, location.pathname, navigate]);
 
   // Position the spotlight on the step's target. CLEAR the prior step's rect first so a
   // stale box never lingers at the previous target's coordinates during the search, then
@@ -37,7 +42,7 @@ export default function GuidedTour() {
   // MEASURE AFTER the smooth scroll settles, and keep re-measuring on scroll/resize so the
   // box stays glued to the element (measuring too early lands it off-target).
   useEffect(() => {
-    if (!active || !step) return;
+    if (!active || !step || paused) return;
     setRect(null);   // drop the previous step's highlight immediately (no stale box mid-transition)
     let tries = 0;
     let cleanup = () => {};
@@ -71,7 +76,7 @@ export default function GuidedTour() {
       }
     }, 100);
     return () => { clearInterval(find); cleanup(); };
-  }, [active, i, step, location.pathname]);
+  }, [active, paused, i, step, location.pathname]);
 
   // Place the tooltip card RELATIVE to the spotlighted element: below it when there's
   // room, else above, else pinned near the bottom — so the card never covers the highlight.
@@ -99,7 +104,7 @@ export default function GuidedTour() {
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
 
-  const close = useCallback(() => { setActive(false); setVariant(null); setRect(null); setCardStyle(null); }, []);
+  const close = useCallback(() => { setActive(false); setVariant(null); setPaused(false); setRect(null); setCardStyle(null); }, []);
   if (!active) return null;
 
   // Quick/Full chooser (A/B) — shown when the tour starts without a preset variant.
@@ -110,16 +115,21 @@ export default function GuidedTour() {
         <div className="fixed left-1/2 -translate-x-1/2 bottom-40 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-col gap-2 mt-4">
             <button onClick={() => { setVariant('quick'); setI(0); }}
-              className="flex-1 px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
+              className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Quick overview
               <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess</span>
             </button>
             <button onClick={() => { setVariant('full'); setI(0); }}
-              className="flex-1 px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
+              className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Full walkthrough
               <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_FULL.length} steps · every panel + AI assistant</span>
+            </button>
+            <button onClick={() => { setVariant('interactive'); setI(0); }}
+              className="px-3 py-2.5 text-sm text-amber-300 border border-amber-500/50 rounded-lg hover:bg-amber-500/10 text-left">
+              Interactive walkthrough
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_INTERACTIVE.length} steps · pause any step to try it, then resume</span>
             </button>
           </div>
           <button onClick={close} className="mt-3 text-xs text-slate-500 hover:text-slate-300">Skip</button>
@@ -129,6 +139,17 @@ export default function GuidedTour() {
   }
 
   if (!step) return null;
+
+  // Interactive "try it" — the overlay steps aside so the whole page is clickable; a floating
+  // Resume pill brings the user back to THIS step (active + i are preserved → no restart).
+  if (paused) {
+    return (
+      <button onClick={() => setPaused(false)}
+        className="fixed bottom-6 right-6 z-[110] flex items-center gap-2 px-4 py-2.5 bg-slate-900 border border-amber-500/60 rounded-full shadow-2xl text-sm text-amber-300 hover:bg-amber-500/10">
+        ▶ Resume tour <span className="text-[11px] font-mono text-slate-500">Step {i + 1}/{steps.length}</span>
+      </button>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
@@ -143,6 +164,12 @@ export default function GuidedTour() {
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {steps.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
         <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
+        {step.interactive && (
+          <button onClick={() => setPaused(true)}
+            className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
+            ⏸ Try it yourself — I'll wait here
+          </button>
+        )}
         <div className="flex justify-between items-center mt-4">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
