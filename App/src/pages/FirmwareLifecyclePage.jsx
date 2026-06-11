@@ -82,7 +82,7 @@ export default function FirmwareLifecyclePage() {
             to <span className="text-rose-300 font-mono">~40 mg/dL</span> during its incident, pointing at the exact version to roll back or patch.
           </p>
           <p className="text-xs text-slate-500 leading-relaxed mt-2">
-            Scoped to the in-incident readings (not a whole-day average, which would dilute the ~3-hour event to a few mg/dL) — the same <span className="font-mono">±40 mg/dL</span> fault the Device Support dashboard's <span className="text-slate-400">Device Error by Firmware × Day</span> heatmap shows.
+            Scoped to the in-incident readings (not a whole-week average, which would dilute even a 12h event to a few mg/dL) — the same <span className="font-mono">±40 mg/dL</span> fault the Device Support dashboard's <span className="text-slate-400">Device Error by Firmware × Day</span> heatmap shows.
           </p>
         </section>
 
