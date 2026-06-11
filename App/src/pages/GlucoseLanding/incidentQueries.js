@@ -21,10 +21,10 @@ import { getConfig } from '../../api/config';
  * fleet-wide averaging masks the per-device severity, motivating
  * patient-level / direction-aware monitoring.
  *
- * With the two-window mirror design (2026-05-18), this chart shows two
- * distinct spike events: a +40 incident on Day 2 14:00-17:00 (cohort 1)
- * and a -40 incident on Day 5 10:00-13:00 (cohort 2). MAE is direction-
- * agnostic (ABS) so both spikes peak at the same ~45 mg/dL magnitude.
+ * With the two-window mirror design, this chart shows two distinct
+ * sustained events: a +40 incident on Day 2 from 14:00 (12h, cohort 1)
+ * and a -40 incident on Day 5 from 10:00 (12h, cohort 2). MAE is direction-
+ * agnostic (ABS) so both peak at the same ~45 mg/dL magnitude.
  */
 export async function getIncidentImpactData() {
   const { catalog, schema } = await getConfig();

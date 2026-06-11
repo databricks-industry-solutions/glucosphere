@@ -1,5 +1,5 @@
 // Landing Page Metrics - SQL Queries
-// Uses CGM schema data for real-time metrics
+// Uses CGM schema data for dashboard metrics (batch gold tables, queried on demand)
 //
 // All SQL queries here fetch catalog/schema from getConfig() (Flask /api/config
 // sourced from app.yaml env vars). NEVER hardcode catalog/schema names inline.

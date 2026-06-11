@@ -97,20 +97,25 @@ checks = [
     ("window2_underread_not_on_4_0_3",
      f"SELECT COUNT(*) FROM {P} p JOIN {G} g ON p.patient_id=g.patient_id AND p.time=g.time WHERE p.incident_type='calibration_bias' AND p.incident_direction='negative' AND CAST(g.firmware_version AS STRING) <> '4.0.3'",
      "Under-read (window-2) incident reading not on firmware 4.0.3"),
-    # Device-error gradient: the faulty firmwares' measurement noise (σ≈11) must read clearly
-    # above the clean firmwares' (σ≈3–4) on NON-incident readings — otherwise the heatmap is
-    # flat and the σ tiers have regressed. Measured as mean|observed−true| (the heatmap metric).
+    # Device-error MODEL gradient: σ is now device-model-gated + two-pulse (see _firmware_spec) —
+    # clean control models (Epsilon/Zeta) stay flat σ≈3 while faulty models (Alpha/Gamma/Beta/Delta)
+    # rise into each incident and recover. So the tier the heatmap shows is by device MODEL, not by
+    # firmware (a by-firmware test would now collapse — faulty models recover between incidents and
+    # clean models on buggy firmware stay flat). Assert faulty MODELS on the buggy firmwares read
+    # clearly above the clean control models. mean|observed−true|, incident readings INCLUDED (the
+    # ±40 fault + σ pulses are the signal that must be present).
     ("device_error_tier_not_gradient",
      f"""SELECT CASE WHEN faulty_err > clean_err + 2.0 THEN 0 ELSE 1 END FROM (
             SELECT
               (SELECT AVG(ABS(p.glucose_observed - p.glucose_true)) FROM {P} p JOIN {G} g
                  ON p.patient_id=g.patient_id AND p.time=g.time
-                 WHERE p.incident_type IS NULL AND CAST(g.firmware_version AS STRING) IN ({_in(FAULTY_FIRMWARES)})) AS faulty_err,
+                 WHERE CAST(g.device_model AS STRING) IN ({_in(POS_BIAS_MODELS + NEG_BIAS_MODELS)})
+                   AND CAST(g.firmware_version AS STRING) IN ({_in(FAULTY_FIRMWARES)})) AS faulty_err,
               (SELECT AVG(ABS(p.glucose_observed - p.glucose_true)) FROM {P} p JOIN {G} g
                  ON p.patient_id=g.patient_id AND p.time=g.time
-                 WHERE p.incident_type IS NULL AND CAST(g.firmware_version AS STRING) IN ({_in(CLEAN_FIRMWARES)})) AS clean_err
+                 WHERE CAST(g.device_model AS STRING) IN ({_in(CLEAN_MODELS)})) AS clean_err
          )""",
-     f"Faulty firmware ({'/'.join(FAULTY_FIRMWARES)}) device error not clearly above clean ({'/'.join(CLEAN_FIRMWARES)}) — heatmap gradient lost"),
+     f"Faulty device models ({'/'.join(POS_BIAS_MODELS + NEG_BIAS_MODELS)}) on buggy firmware not clearly above clean control models ({'/'.join(CLEAN_MODELS)}) — heatmap model-gradient lost"),
 ]
 
 violations = []

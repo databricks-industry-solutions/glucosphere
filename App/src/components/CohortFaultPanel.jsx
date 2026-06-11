@@ -151,7 +151,7 @@ export default function CohortFaultPanel({ data = [], confusion = { positive: {}
           </div>
 
           <p className="text-[11px] font-mono text-slate-600 mt-4">
-            The fault doesn't change the patient's <span className="text-slate-300">true</span> glucose — the matrix <span className="text-slate-300">rows</span> (truth) stay ≈ baseline across all three. It corrupts the <span className="text-slate-300">reading</span> — the <span className="text-slate-300">columns</span> (device) are what diverge: an over-read device hides real lows (⚠ missed hypo) &amp; cries wolf on highs; an under-read device hides real highs (⚠ missed hyper) &amp; cries wolf on lows. Baseline is the unaffected control (device ≈ truth, ~95% agree; its scattered cells are sensor noise). Over the full week these errors wash to ~0.5&nbsp;pp.
+            The fault doesn't change the patient's <span className="text-slate-300">true</span> glucose — the matrix <span className="text-slate-300">rows</span> (truth) stay ≈ baseline across all three. It corrupts the <span className="text-slate-300">reading</span> — the <span className="text-slate-300">columns</span> (device) are what diverge: an over-read device hides real lows (⚠ missed hypo) &amp; cries wolf on highs; an under-read device hides real highs (⚠ missed hyper) &amp; cries wolf on lows. Baseline is the unaffected control (device ≈ truth, ~95% agree; its scattered cells are sensor noise). Over the full week these errors wash to ~1.3&nbsp;pp.
           </p>
           <Link to="/metrics-explained#me-firmware-fault-impact" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
             How this is computed →
