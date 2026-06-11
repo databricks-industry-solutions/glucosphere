@@ -1,4 +1,5 @@
-// Databricks DBSQL MCP Server API Client
+// Databricks SQL API client — posts to the Flask /api/sql/query proxy, which runs
+// queries via the Statement Execution API and returns rows in an MCP-compatible shape.
 // Based on: https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp
 //
 // All SQL queries in this file fetch catalog/schema from getConfig() (which calls
@@ -8,7 +9,7 @@
 import { getConfig } from './config';
 
 /**
- * Execute a SQL query via Databricks DBSQL MCP server
+ * Execute a SQL query via the Databricks SQL Statement Execution API (through the Flask /api/sql/query proxy)
  * @param {string} query - SQL query to execute
  * @returns {Promise<any>} Query results
  */

@@ -1,5 +1,5 @@
 // Diabetes Coach Dashboard Clinical Metrics - SQL Queries
-// Uses gold_patient_device_readings for real-time clinical data
+// Uses gold_patient_device_readings for clinical data (batch gold tables, queried on demand)
 //
 // All SQL queries here fetch catalog/schema from getConfig() (Flask /api/config
 // sourced from app.yaml env vars). NEVER hardcode catalog/schema names inline.
