@@ -2368,16 +2368,16 @@ print("="*80)
 # MAGIC * **Per affected patient** = one patient's incident-window timepoints:
 # MAGIC   ```
 # MAGIC   incident_duration_min ÷ cadence_min
-# MAGIC     = 180 min ÷ 5 min/timepoint            (with default config)
-# MAGIC     = 36 timepoints
+# MAGIC     = 720 min ÷ 5 min/timepoint            (with default config)
+# MAGIC     = 144 timepoints
 # MAGIC   ```
-# MAGIC   Window starts at `incident_start_day` + `incident_start_hour` (default: day 2, hour 14) and runs `incident_duration_min` long (default 180 min = 3 hrs).
-# MAGIC * **Table-wide count** = (number of affected patients) × 36:
+# MAGIC   Window starts at `incident_start_day` + `incident_start_hour` (default: day 2, hour 14) and runs `incident_duration_min` long (default 720 min = 12 hrs).
+# MAGIC * **Table-wide count** = (number of affected patients) × 144:
 # MAGIC   ```
-# MAGIC   incident_pct × total_patients × 36
-# MAGIC     = 0.3 × 1,000 × 36                     (with default config)
-# MAGIC     = 300 patients × 36
-# MAGIC     = ~10,800 rows with incident_type = "calibration_bias"
+# MAGIC   incident_pct × total_patients × 144
+# MAGIC     = 0.3 × 1,000 × 144                    (with default config)
+# MAGIC     = 300 patients × 144
+# MAGIC     = ~43,200 rows with incident_type = "calibration_bias"
 # MAGIC   ```
 # MAGIC * Used for: identifying exact affected measurements for analysis or model training
 # MAGIC * Question: *"Is this specific measurement affected by the incident?"*
@@ -2386,7 +2386,7 @@ print("="*80)
 # MAGIC | Field | Scope | Per-patient | Table-wide | Use case |
 # MAGIC |---|---|---|---|---|
 # MAGIC | `has_incident = 1` | All records of affected patients (full 7-day timeline) | 2,016 records | ~604,800 rows | "Which patients?" |
-# MAGIC | `incident_type = "calibration_bias"` | Only in-window records | 36 records (3 hrs) | ~10,800 rows | "Which timepoints?" |
+# MAGIC | `incident_type = "calibration_bias"` | Only in-window records | 144 records (12 hrs) | ~43,200 rows | "Which timepoints?" |
 # MAGIC
 # MAGIC **Bidirectional variant — `05_incident_inference_bidirectional.py`:**
 # MAGIC The affected cohort is split into positive- and negative-bias subgroups via the `incident_direction` column (`positive` / `negative` for affected patients, `null` for clean). Counts above are unchanged; `incident_direction` is just a per-affected-patient label to filter MAE breakouts by direction.

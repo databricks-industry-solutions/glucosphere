@@ -65,7 +65,7 @@ The bidirectional incident overlay shifts glucose distribution by cohort — bas
 
 ## Device firmware rollout & the device-error gradient
 
-Separate from the acute ±40 mg/dL calibration incidents, the fleet carries a **four-version firmware rollout** — `3.14 → 4.0 → 4.0.3 → 4.1` — with an always-on, **per-firmware measurement-noise σ ramp** (`utils/additional_patient_info/_firmware_spec.py`: a zero-mean Gaussian term on `glucose_observed`). This turns the *Device Error by Firmware × Day* view into a **green → amber → red gradient** rather than a binary fault:
+Separate from the acute ±40 mg/dL calibration incidents, the fleet runs a **four-version firmware rollout** — `3.14 → 4.0 → 4.0.3 → 4.1` (fleet-wide) — and a zero-mean measurement-noise σ that is **device-model-gated + two-pulse** (`utils/additional_patient_info/_firmware_spec.py`, a Gaussian term on `glucose_observed`): faulty device models (Alpha/Gamma/Beta/Delta) rise to σ≈10 into each of the two incidents then recover gradually, while clean control models (Epsilon/Zeta) stay flat at σ≈3. This turns the *Device Error by Firmware × Day* view into a **device-model × firmware green → amber → red gradient** rather than a binary fault:
 
 - **`3.14`** (baseline) and **`4.1`** (recall / fixed) are the **clean** versions — low noise.
 - **`4.0`** is the faulty over-read rollout; **`4.0.3`** is the under-read "hotfix" that briefly looked better then regressed — both **faulty**, with elevated σ.
@@ -74,15 +74,15 @@ The noise is **deterministic** (seeded from a hash, so reruns reproduce) and **z
 
 ## Forecast model performance
 
-The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) is trained on real HUPA-UCM-derived data and evaluated under a simulated **bidirectional ±40 mg/dL** device calibration bug (two ~3-hour windows: Day-2 over-read cohort + Day-5 under-read cohort, ~300 patients each ≈ 60% of the 1,000-patient fleet):
+The forecast model (`cgm_xgb_15m@Champion` / `cgm_xgb_30m@Champion`) is trained on real HUPA-UCM-derived data and evaluated under a simulated **bidirectional ±40 mg/dL** device calibration bug (two ~12-hour windows: Day-2 over-read cohort + Day-5 under-read cohort, ~300 patients each ≈ 60% of the 1,000-patient fleet):
 
 | Period | MAE 15m | MAE 30m |
 |---|---:|---:|
 | Clean — published noise-free anchor | ~5.8 mg/dL | ~10.4 mg/dL |
-| Incident (bidirectional ±40 mg/dL bug) | ~38 mg/dL | ~37 mg/dL |
-| Degradation vs anchor | ≈6× | ≈3.5× |
+| Incident (affected cohort, in-window) | ~29 mg/dL | ~34 mg/dL |
+| Degradation vs anchor | ≈5× | ≈3.3× |
 
-> **The clean-period MAE is computed dynamically each run** (`05_incident_inference_bidirectional.py`) and now sits **slightly above** the published `~5.8 / 10.4 mg/dL` noise-free anchor — because the model trains and evaluates on `glucose_observed`, which carries the always-on firmware **measurement noise** (an honest sensor floor, not the idealized synthetic number). Treat the incident/degradation figures as a **representative run**, not a fixed contract.
+> **The clean-period MAE is computed dynamically each run** (`05_incident_inference_bidirectional.py`). The measurement noise is now **device-model-gated** (faulty device models rise into each incident and recover; clean control models stay at the noise-free floor), so the clean-period fleet MAE sits **near** the published `~5.8 / 10.4 mg/dL` anchor — the faulty-model pulse tails lift it modestly off the idealized synthetic number (an honest sensor floor). Treat the incident/degradation figures as a **representative run**, not a fixed contract.
 
 A well-tuned model performs at published-research-quality on clean data (~5–6 mg/dL MAE for 15-minute glucose forecasting), then **degrades catastrophically — several-fold — when device calibration is compromised in either direction**. This is the load-bearing motivation for the platform's fleet-level device anomaly detection: forecast MAE alone surfaces the problem within minutes of incident onset.
 

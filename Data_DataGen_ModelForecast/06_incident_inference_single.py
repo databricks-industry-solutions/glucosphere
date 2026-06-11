@@ -10,7 +10,7 @@
 # MAGIC
 # MAGIC ## Incident Scenario
 # MAGIC * **Bug Type:** Device calibration error causing **+40 mg/dL systematic bias**
-# MAGIC * **Timing:** Day 2, 2:00 PM - 5:00 PM (3-hour window)
+# MAGIC * **Timing:** Day 2, 2:00 PM → Day 3, 2:00 AM (12-hour window)
 # MAGIC * **Affected:** 30% of patients (300 out of 1000)
 # MAGIC * **Impact:** MAE increases from **3.8 mg/dL → 38.3 mg/dL** (920% degradation)
 # MAGIC
@@ -68,7 +68,7 @@
 # MAGIC **Run cells 3-18** to see the complete incident analysis (~5 min)
 # MAGIC
 # MAGIC **Key visualizations:**
-# MAGIC * Cell 14: MAE spike during incident (affected patients show ~38 mg/dL MAE)
+# MAGIC * Cell 14: MAE spike during incident (affected patients show ~34 mg/dL MAE, 30m)
 # MAGIC * Cell 15: 3-panel MAE comparison (all vs affected vs unaffected patients)
 # MAGIC * Cell 16: 3-panel glucose timeline (shows +40 mg/dL bias in affected patients)
 # MAGIC * Cell 17: Glucose distribution analysis
@@ -736,7 +736,7 @@ print("KEY FINDINGS")
 print("="*80)
 print(f"\n[1] Clean model performs excellently on clean data (5.8 mg/dL)")
 print(f"[2] Device calibration bug causes CATASTROPHIC failure (~{incident_mae_15m:.0f} mg/dL)")
-print(f"[3] MAE increases by {degradation_pct_15m:.0f}% during 3-hour incident")
+print(f"[3] MAE increases by {degradation_pct_15m:.0f}% during 12-hour incident")
 print(f"[4] Demonstrates critical need for device quality monitoring")
 print("="*80)
 
@@ -888,7 +888,7 @@ plt.show()
 print("[SUCCESS] Visualization complete!")
 print(f"\nThe plot clearly shows:")
 print(f"   1. MAE is stable at ~5.8 mg/dL during clean periods")
-print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 3-hour incident")
+print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 12-hour incident")
 print(f"   3. MAE returns to ~5.8 mg/dL after incident ends")
 print(f"   4. GREEN line (true glucose) = stable baseline throughout")
 print(f"   5. RED line (observed) spikes +{cfg.calibration_bias_mgdl:.0f} mg/dL ABOVE green during incident")
@@ -1452,7 +1452,7 @@ print("\n" + "="*80)
 print("CONCLUSION")
 print("="*80)
 print(f"\nEven an excellent model (5.8 mg/dL MAE) fails catastrophically")
-print(f"when device calibration is compromised. During the 3-hour incident:")
+print(f"when device calibration is compromised. During the 12-hour incident:")
 print(f"\n  * MAE increased from {clean_mae_15m:.1f} to {incident_mae_15m:.1f} mg/dL ({degradation_pct_15m:.0f}% worse)")
 print(f"  * {cfg.incident_pct*100:.0f}% of patients affected")
 print(f"  * Performance returned to normal after incident ended")

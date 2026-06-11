@@ -15,8 +15,8 @@ dev:
   incident_pct: 0.3
   calibration_bias_mgdl: 40.0                # kept for backwards-compat with original 05_*.py runtime backup
   # Two-incident mirror design (consumed by 05_incident_inference_bidirectional.py):
-  # Window 1 is the original buildathon-main +40 incident (Day 2 14:00-17:00, 30% of fleet).
-  # Window 2 mirrors it on Day 5 10:00-13:00 with -40 bias on a DIFFERENT 30% cohort
+  # Window 1 is the +40 incident (Day 2 14:00 → Day 3 02:00, a 12h sustained fault, 30% of fleet).
+  # Window 2 mirrors it on Day 5 10:00–22:00 (12h) with -40 bias on a DIFFERENT 30% cohort
   # (mutually exclusive from Window 1), so plots show two clearly distinct spikes at
   # different x-positions without any direction-split cancellation.
   calibration_bias_magnitude_mgdl: 40.0      # absolute bias size (same value as legacy calibration_bias_mgdl)
@@ -24,12 +24,15 @@ dev:
                                              # we have a dedicated negative-direction window 2.
   incident_start_day: 2
   incident_start_hour: 14
-  incident_duration_min: 180
+  incident_duration_min: 720                 # 12h sustained calibration fault (was 180/3h) — a firmware
+                                             # calibration defect persists until recalibration, and a
+                                             # longer fault reads clearly on the 7-day MAE/heatmap views.
+                                             # 12h keeps the window inside the 4.0 era (days 2–4).
   # Second (mirror) incident window — opposite direction, different cohort:
   second_incident_pct: 0.3                   # 30% of fleet (mutually exclusive from window 1's 30%)
   second_incident_start_day: 5               # Day 5 = 2026-01-10
   second_incident_start_hour: 10             # 10:00 AM (different time-of-day from window 1's 14:00)
-  second_incident_duration_min: 180          # 3 hours (matches window 1)
+  second_incident_duration_min: 720          # 12h (matches window 1); ends Day 5 22:00, inside the 4.0.3 era (days 4–6)
   second_incident_direction: negative        # 'negative' = -bias_magnitude, 'positive' = +bias_magnitude
   demo_week_start: 'auto'                    # 'auto' (or empty) = compute as (today_utc - 6 days) at notebook runtime
                                              #   so the 7-day demo window ends on today.

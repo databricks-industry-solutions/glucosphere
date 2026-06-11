@@ -9,16 +9,17 @@
 # MAGIC incident simulation (`05`/`06`), and the sanity gate — `%run`s this spec so they
 # MAGIC compute the **identical** era for every reading. Mirrors `_device_model_spec`.
 # MAGIC
-# MAGIC ## Why each firmware also carries a device-error σ
+# MAGIC ## Device-error σ — device-model-gated, two-pulse
 # MAGIC
-# MAGIC `glucose_observed = glucose_true + measurement_noise(firmware) + acute_fault`. Real
-# MAGIC CGMs are not perfect: they have a measurement error (MARD ≈ 9% of the reading). We
-# MAGIC model that as **zero-mean** noise whose magnitude (σ, mg/dL) depends on the firmware:
-# MAGIC the buggy rollout (`4.0`/`4.0.3`) ships *degraded* (σ≈11 ≈ MARD-9%), the good
-# MAGIC versions (`3.14`/`4.1`) are tight (σ≈3–4 ≈ MARD-3%). On top of that, the two acute
-# MAGIC calibration incidents add a **systematic** ±40 mg/dL bias (handled in `05`/`06`).
+# MAGIC `glucose_observed = glucose_true + measurement_noise(model, time) + acute_fault`. Real
+# MAGIC CGMs are not perfect: they have a measurement error (MARD ≈ 9% of the reading). We model
+# MAGIC that as **zero-mean** noise whose magnitude (σ, mg/dL) depends on the device MODEL and time:
+# MAGIC faulty models (`Alpha`/`Gamma`/`Beta`/`Delta`) rise to σ≈10 (MARD ~8%) into each of the two
+# MAGIC calibration incidents then recover gradually; clean control models (`Epsilon`/`Zeta`) stay
+# MAGIC flat σ≈3 (MARD ~3%). On top of that, the two acute calibration incidents add a
+# MAGIC **systematic** ±40 mg/dL bias on the faulty-model cohorts (handled in `05`/`06`).
 # MAGIC
-# MAGIC Because the per-firmware noise is **zero-mean**, it raises the device-error heatmap
+# MAGIC Because the noise is **zero-mean**, it raises the device-error heatmap
 # MAGIC metric `mean|observed − true|` (clean cell → 0.8·σ) into a real green→amber→red
 # MAGIC gradient **without shifting** the clinical mean — OOR / TIR / High-Risk move <1%
 # MAGIC (verified by simulation on the real glucose distribution). The noise is a
@@ -33,30 +34,26 @@ from datetime import datetime, timedelta
 # the column is string-compared/displayed everywhere downstream (app CASTs to string).
 FIRMWARE_VERSIONS = ["3.14", "4.0", "4.0.3", "4.1"]
 
-# Per-firmware device-error σ (mg/dL) as a (start, end) RAMP across the firmware's life.
-# Real devices degrade *gradually*, so the measurement-error σ climbs over a firmware
-# version's days rather than sitting flat — this is what turns the heatmap from green+red
-# "binary" into a true green→amber→red gradient (heatmap cell ≈ 0.8·σ on the 0→40 scale).
-#   clean 3.14/4.1 ≈ flat 2–4  (MARD ~2–3%)                          -> green
-#   buggy 4.0   ramps 6 → 15  (ships ok-ish, degrades over its life) -> green→amber
-#   buggy 4.0.3 ramps 12 → 18 (hotfix shipped already-degraded, worsens) -> amber
-# Noise is zero-mean, so this raises mean|observed−true| (the heatmap metric) WITHOUT moving
-# the clinical mean; eras are short (≤2 days) so the high-σ tail applies to a fraction of the
-# week → aggregate OOR/TIR shift stays small (re-verified by simulation before each re-run).
-FIRMWARE_ERROR_SIGMA_RAMP = {
-    "3.14":  (3.0, 4.0),
-    "4.0":   (6.0, 15.0),
-    # 4.0.3 (the hotfix) STARTS near-clean — accuracy briefly recovers almost to baseline when
-    # the patch ships, so the fleet error visibly dips between the two incidents ("looked
-    # fixed") — then re-degrades as the patch fails to actually fix the calibration. Tells the
-    # "hotfix tried, looked fixed, failed" story.
-    "4.0.3": (4.0, 17.0),
-    "4.1":   (2.0, 3.0),
-}
-assert set(FIRMWARE_ERROR_SIGMA_RAMP) == set(FIRMWARE_VERSIONS), \
-    "every firmware version must have a device-error σ ramp exactly once"
-# Single-number midpoint σ (back-compat for any consumer that wants one value, e.g. docs/tests).
-FIRMWARE_ERROR_SIGMA = {fw: (lo + hi) / 2.0 for fw, (lo, hi) in FIRMWARE_ERROR_SIGMA_RAMP.items()}
+# Device-error σ (mg/dL) — DEVICE-MODEL-GATED, TWO-PULSE model (refined 2026-06-10).
+# σ is NOT a flat per-firmware value. Two things shape it (see firmware_sigma_case_sql):
+#   1. WHICH device models — only FAULTY models (Alpha/Gamma/Beta/Delta) carry elevated σ;
+#      CLEAN models (Epsilon/Zeta) stay at σ≈SIGMA_CLEAN at ALL times (their hardware tolerates
+#      the buggy firmware) → they are the flat "control" cohort.
+#   2. WHEN — for a faulty model, σ rises into each of the TWO calibration incidents, holds
+#      across the fault window, then RECOVERS GRADUALLY (affected devices take time to recover).
+#      → two separable buggy periods with a dip between ("hotfix looked fixed, then failed"),
+#      not one continuous box, and not the old within-era drift.
+# firmware_VERSION stays fleet-wide/time-based (every model rolls 3.14→4.0→4.0.3→4.1) so the
+# device×firmware heatmap stays COMPLETE — only σ is model-gated (the 2026-06-02 c5713a0 fix
+# made firmware fleet-wide precisely so clean models aren't blank on 4.0/4.0.3 — we keep that).
+# Noise is zero-mean → raises mean|observed−true| (heatmap metric ≈ 0.8·σ) WITHOUT moving the
+# clinical mean. σ_peak has no high tail → the forecaster stays realistic (above naive ~9).
+SIGMA_CLEAN = 3.0                  # baseline σ: clean models always; faulty models between/around pulses. MARD ~2–3%.
+SIGMA_PEAK  = 10.0                 # faulty-model σ at an incident peak. MARD ~8% (degraded device).
+SIGMA_ONSET_HOURS = 4.0            # fast rise so σ reaches SIGMA_PEAK by the incident onset (fault lands on full σ).
+SIGMA_RECOVERY_TAU_HOURS = 12.0    # exp recovery time-constant after each incident (~3τ ≈ 36h back toward clean).
+# Legacy single-value σ map (kept only for any doc/test consumer; the pulse model does NOT use it).
+FIRMWARE_ERROR_SIGMA = {"3.14": SIGMA_CLEAN, "4.0": SIGMA_PEAK, "4.0.3": SIGMA_PEAK, "4.1": SIGMA_CLEAN}
 
 # Faulty rollouts (the demo's "which versions to recall"): the two with degraded σ.
 FAULTY_FIRMWARES = ["4.0", "4.0.3"]
@@ -103,26 +100,62 @@ def firmware_version_case_sql(cfg, time_col: str = "time") -> str:
     return f"CASE\n{whens}\n        ELSE '{firmware_eras(cfg)[-1][0]}'\n    END"
 
 
-def firmware_sigma_case_sql(cfg, time_col: str = "time") -> str:
-    """Spark-SQL CASE mapping `time_col` to the firmware's device-error σ (mg/dL), **ramped**
-    linearly from the version's start-σ to end-σ across its era (so error grows over the
-    firmware's life). Uses the SAME `firmware_eras`, so the σ a reading gets always matches
-    the firmware it is labelled with — they can never drift."""
-    def ramp(fw, start, end):
-        lo, hi = FIRMWARE_ERROR_SIGMA_RAMP[fw]
-        # position in [0,1] across the era; for the open-ended final era the far-future `end`
-        # makes position ≈ 0 → effectively flat at `lo` (clean recall doesn't degrade).
-        pos = (f"least(1.0, greatest(0.0, "
-               f"(unix_timestamp({time_col}) - unix_timestamp(TIMESTAMP('{start}'))) / "
-               f"(unix_timestamp(TIMESTAMP('{end}')) - unix_timestamp(TIMESTAMP('{start}')))))")
-        return f"({lo} + ({hi} - {lo}) * {pos})"
-    eras = firmware_eras(cfg)
-    whens = "\n".join(
-        f"        WHEN {time_col} < TIMESTAMP('{end}') THEN {ramp(fw, start, end)}"
-        for fw, start, end in eras[:-1]
-    )
-    fw_last, start_last, end_last = eras[-1]
-    return f"CASE\n{whens}\n        ELSE {ramp(fw_last, start_last, end_last)}\n    END"
+def incident_onsets(cfg):
+    """The two calibration incidents as `[(onset_iso, hold_end_iso), ...]`, from the SAME cfg
+    params 05/06 use to place the windows — so the σ pulse a reading gets always lines up with
+    the acute ±40 fault. Onset = demo_week_start + start_day + start_hour; hold_end = + duration."""
+    d0 = datetime.fromisoformat(str(cfg.demo_week_start))
+    def pair(day, hour, dur_min):
+        o = d0 + timedelta(days=day, hours=hour)
+        h = o + timedelta(minutes=dur_min)
+        return o.isoformat() + "+00:00", h.isoformat() + "+00:00"
+    return [
+        pair(cfg.incident_start_day, cfg.incident_start_hour, cfg.incident_duration_min),
+        pair(cfg.second_incident_start_day, cfg.second_incident_start_hour,
+             getattr(cfg, "second_incident_duration_min", cfg.incident_duration_min)),
+    ]
+
+
+def firmware_sigma_case_sql(cfg, time_col: str = "time", model_sql: str = None,
+                            clean_models=None) -> str:
+    """Spark-SQL scalar expression for the device-error σ (mg/dL) — DEVICE-MODEL-GATED, TWO-PULSE.
+
+    Faulty models: σ = SIGMA_CLEAN baseline, rising to SIGMA_PEAK into each of the two incidents
+    (linear rise over SIGMA_ONSET_HOURS, so σ is at PEAK by the fault onset), holding across the
+    fault window, then decaying exponentially (SIGMA_RECOVERY_TAU_HOURS) back toward clean — two
+    separable buggy periods with gradual recovery + a dip between.
+    Clean models (in `clean_models`, e.g. CLEAN_MODELS): flat SIGMA_CLEAN at all times.
+
+    `model_sql`  — SQL expr yielding the device model (e.g. `device_model_case_sql('patient_id')`).
+                   If None (or `clean_models` empty), NO gating: every reading is treated as faulty.
+    `clean_models` — list of control model names that stay flat (e.g. CLEAN_MODELS)."""
+    ut = f"unix_timestamp({time_col})"
+    onset_s = SIGMA_ONSET_HOURS * 3600.0
+    tau_s = SIGMA_RECOVERY_TAU_HOURS * 3600.0
+
+    def pulse_shape(o_iso, h_iso):
+        # 0→1 fast linear rise over [onset-SIGMA_ONSET_HOURS, onset]; hold 1 over [onset, hold_end];
+        # exp decay after hold_end. greatest(0,…) clamps the pre-rise region to 0.
+        uo = f"unix_timestamp(TIMESTAMP('{o_iso}'))"
+        uh = f"unix_timestamp(TIMESTAMP('{h_iso}'))"
+        return (
+            f"greatest(0.0, CASE"
+            f" WHEN {ut} < {uo} - {onset_s} THEN 0.0"
+            f" WHEN {ut} < {uo} THEN ({ut} - ({uo} - {onset_s})) / {onset_s}"
+            f" WHEN {ut} < {uh} THEN 1.0"
+            f" ELSE exp(-({ut} - {uh}) / {tau_s})"
+            f" END)"
+        )
+
+    shapes = [pulse_shape(o, h) for o, h in incident_onsets(cfg)]
+    pulse_max = shapes[0] if len(shapes) == 1 else f"greatest({', '.join(shapes)})"
+    faulty_sigma = f"({SIGMA_CLEAN} + ({SIGMA_PEAK} - {SIGMA_CLEAN}) * {pulse_max})"
+
+    clean_list = ", ".join(f"'{m}'" for m in (clean_models or []))
+    if model_sql is None or not clean_list:
+        return faulty_sigma
+    # Clean models tolerate the buggy firmware → flat baseline; faulty models take the pulses.
+    return f"CASE WHEN ({model_sql}) IN ({clean_list}) THEN {SIGMA_CLEAN} ELSE {faulty_sigma} END"
 
 
 def device_noise_expr_sql(id_col: str = "patient_id", time_col: str = "time",
