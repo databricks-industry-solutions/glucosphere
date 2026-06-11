@@ -1313,6 +1313,16 @@ ax4.set_xlim(40, 400)
 ax4.set_ylim(40, 400)
 
 plt.tight_layout()
+
+# Persist to a UC Volume so the repo/app/deck can pull the latest-run chart
+# (mirrors the asset-save pattern in 05_incident_inference_bidirectional). The
+# `modeling_assets` subfolder is parallel to 05's `incident_inference_assets`.
+spark.sql(f"CREATE VOLUME IF NOT EXISTS {CATALOG_NAME}.{SCHEMA_NAME}.pipeline_data")
+_DIST_ASSET_DIR = f"/Volumes/{CATALOG_NAME}/{SCHEMA_NAME}/pipeline_data/modeling_assets"
+dbutils.fs.mkdirs(_DIST_ASSET_DIR)
+_dist_asset_path = f"{_DIST_ASSET_DIR}/glucose_distribution_real_vs_simulated.png"
+plt.savefig(_dist_asset_path, transparent=True, dpi=150, bbox_inches='tight')
+print(f"[ASSET] Saved {_dist_asset_path}")
 plt.show()
 
 print("\n" + "="*80)
