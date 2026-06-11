@@ -80,8 +80,9 @@ export default function MetricsExplained() {
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed">
               This page documents how each metric is calculated across the Glucosphere Dashboard.
-              All metrics are derived from real-time data in the Databricks Unity Catalog using SQL queries
-              via the DBSQL MCP (Model Context Protocol) server.
+              All metrics are computed on demand from the governed gold tables in Databricks Unity Catalog,
+              via SQL queries run against a Databricks SQL warehouse (Statement Execution API). The
+              underlying tables are produced by a batch pipeline (not a real-time stream).
             </p>
             <p className="text-sm text-slate-400 leading-relaxed mt-3">
               <span className="text-amber-300 font-medium">Note on demo data:</span> patient identifiers,
@@ -269,9 +270,9 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why 3 hours (not 24)?</p>
                 <p className="text-sm text-slate-400">
-                  The 3-hour window matches a typical device-calibration incident window so a live incident
-                  shifts the count clearly. For scale, on this deployment's <span className="text-slate-300">real (HUPA-UCM) baseline</span>:
-                  ~822 patients have a reading in a 3h window; <span className="font-mono text-cyan-400">~517</span> have
+                  The 3-hour window is the recent-readings view; a live calibration incident (now sustained for hours)
+                  intersects it, so the count shifts clearly. For scale, on this deployment's <span className="text-slate-300">real (HUPA-UCM) baseline</span>:
+                  ~822 patients have a reading in a 3h window; <span className="font-mono text-cyan-400">~517</span> have{' '}
                   <em>any</em> out-of-range reading (&lt;70 or &gt;180) — routine for type-1 diabetes — while only
                   <span className="font-mono text-cyan-400"> ~176</span> hit a critical band (&lt;54 or &gt;250).
                   Counting the critical bands is what makes this a believable "high-risk" signal rather than half the fleet.
@@ -331,7 +332,7 @@ WHERE (glucose < 54 OR glucose > 250)
               <span className="px-3 py-1 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs font-mono text-cyan-300">FRAMING</span>
             </div>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Real-world CGM device calibration failures span <span className="font-medium">both directions</span> — Abbott FreeStyle Libre 3 sensors have <span className="font-medium">FDA Class I (most serious)</span> recalls on record for BOTH <span className="text-red-300 font-medium">over-reading</span><sup><a href="https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/continuous-glucose-monitoring-cgm-sensor-recall-abbott-diabetes-care-inc-issues-recall-certain" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-0.5">1</a></sup> and <span className="text-blue-300 font-medium">under-reading</span><sup><a href="https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/glucose-monitor-sensor-recall-abbott-diabetes-care-removes-certain-freestyle-libre-3-and-freestyle" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-0.5">2</a></sup> sensor failures (≈3M sensors recalled Feb 2026; ≥860 serious injuries and 7 deaths linked to the under-read failure mode alone). Each direction is clinically dangerous in opposite ways (over-read → unwarranted corrective insulin → hypo risk; under-read → missed real highs → delayed correction). A fleet-monitoring layer that catches either failure mode with a single <span className="font-medium">direction-agnostic</span> metric (MAE rolling-window) and then lets operators drill in to <span className="font-medium">which</span> direction each device drifted (<span className="font-mono text-cyan-400">incident_direction</span> field on the alerts table) is what closes the loop from fleet-wide alert → per-device action.
+              Real-world CGM device calibration failures span <span className="font-medium">both directions</span> — Abbott FreeStyle Libre 3 sensors have <span className="font-medium">FDA Class I (most serious)</span> recalls on record for BOTH <span className="text-red-300 font-medium">over-reading</span><sup><a href="https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/continuous-glucose-monitoring-cgm-sensor-recall-abbott-diabetes-care-inc-issues-recall-certain" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-0.5">1</a></sup> and <span className="text-blue-300 font-medium">under-reading</span><sup><a href="https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/glucose-monitor-sensor-recall-abbott-diabetes-care-removes-certain-freestyle-libre-3-and-freestyle" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-0.5">2</a></sup> sensor failures (≈3M sensors recalled Feb 2026; ≥860 serious injuries and 7 deaths linked to the under-read failure mode alone). Each direction is clinically dangerous in opposite ways (over-read → unwarranted corrective insulin → hypo risk; under-read → missed real highs → delayed correction). A fleet-monitoring layer that catches either failure mode with a single <span className="font-medium">direction-agnostic</span> metric (MAE rolling-window) and then lets operators drill in to <span className="font-medium">which</span> direction each device drifted (signed device bias, <span className="font-mono text-cyan-400">observed − true</span>) is what closes the loop from fleet-wide signal → per-device action.
             </p>
             <p className="text-xs text-slate-500 mt-3 leading-relaxed">
               <span className="font-medium text-slate-400">Sources:</span>{' '}
@@ -412,12 +413,12 @@ ORDER BY minute`}
                 <p className="text-sm font-medium text-slate-300 mb-2">Key Calculations:</p>
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-cyan-400">MAE (Mean Absolute Error):</span> <code className="font-mono text-cyan-300 bg-slate-800/60 px-1.5 py-0.5 rounded">ABS(glucose_observed − glucose_true) + 5.0</code> (baseline sensor noise) — direction-agnostic, catches both positive and negative bias</li>
-                  <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted to ~17 mg/dL during incident because only the active-window cohort drifts at any moment</li>
+                  <li>• <span className="font-mono text-blue-400">MAE Fleet-wide:</span> AVG across ALL patients — diluted (≈22 mg/dL peak on the DAIS real-data run) because only the active-window cohort is faulted at any moment</li>
                   <li>• <span className="font-mono text-orange-400">MAE Affected-only:</span> AVG filtered to <em>incident_period = 1</em> (the per-time-window predicate, NOT the per-patient has_incident flag) — shows the TRUE device-error magnitude ~45 mg/dL during incident. Using incident_period avoids the two-window-mirror dilution trap where has_incident=1 includes both cohorts at all times.</li>
                   <li>• <span className="font-mono text-amber-400">Dilution gap (45 → 17):</span> Why patient-level monitoring matters — fleet-wide averages mask serious per-device errors</li>
-                  <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (3-hour window per cohort; two such windows total in the mirror simulation)</li>
-                  <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> ~5.8 mg/dL (typical CGM sensor accuracy — dashed slate-400 reference line)</li>
-                  <li>• <span className="font-mono text-amber-300">Two MAEs — don't conflate:</span> the <em>model-monitoring</em> MAE is <span className="font-medium">forecast error</span> = |XGBoost prediction − actual future glucose| (computed in the inference notebook: clean ~3.8 mg/dL @15-min / ~5.9 @30-min → ~38 mg/dL during an incident — the headline degradation). <span className="font-medium">This landing chart</span> instead computes a fast <span className="font-medium">device-error proxy</span> = <span className="font-mono text-cyan-400">ABS(glucose_observed − glucose_true) + 5.0</span> directly in SQL (the dashboard doesn't re-run the model in the browser). The proxy is engineered to mirror the forecast-MAE spike — the +5.0 floor → ~5.8 baseline, the ±40 device bias → ~45 affected — and the dashed "Baseline (5.8)" line is the real forecast 30-min baseline.</li>
+                  <li>• <span className="font-mono text-rose-400">Incident Period:</span> time &gt;= incident_start_time AND time &lt; incident_end_time (12-hour window per cohort; two such windows total in the mirror simulation)</li>
+                  <li>• <span className="font-mono text-amber-400">Baseline MAE:</span> live-computed from the gold table — AVG of the device-proxy (<code className="font-mono text-cyan-300 bg-slate-800/60 px-1.5 py-0.5 rounded">ABS(observed − true) + 5.0</code>) over clean-firmware rows (fw IN 3.14, 4.1) outside incident windows. Displayed as the dashed reference line; actual value varies by run and data (≈7 mg/dL on real HUPA-UCM signal; falls back to 5.8 if no clean-firmware rows are present).</li>
+                  <li>• <span className="font-mono text-amber-300">Two MAEs — don't conflate:</span> the <em>model-monitoring</em> MAE is <span className="font-medium">forecast error</span> = |XGBoost prediction − actual future glucose|. The (untuned) model validates at <span className="font-medium">~5.8 mg/dL @15-min / ~10.4 @30-min</span> on the real CGM signal (MLflow <span className="font-mono text-cyan-400">mae_val_last_day</span> = 5.75 / 10.37); in the incident-inference run its clean-period error on that separate sample runs somewhat higher, then spikes to <span className="font-medium">~36 mg/dL @15-min</span> during the calibration window — the headline degradation. <span className="font-medium">This landing chart</span> instead computes a fast <span className="font-medium">device-error proxy</span> = <span className="font-mono text-cyan-400">ABS(glucose_observed − glucose_true) + 5.0</span> directly in SQL (the dashboard doesn't re-run the model in the browser). This proxy is a <span className="font-medium">device-calibration-error</span> view, <span className="font-medium">not</span> the forecast MAE — clean ≈7 mg/dL on real HUPA-UCM signal (higher than the +5.0 floor due to sensor noise; lower on synthetic data), ~45 affected at the ±40 device bias. The two tell related stories — both spike during the incident — but are different quantities; the dashed "Baseline" line marks the proxy's floor, not the model's forecast baseline.</li>
                   <li>• <span className="font-mono text-slate-300">Derived, not stored:</span> neither MAE is a raw column — both are computed (the forecast MAE during model inference; this chart's proxy at query time from <span className="font-mono text-cyan-400">glucose_observed</span> / <span className="font-mono text-cyan-400">glucose_true</span>).</li>
                   <li>• <span className="font-mono text-slate-300">Time granularity:</span> one point per reading timestamp — readings are 5-min spaced, so <span className="font-mono text-cyan-400">DATE_TRUNC('minute', time)</span> yields a per-5-min point, averaged across the patient population at that moment.</li>
                 </ul>
@@ -428,8 +429,8 @@ ORDER BY minute`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="text-blue-400">Blue line:</span> MAE Fleet-wide (diluted across all patients — ~17 mg/dL peak)</li>
                   <li>• <span className="text-orange-400">Orange line:</span> MAE Affected-only (true bias magnitude — ~45 mg/dL peak)</li>
-                  <li>• <span style={{color: 'rgb(248 113 113)'}}>Light-red shaded rectangles (dashed border):</span> Incident windows — TWO separate rectangles (3h each) for the two-window mirror simulation (Day 2 +40 cohort, Day 5 −40 cohort)</li>
-                  <li>• <span className="text-slate-400">Dashed slate line:</span> Baseline MAE reference (~5.8 mg/dL)</li>
+                  <li>• <span style={{color: 'rgb(248 113 113)'}}>Light-red shaded rectangles (dashed border):</span> Incident windows — TWO separate rectangles (12h each) for the two-window mirror simulation (Day 2 +40 cohort, Day 5 −40 cohort)</li>
+                  <li>• <span className="text-slate-400">Dashed slate line:</span> Baseline MAE — live-computed clean-firmware average (≈7 mg/dL on real HUPA-UCM data; see Baseline MAE definition above)</li>
                 </ul>
               </div>
               
@@ -458,7 +459,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why MAE spikes signal device drift:</p>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a 6× MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) catches in real time and surfaces as an alert.
+                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 42% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 26% cross hypo vs ~6% baseline. The directional distribution shift drives a sharp MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) surfaces as out-of-range readings — batch today; a live alert &amp; triage queue is on the roadmap.
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL incident itself is a <span className="text-amber-300">simulated</span> calibration bug injected into the demo data for illustration — see _About This Page_ above for full provenance.)
@@ -553,7 +554,7 @@ ORDER BY minute`}
                   <li>• <span className="text-red-400">Red line:</span> Positive-bias cohort signed bias (≈ 0 outside / spikes to ≈ +40 mg/dL during incident)</li>
                   <li>• <span className="text-blue-400">Blue line:</span> Negative-bias cohort signed bias (≈ 0 outside / drops to ≈ −40 mg/dL during incident)</li>
                   <li>• <span className="text-slate-400">Dashed gray line:</span> Zero baseline — no calibration error (the "no bias" reference)</li>
-                  <li>• <span className="text-slate-400">Red shaded region:</span> Incident period (3 hours)</li>
+                  <li>• <span className="text-slate-400">Red shaded region:</span> Incident period (12 hours)</li>
                   <li>• <span className="text-slate-400">Y-axis:</span> Symmetric around 0 (typically ±50 to ±60 mg/dL) — so positive and negative cohorts read at the same visual scale</li>
                 </ul>
               </div>
@@ -568,7 +569,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Clinical Significance:</p>
                 <p className="text-sm text-slate-400">
-                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the Glucosphere landing page) — operators then drill in via the `incident_direction` field on the alerts table to act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
+                  A bidirectional calibration drift means SOME devices over-read and OTHERS under-read — both directions are clinically dangerous but in opposite ways. Over-reading can lead to unnecessary corrective insulin (causing hypo); under-reading can lead to missed real highs (delayed correction, prolonged hyper). The fleet monitoring layer detects BOTH directions via the same direction-agnostic MAE metric (MAE Timeline chart on the Glucosphere landing page) — operators then drill in via the signed device bias (observed − true) to see which direction each cohort drifted and act on the specific failure mode. This delta chart is the operator's "what direction did it drift?" view.
                 </p>
               </div>
               
@@ -595,7 +596,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Two questions, two time scopes (kept separate on purpose):</p>
                 <p className="text-sm text-slate-400">
-                  <span className="text-slate-300 font-medium">1 · Clinical burden</span> (the roster's % columns) — the fraction of a patient's readings over their <span className="font-medium">full ~7-day window</span> below 70 (hypo) / above 180 (hyper), on <span className="font-mono">glucose_observed</span>. This describes the <span className="font-medium">patient</span>. Because the ~3-hour calibration fault touches only ~1.8% of weekly readings, it moves this number by ≈0.5&nbsp;<abbr title="percentage points">pp</abbr> — so it is effectively the patient's own true glycemic control, used to triage the recall cohort sickest-first.
+                  <span className="text-slate-300 font-medium">1 · Clinical burden</span> (the roster's % columns) — the fraction of a patient's readings over their <span className="font-medium">full ~7-day window</span> below 70 (hypo) / above 180 (hyper), on <span className="font-mono">glucose_observed</span>. This describes the <span className="font-medium">patient</span>. Because the ~12-hour calibration fault touches only ~7% of weekly readings, it moves this number by ~1.3&nbsp;<abbr title="percentage points">pp</abbr> — so it remains close to the patient's own true glycemic control, used to triage the recall cohort sickest-first.
                 </p>
                 <p className="text-sm text-slate-400 mt-2">
                   <span className="text-slate-300 font-medium">2 · Fault impact</span> (the confusion matrices) — restricted to the <span className="font-medium">in-incident readings</span> (<span className="font-mono">time</span> between <span className="font-mono">incident_start_time</span> and <span className="font-mono">incident_end_time</span>). Compares what the device <em>showed</em> (<span className="font-mono">glucose_observed</span>) against the <em>truth</em> (<span className="font-mono">glucose_true</span>), classified into Low (&lt;70) / In-range / High (&gt;180). The diagonal = device agreed with truth; off-diagonal = the fault's misclassifications — <span className="text-amber-300">false alarms</span> (device over-flagged a band) vs <span className="text-rose-300">missed real events</span> (device under-flagged — the clinically dangerous case).
@@ -633,14 +634,14 @@ GROUP BY incident_direction, truth, device;`}
                 <ul className="text-sm text-slate-400 space-y-1 ml-4">
                   <li>• <span className="font-mono text-emerald-300">Diagonal</span> = device classified the band correctly. <span className="font-mono text-amber-300">Amber</span> = false alarm (true In-range shown as High/Low). <span className="font-mono text-rose-300">Rose ⚠</span> = missed real event (true High/Low shown as In-range).</li>
                   <li>• An <span className="text-amber-300">over-read</span> device hides real lows (missed hypo) and cries wolf on highs; an <span className="text-slate-300">under-read</span> device hides real highs (missed hyper) and cries wolf on lows.</li>
-                  <li>• <span className="font-mono">pp</span> = percentage points (the gap between two percentages). The fault's effect on the 7-day burden is ≈0.5&nbsp;pp — which is exactly why the misclassification needs its own window-scoped view rather than a roster column.</li>
+                  <li>• <span className="font-mono">pp</span> = percentage points (the gap between two percentages). The fault's effect on the 7-day burden is ≈1.3&nbsp;pp — which is exactly why the misclassification needs its own window-scoped view rather than a roster column.</li>
                 </ul>
               </div>
 
               <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-4">
                 <p className="text-sm font-medium text-cyan-300 mb-1">Why finer-grained inputs would sharpen this</p>
                 <p className="text-sm text-slate-400">
-                  The fault-impact matrices are recoverable here only because the simulation carries <span className="font-mono">glucose_true</span> alongside <span className="font-mono">glucose_observed</span>. In production you rarely have ground truth — but the same engine sharpens as real inputs are ingested: per-reading device telemetry (firmware, calibration timestamps), reference fingerstick / lab values for spot-truth, and tighter sampling let you localise a fault to the exact device-hours, quantify false-alarm vs missed-event rates per firmware build, and drive the recall list off the fault's <em>clinical consequence</em>, not just overall burden. Today's ±40&nbsp;mg/dL / ~3-hour windows are illustrative; the architecture scales to whatever resolution the data supports.
+                  The fault-impact matrices are recoverable here only because the simulation carries <span className="font-mono">glucose_true</span> alongside <span className="font-mono">glucose_observed</span>. In production you rarely have ground truth — but the same engine sharpens as real inputs are ingested: per-reading device telemetry (firmware, calibration timestamps), reference fingerstick / lab values for spot-truth, and tighter sampling let you localise a fault to the exact device-hours, quantify false-alarm vs missed-event rates per firmware build, and drive the recall list off the fault's <em>clinical consequence</em>, not just overall burden. Today's ±40&nbsp;mg/dL / ~12-hour windows are illustrative; the architecture scales to whatever resolution the data supports.
                 </p>
               </div>
 
@@ -787,7 +788,7 @@ FROM ${catalog}.${schema}.silver_patient_registry`}
   DATE(g.time) as day,
   CAST(g.firmware_version AS STRING) as firmware_version,
   -- MAE over the affected (in-incident) readings, so a fault day shows its true
-  -- ~40 mg/dL magnitude instead of a whole-day average that dilutes the 3-hour fault
+  -- ~40 mg/dL magnitude instead of a whole-week average that dilutes the 12-hour fault
   ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL
                  THEN ABS(p.glucose_observed - p.glucose_true) END), 1) as device_error_mae
 FROM ${catalog}.${schema}.gold_patient_device_readings g
@@ -969,7 +970,7 @@ LIMIT 50`}
 
         {/* Footer */}
         <div className="mt-12 pt-6 border-t border-slate-800 text-center text-xs text-slate-500">
-          <p>All metrics are calculated in real-time from Databricks Unity Catalog via DBSQL MCP Server</p>
+          <p>All metrics are computed on demand from Databricks Unity Catalog via the Databricks SQL Statement Execution API</p>
           <p className="mt-1 font-mono">Schema: {catalog}.{schema}</p>
         </div>
       </main>

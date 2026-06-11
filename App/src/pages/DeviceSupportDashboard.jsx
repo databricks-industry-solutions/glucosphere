@@ -748,11 +748,11 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
 
           {/* Why-device-error note — explains the metric choice (why NOT a whole-window
               out-of-range rate): the real HUPA-UCM baseline (~31–39% OOR even on healthy
-              firmware) would dilute a 3-hour fault. Keeps oorBaselineRange/baselineNote
+              firmware) would dilute a 12h fault. Keeps oorBaselineRange/baselineNote
               (computed from the live OOR data) in use. */}
           <div className="mt-6 bg-slate-900/30 border border-slate-800/70 rounded-lg px-5 py-3 text-[11px] font-mono text-slate-500 leading-relaxed">
             <span className="text-slate-300">Why device error? </span>
-            The <span className="text-slate-400">Firmware × Day</span> heatmap reads <span className="text-slate-400">device error</span> directly (mean |observed − true|, ≈0 clean → ~40 faulted): <span className="text-slate-400">which firmware drifts, when, how much, and which way</span> — the <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read glyph + row label name the direction and faulted models (the per-model breakdown is on the <span className="text-slate-400">Firmware Lifecycle</span> page). We measure error directly because a whole-window <span className="text-slate-400">out-of-range rate</span> reads <span className="text-slate-400">{oorBaselineRange}</span> even on healthy firmware — glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why} — so that baseline would <span className="text-amber-400/80">dilute</span> a 3-hour fault. Honest signal, no data inflation.
+            The <span className="text-slate-400">Firmware × Day</span> heatmap reads <span className="text-slate-400">device error</span> directly (mean |observed − true|, ≈0 clean → ~40 faulted): <span className="text-slate-400">which firmware drifts, when, how much, and which way</span> — the <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read glyph + row label name the direction and faulted models (the per-model breakdown is on the <span className="text-slate-400">Firmware Lifecycle</span> page). We measure error directly because a whole-window <span className="text-slate-400">out-of-range rate</span> reads <span className="text-slate-400">{oorBaselineRange}</span> even on healthy firmware — glucose comes from <span className="text-slate-400">{baselineNote.source}</span>, {baselineNote.why} — so that baseline would <span className="text-amber-400/80">dilute</span> a 12h fault. Honest signal, no data inflation.
           </div>
         </section>
 

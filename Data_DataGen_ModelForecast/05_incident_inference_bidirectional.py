@@ -43,24 +43,27 @@
 # MAGIC
 # MAGIC ## Incident Scenario (two-window mirror design)
 # MAGIC * **Bug Type:** Device calibration error causing **±40 mg/dL bias across two SEPARATE incident windows on DIFFERENT cohorts** (Window 1: +bias on Alpha/Gamma devices; Window 2: -bias on Beta/Delta devices).
-# MAGIC * **Window 1:** Day 2, 2:00 PM - 5:00 PM (3-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
-# MAGIC * **Window 2:** Day 5, 10:00 AM - 1:00 PM (3-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
+# MAGIC * **Window 1:** Day 2, 2:00 PM → Day 3, 2:00 AM (12-hour window), +40 mg/dL on Alpha/Gamma cohort (~300 patients)
+# MAGIC * **Window 2:** Day 5, 10:00 AM → 10:00 PM (12-hour window), -40 mg/dL on Beta/Delta cohort (~300 patients)
 # MAGIC * **Affected total:** ~60% of fleet across both windows (300 + 300 of 1000, mutually exclusive)
-# MAGIC * **Impact:** MAE peaks ~37 mg/dL for affected patients during each window (well above the clean baseline)
+# MAGIC * **Impact:** MAE peaks ~34 mg/dL (30m) for affected patients during each window (well above the clean baseline ~8.7)
 # MAGIC
-# MAGIC ## Always-on device measurement noise (distinct from the acute bug)
-# MAGIC On TOP of the acute calibration incidents, every reading carries a **firmware-dependent
-# MAGIC measurement noise** — a zero-mean Gaussian term on `glucose_observed` whose σ models the
-# MAGIC device's accuracy (MARD) and **ramps over each firmware's life** (devices degrade
-# MAGIC gradually): the buggy rollout `4.0` (σ 6→15 mg/dL) and its hotfix `4.0.3` (σ 12→18) worsen
-# MAGIC across their days, while the good versions `3.14`/`4.1` stay tight (σ ≈ 2–4 ≈ MARD ~2–3%).
-# MAGIC It is a deterministic function of `(patient_id, time)` (shared `_firmware_spec`), so it is
-# MAGIC stable across runs. The ramp is what makes the Device-Error-by-Firmware×Day heatmap a real
-# MAGIC green→amber→red **gradient** (cell ≈ 0.8·σ) instead of a flat field, and — because the
-# MAGIC model trains on `glucose_observed` — it raises the clean-period forecast MAE off the
-# MAGIC noise-free floor (an HONEST sensor floor, not the idealized synthetic number). Aggregate
-# MAGIC clinical impact stays small (eras are short, so the high-σ tail is a fraction of the week:
-# MAGIC simulated OOR/TIR shift < ~1%).
+# MAGIC ## Device measurement noise — device-model-gated, two-pulse (distinct from the acute bug)
+# MAGIC On TOP of the acute calibration incidents, readings carry a **device-model-gated**
+# MAGIC measurement noise — a zero-mean Gaussian term on `glucose_observed` whose σ is shaped by
+# MAGIC WHICH model and WHEN (shared `_firmware_spec`, deterministic in `(patient_id, time)`):
+# MAGIC * **Clean control models** (`Epsilon`/`Zeta`): flat σ ≈ 3 (MARD ~3%) at ALL times — their
+# MAGIC   hardware tolerates the buggy firmware, so they are the flat baseline cohort.
+# MAGIC * **Faulty models** (`Alpha`/`Gamma`/`Beta`/`Delta`): σ rises to ≈ 10 (MARD ~8%) into each
+# MAGIC   of the TWO calibration incidents, holds across the fault window, then **recovers
+# MAGIC   gradually** (devices take time to recover) — two separable buggy periods with a dip
+# MAGIC   between ("hotfix looked fixed, then failed"), not one continuous box.
+# MAGIC The firmware *version* stays fleet-wide (every model rolls `3.14→4.0→4.0.3→4.1`), so the
+# MAGIC Device-Error-by-Firmware×Day heatmap is a real **device-model × firmware gradient** (faulty
+# MAGIC models amber on the buggy firmwares, clean models green throughout; cell ≈ 0.8·σ) rather
+# MAGIC than a flat field — and, because the model trains on `glucose_observed`, the faulty-model
+# MAGIC pulses raise its forecast MAE off the noise-free floor (an HONEST sensor floor). Aggregate
+# MAGIC clinical impact stays small (the pulses are bounded, so the simulated OOR/TIR shift < ~1%).
 # MAGIC
 # MAGIC > **Note on the `~5.8 mg/dL` baseline anchor:** the `5.8 / 10.4 mg/dL` clean-baseline numbers referenced
 # MAGIC > throughout this notebook (intro, print statements, chart `axhline` reference lines) are the
@@ -125,7 +128,7 @@
 # MAGIC **Run cells 3-18** to see the complete incident analysis (~5 min)
 # MAGIC
 # MAGIC **Key visualizations:**
-# MAGIC * Cell 14: MAE spike during incident (affected patients show ~38 mg/dL MAE)
+# MAGIC * Cell 14: MAE spike during incident (affected patients show ~34 mg/dL MAE, 30m)
 # MAGIC * Cell 15: 3-panel MAE comparison (all vs affected vs unaffected patients)
 # MAGIC * Cell 16: 3-panel glucose timeline (shows ±40 mg/dL bidirectional bias in affected patients — red over-reads, blue under-reads)
 # MAGIC * Cell 17: Glucose distribution analysis
@@ -447,8 +450,8 @@ print(f"   demo_week_start: {demo_week_start}")
 print(f"   Expected data: {demo_week_start} to {pd.Timestamp(demo_week_start) + pd.Timedelta(days=7)}")
 
 # Calculate TWO incident windows (mirror design):
-#   Window 1: +bias_magnitude incident (over-reading), Day 2 14:00-17:00
-#   Window 2: -bias_magnitude incident (under-reading), Day 5 10:00-13:00,
+#   Window 1: +bias_magnitude incident (over-reading), Day 2 14:00 +12h
+#   Window 2: -bias_magnitude incident (under-reading), Day 5 10:00 +12h,
 #             on a DIFFERENT cohort
 # Each window is UNIDIRECTIONAL on its own cohort, so plots show two clearly
 # distinct spikes at different x-positions without cancellation. Cohorts are
@@ -632,9 +635,9 @@ _in_window = _in_window_1 | _in_window_2
 # for cohort 2 (window 2 mirror, under-read) — set at cohort selection time above.
 #
 # Device measurement noise: a DETERMINISTIC, zero-mean Gaussian term (shared _firmware_spec,
-# %run above) whose σ RAMPS over each firmware's life (devices degrade gradually) — buggy 4.0
-# (σ 6→15) and its hotfix 4.0.3 (σ 12→18) worsen across their days, good 3.14/4.1 stay tight
-# (σ 2–4). Because it is zero-mean it raises the device-error heatmap metric mean|observed−true|
+# %run above) whose σ is DEVICE-MODEL-GATED + two-pulse — faulty models (Alpha/Gamma/Beta/Delta)
+# rise to σ≈10 into each incident then recover; clean models (Epsilon/Zeta) stay flat σ≈3. Because it is zero-mean it
+# raises the device-error heatmap metric mean|observed−true|
 # (cell → 0.8·σ) into a real green→amber→red gradient WITHOUT shifting the clinical mean (OOR/TIR
 # move <1%, verified on the real distribution). It is a pure function of (patient_id, time) — no
 # rand()/np.random — so it is identical across every run/workspace (the determinism rule), and the
@@ -650,7 +653,12 @@ _observed_base = (
     F.when(_in_window, F.col("glucose_observed") + F.col("signed_bias_mgdl"))
      .otherwise(F.col("glucose_observed"))
 )
-_fw_sigma_sql = firmware_sigma_case_sql(cfg, time_col="time")
+# σ is device-model-gated + two-pulse (refined 2026-06-10): clean models (Epsilon/Zeta) stay
+# flat; faulty models rise into each incident then recover gradually. device_model_case_sql +
+# CLEAN_MODELS come from _device_model_spec (%run above). See _firmware_spec.firmware_sigma_case_sql.
+_fw_sigma_sql = firmware_sigma_case_sql(cfg, time_col="time",
+                                        model_sql=device_model_case_sql("patient_id"),
+                                        clean_models=CLEAN_MODELS)
 _device_noise_sql = device_noise_expr_sql(id_col="patient_id", time_col="time",
                                           sigma_sql=_fw_sigma_sql)
 pseudo_incident = pseudo_with_flag.withColumn(
@@ -986,7 +994,7 @@ print("KEY FINDINGS")
 print("="*80)
 print(f"\n[1] Clean model performs excellently on clean data ({BASELINE_MAE_15M} mg/dL)")
 print(f"[2] Device calibration bug causes CATASTROPHIC failure (~{incident_mae_15m:.0f} mg/dL)")
-print(f"[3] MAE increases by {degradation_pct_15m:.0f}% during 3-hour incident")
+print(f"[3] MAE increases by {degradation_pct_15m:.0f}% during 12-hour incident")
 print(f"[4] Demonstrates critical need for device quality monitoring")
 print("="*80)
 
@@ -1227,7 +1235,7 @@ plt.show()
 print("[SUCCESS] Visualization complete!")
 print(f"\nThe plot clearly shows:")
 print(f"   1. MAE is stable at ~{BASELINE_MAE_15M} mg/dL during clean periods")
-print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 3-hour incident (direction-agnostic — ABS captures both cohorts)")
+print(f"   2. MAE spikes to ~{incident_mae_15m:.0f} mg/dL during the 12-hour incident (direction-agnostic — ABS captures both cohorts)")
 print(f"   3. MAE returns to ~{BASELINE_MAE_15M} mg/dL after incident ends")
 print(f"   4. GREEN line (true glucose) = stable baseline throughout")
 print(f"   5. RED line (positive cohort) spikes +{bias_magnitude:.0f} mg/dL ABOVE green during incident (over-reading)")
@@ -2033,7 +2041,7 @@ print("\n" + "="*80)
 print("CONCLUSION")
 print("="*80)
 print(f"\nEven an excellent model ({BASELINE_MAE_15M} mg/dL MAE) fails catastrophically")
-print(f"when device calibration is compromised. During the 3-hour incident:")
+print(f"when device calibration is compromised. During the 12-hour incident:")
 print(f"\n  * MAE increased from {clean_mae_15m:.1f} to {incident_mae_15m:.1f} mg/dL ({degradation_pct_15m:.0f}% worse)")
 print(f"  * ~{(cfg.incident_pct + getattr(cfg, 'second_incident_pct', cfg.incident_pct))*100:.0f}% of patients affected across both incident windows")
 print(f"  * Performance returned to normal after incident ended")

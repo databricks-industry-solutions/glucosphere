@@ -1,4 +1,5 @@
-// Databricks DBSQL MCP Server API Client
+// Databricks SQL API client — posts to the Flask /api/sql/query proxy, which runs
+// queries via the Statement Execution API and returns rows in an MCP-compatible shape.
 // Based on: https://docs.databricks.com/aws/en/generative-ai/mcp/managed-mcp
 //
 // All SQL queries in this file fetch catalog/schema from getConfig() (which calls
@@ -8,7 +9,7 @@
 import { getConfig } from './config';
 
 /**
- * Execute a SQL query via Databricks DBSQL MCP server
+ * Execute a SQL query via the Databricks SQL Statement Execution API (through the Flask /api/sql/query proxy)
  * @param {string} query - SQL query to execute
  * @returns {Promise<any>} Query results
  */
@@ -348,7 +349,7 @@ export async function getFirmwareLifecycle() {
   const { catalog, schema } = await getConfig();
   // MAE = mean |observed − true| device error per firmware per day, computed over the
   // AFFECTED (in-incident) readings so the chart shows the true fault magnitude (~40 mg/dL)
-  // rather than a whole-day average that dilutes the ~3-hour incident to a few mg/dL.
+  // rather than a whole-week average that dilutes the ~12-hour incident to a few mg/dL.
   // Fallback to the all-readings mean (~0) on days/firmwares with no fault, so clean
   // firmwares stay flat at baseline. The COUNT(incident) > COUNT(DISTINCT incident device)
   // guard is defense-in-depth: it requires more than one in-incident reading per device
@@ -565,7 +566,7 @@ export async function getAffectedTotal() {
 // query change. The diagonal = device agreed with truth; off-diagonal = the fault's
 // misclassifications — false alarms (device over-flags a band) vs missed real events (device
 // under-flags). Scoped to the in-incident readings so the ±40 mg/dL bias shows at full effect;
-// over the full week these errors wash to ~0.5 pp (which is why this is its own window-scoped
+// over the full week these errors wash to ~1.3 pp (which is why this is its own window-scoped
 // view, not a roster column). Reads existing columns — no pipeline change. Returns
 // { positive: {'truth|device': count, ...}, negative: {...}, baseline: {...} }:
 //   positive/negative = each cohort's IN-INCIDENT readings (the ~3h fault window) → the fault.
@@ -697,7 +698,7 @@ export async function getCohortAffectedBreakdown() {
  *
  * WHY THIS METRIC: the Device Out-of-Range heatmap aggregates over the whole 7-day
  * window, where the real HUPA-UCM baseline already sits at ~33% out-of-range — so a
- * 3-hour calibration fault on 30% of the fleet is diluted into the background and the
+ * 12-hour calibration fault on 30% of the fleet is diluted into the background and the
  * heatmap looks flat. Calibration drift (|observed − true|) instead measures the
  * device fault DIRECTLY: it is ~0 mg/dL for calibrated devices and ≈±40 mg/dL during
  * the incident, regardless of the underlying glucose distribution — so the fault pops
