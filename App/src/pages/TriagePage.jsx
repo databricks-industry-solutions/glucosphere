@@ -197,7 +197,7 @@ const SCENARIOS = {
 export default function TriagePage() {
   const goBack = useGoBack();
   const configured = useLakebaseConfigured();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState({ alerts: [], counts: {} });
   // THE PAGE REMEMBERS WHERE YOU WERE (per tab): the booth loop detours through
   // Coach / Device-Support and returns — landing on cold defaults every time read
@@ -374,7 +374,16 @@ ORDER BY u.at DESC LIMIT 20;`;
   const onReset = async () => {
     if (!resetArmed) { setResetArmed(true); setTimeout(() => setResetArmed(false), 4000); return; }
     setResetArmed(false);
-    try { setBusy(true); setError(''); await resetAlerts(); await load(); }
+    try {
+      setBusy(true); setError(''); await resetAlerts();
+      // "Reset demo" = fresh booth state: the DATA is truncated+reseeded, so the
+      // VIEW resets too — sticky filters would otherwise keep narrowing the fresh
+      // 600 to the previous visitor's slice (booth catch 2026-06-12).
+      setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all');
+      setSortBy('severity'); setFilter('open'); setScenario('week'); setJumpCtx(null);
+      setSearchParams({}, { replace: true });  // strip ?q= etc. so a refresh can't resurrect them
+      await load();
+    }
     catch (e) { setError(String(e.message || e)); }
     finally { setBusy(false); }
   };
