@@ -292,8 +292,9 @@ export default function AboutPage() {
 
         <section>
           <h2 className="text-lg font-semibold mb-2.5 text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Jump to a view</h2>
-          {/* compact icon-left cards (vs tall stacked) so the row tucks into the fold */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* compact icon-left cards (vs tall stacked) so the row tucks into the fold;
+              4 columns on wide screens so the Full Loop card doesn't wrap alone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {ROLE_CARDS.map((c) => (
               <button key={c.title} onClick={() => navigate(c.route)}
                 className="bg-slate-900/50 border border-slate-800 rounded-lg p-3.5 text-left hover:border-cyan-500/40 transition-colors group flex items-center gap-3">
