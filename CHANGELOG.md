@@ -66,6 +66,48 @@ to before (wip labels intact).
   seeded, ack/assign/resolve + audit verified live. Connection-probe write-up:
   `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
 
+### Added — triage operations (same day, booth-driven iteration)
+- **Resolution-outcome menu** on Resolve: 🔧 firmware rolled back · 📦 device replaced ·
+  🩸 fingerstick-verified OK · ↪ not a device issue (routed to care team) · 🚑 EMS dispatched (911) ·
+  ✏️ Other… (free text) — the chosen outcome lands in the audit trail (the compliance record).
+- **🩸 Fingerstick follow-up** — a *request* is engagement, not closure: keeps the alert in the
+  queue (→ acked) with a "follow-up requested" audit row; resolve later with the real outcome.
+  **+ Note** addendum (audit-only, allowed post-resolve). Audit verbs now an explicit map.
+- **Bulk actions** over the filtered set: "Ack all N" / "Resolve all N ▾" (same outcome menu) —
+  e.g. filter to FW 4.0 → one "firmware rolled back" closes the 300-alert cohort, one audit row
+  per alert. New `POST /api/alerts/bulk` + `lakebase.bulk_act` (single UPDATE + audit unnest).
+- **Scenario vantages**: 📅 full week · 🚨 Day 2 (4.0 rollout) · 🚨 Day 5 (4.0.3 hotfix fault) ·
+  **⏱ last-3h live-risk view** — a readings-only watchlist (`<54/>250`, NO incident labels: the
+  production-realistic detection path; clean models legitimately appear as physiology).
+  Queue-only controls grey out there. Filters: patient/device search, fault pills, model select
+  (full registry roster — clean controls disabled; availability reacts to the fault filter), sort
+  (severity default — "masked highs first", honestly framed as recall-harm-informed), ↻ Refresh.
+- **Patient context on expand** (worst in-incident device-vs-true moment + Coach link) so the
+  triager sees the discovery *before* picking a resolution. Read-only **PUBLIC SELECT grants** on
+  the `triage` schema so operators can browse it from the workspace SQL editor.
+
+### Added — cross-page loop + verification
+- **Deep-links carry context**: Population Risk → `?model=`, Firmware → `?fw=` (clearable chip),
+  per-row **⚑ triage** buttons on the roster + OOR table; device-focus view gains a layered
+  **🕰 fault-window / ⏱ last-3h / 📍 now** context card + a return-edge button back to the alert.
+- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding (skipped on non-Lakebase
+  targets). Doubles as the **drift detector**: an externally-deleted project fails it while
+  `bundle deploy` stays silent (no state refresh). DEPLOY.md gains the teardown footgun note +
+  the **undelete recovery runbook** (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion
+  is soft; settings/roles/storage survive).
+- **Tour**: Triage stop in all three variants (`requiresLakebase` — steps + chooser counts gate
+  on the flag); the **Quick tour now ends on `/roadmap`** ("Explore from here").
+
+### Changed — IA / naming honesty
+- **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
+  shows the full arc, gaining `→ Act` on Lakebase deploys; About gains a 4th quick-access card,
+  grid now 4-up). Route stays `/roadmap`. Named for the story — the loop literally closes now
+  that triage writes back.
+- **"Live Alert" framed as the workflow, not a latency claim**: the Triage intro + send-to-triage
+  tooltips note alerts are batch-derived today; with streaming ingestion (see the what's-next
+  backlog) the same queue raises them in real time. Backlog refreshed: monitoring-created alerts,
+  triage analytics via UC-catalog registration, incident playback.
+
 ## [2026-06-11]
 
 Device-error realism overhaul: the calibration fault is now a **12-hour, device-model-gated, two-pulse** event (was a 3-hour flat-σ fleet-wide bump), so the demo shows two distinct buggy periods with a genuinely flat control cohort and gradual device recovery — while the firmware × day heatmap stays complete. App prose reconciled to the new duration.
