@@ -62,7 +62,7 @@ Full file-by-file inventory + "I want to…" task index in [`REPO_LAYOUT.md`](RE
 
 Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers should add a target stanza per [`databricks.yml.example`](databricks.yml.example) and create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example).
 
-Canonical deploy sequence (full 8-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
+Canonical deploy sequence (full 10-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
 
 > **Lakebase targets** (`gsphere`, `gsphere_fw_v2` — the alert-triage queue's OLTP store): one
 > extra **one-time** command before the first deploy — `databricks postgres create-project …`
