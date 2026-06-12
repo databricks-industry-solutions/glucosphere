@@ -305,6 +305,7 @@ SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at
 FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)
 ORDER BY u.at DESC LIMIT 20;`;
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const copySampleSql = () => {
     navigator.clipboard?.writeText(SAMPLE_SQL).then(() => {
       setSqlCopied(true); setTimeout(() => setSqlCopied(false), 2000);
@@ -414,18 +415,6 @@ ORDER BY u.at DESC LIMIT 20;`;
               {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
               <p className="text-[11px] font-mono text-slate-500 leading-relaxed mt-2">
                 Honest note: alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming. With live ingestion (see <Link to="/full-loop" className="text-cyan-400 hover:text-cyan-300">what's next</Link>: real-time CGM streaming + monitoring-created alerts) the same queue raises them in real time.
-                {workspaceHost && (
-                  <>
-                    {' '}For testing, verify it's real Postgres state: <a href={`${workspaceHost}/lakebase`} target="_blank" rel="noreferrer"
-                      title="Opens the workspace's Lakebase editor — pick the glucosphere OLTP project → databricks_postgres → schema `triage`, paste the sample query, and see your own actions as rows."
-                      className="text-cyan-400 hover:text-cyan-300">🛢 inspect the backing tables</a>
-                    {' · '}
-                    <button onClick={copySampleSql} className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted"
-                      title={SAMPLE_SQL}>
-                      {sqlCopied ? '✓ copied' : 'copy sample query'}
-                    </button>
-                  </>
-                )}
               </p>
               {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
               <p className="text-xs text-slate-500 leading-relaxed mt-2 font-mono">
@@ -465,6 +454,29 @@ ORDER BY u.at DESC LIMIT 20;`;
                     className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-colors disabled:opacity-40 ${resetArmed ? 'border-rose-500/60 text-rose-300 bg-rose-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
                     {resetArmed ? 'Confirm reset?' : '⟲ Reset demo'}
                   </button>
+                  {workspaceHost && (
+                    <div className="relative">
+                      <button onClick={() => setVerifyOpen(v => !v)}
+                        title="Prove the queue is real Postgres state — see your own actions as rows"
+                        className={`text-[11px] font-mono px-2.5 py-1 rounded-md border ${verifyOpen ? 'border-cyan-500/60 text-cyan-200 bg-cyan-500/10' : 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10'}`}>
+                        🛢 Verify in Postgres ▾
+                      </button>
+                      {verifyOpen && (
+                        <div className="absolute right-0 mt-1 w-72 z-30 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl p-3 text-left">
+                          <p className="text-[11px] text-slate-400 mb-2">Every Ack / Assign / Note you click is a Postgres row. See for yourself:</p>
+                          <button onClick={copySampleSql}
+                            className="w-full text-left text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 mb-1.5">
+                            {sqlCopied ? '✓ query copied' : '1 · Copy the query'}
+                          </button>
+                          <a href={`${workspaceHost}/lakebase`} target="_blank" rel="noreferrer"
+                            className="block text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800">
+                            2 · Open the Lakebase SQL editor ↗
+                          </a>
+                          <p className="text-[10px] text-slate-500 mt-2 leading-snug">In the editor: pick the glucosphere OLTP project → <span className="font-mono">databricks_postgres</span> → paste → run.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button onClick={() => load(filter)} disabled={busy || loading} title="Reload the queue"
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
                   <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Status filter" title={isWatch ? NA_WATCH : undefined}>

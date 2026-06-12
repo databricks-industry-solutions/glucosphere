@@ -126,10 +126,12 @@ to before (wip labels intact).
   snaps the fault/model pills to the matched alert's attributes (one-time, only when the
   pills are untouched and the match is unambiguous) — the filter row reads coherently with
   the row it shows instead of "all faults · all models" over a single under-read Delta.
-- **Triage "inspect the backing tables"** (booth verification): the honest-note line gains a
-  🛢 deep-link into the workspace's Lakebase editor + a copyable sample query (alerts ⋈
-  audit-trail, newest first) — one click from the queue to seeing your own actions as
-  Postgres rows. Readable by any viewer thanks to the bootstrap's read grants.
+- **Triage "🛢 Verify in Postgres" button** (booth verification): a toolbar button beside
+  Reset/Refresh opens a 2-step dropdown — "1 · Copy the query" (alerts ⋈ audit-trail,
+  newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
+  seeing your own ack/assign/note actions as Postgres rows. Readable by any viewer thanks
+  to the bootstrap's read grants. (First shipped as an inline honest-note link — too
+  buried; promoted to a button the same day.)
 - **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
   trailing 3-hour window (amber, distinct from the rose incident band) when it contains
   very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250
