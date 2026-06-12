@@ -240,6 +240,23 @@ export default function TriagePage() {
       getLiveRiskWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
     }
   }, [scenario]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Patient deep-links (?q= from Coach / device-focus / watchlist ⚑) carry no
+  // fault/model params — once the queue loads, snap those pills to the matched
+  // alert's attributes (one-time; only when the pills are still at 'all'), so the
+  // filter row reads coherently with the row it shows (booth catch 2026-06-12).
+  const snappedRef = React.useRef(false);
+  useEffect(() => {
+    if (snappedRef.current || !data.alerts?.length) return;
+    const q0 = (searchParams.get('q') || '').trim().toLowerCase();
+    if (!q0 || searchParams.get('fault') || searchParams.get('model')) { snappedRef.current = true; return; }
+    const hits = data.alerts.filter(a => `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q0));
+    const types = new Set(hits.map(a => a.alert_type));
+    const models = new Set(hits.map(a => a.device_model));
+    if (hits.length && types.size === 1 && faultFilter === 'all') setFaultFilter([...types][0]);
+    if (hits.length && models.size === 1 && modelFilter === 'all') setModelFilter([...models][0]);
+    snappedRef.current = true;
+  }, [data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // If the fault filter strands the selected model (e.g. Alpha under under-read),
   // fall back to 'all' — the dropdown also greys those options out dynamically.
   useEffect(() => {
