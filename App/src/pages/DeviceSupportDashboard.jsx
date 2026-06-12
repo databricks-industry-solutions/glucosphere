@@ -820,6 +820,15 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               <p className="text-slate-500">
                 <span className="text-slate-400">📍 Now</span>: the latest reading below{focusCtx.snap ? ' — in-range here means the fix landed for this device' : ''}.
               </p>
+              {/* the return edge of the triage loop: investigate here (incl. Deeper
+                  Analysis), then circle back to the alert to record the resolution */}
+              {lakebaseConfigured && focusRow?.patient_id && (
+                <button
+                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}`)}
+                  className="mt-1 text-[11px] font-mono px-2 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10"
+                  title="Back to this patient's alert in the triage queue — pick the resolution your investigation points to"
+                >⚑ work this device's alert in Triage →</button>
+              )}
             </div>
           )}
           <div className="flex items-center justify-between mb-6">
