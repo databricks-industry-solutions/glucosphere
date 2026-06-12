@@ -5,6 +5,7 @@ import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link } from 'react-router-dom';
 import { fetchAlerts, alertAction, seedAlerts, resetAlerts } from '../api/triage';
+import { getAllDeviceModels } from '../api/databricksSQL';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
 // resolve + an audit trail, backed by Lakebase (Postgres OLTP) — the app's only
@@ -96,6 +97,8 @@ export default function TriagePage() {
   const [search, setSearch] = useState('');               // patient/device — client-side
   const [faultFilter, setFaultFilter] = useState('all');  // over/under — client-side
   const [modelFilter, setModelFilter] = useState('all');  // device model — client-side
+  const [sortBy, setSortBy] = useState('severity');       // severity | patient | updated
+  const [allModels, setAllModels] = useState([]);         // registry SSOT — incl. clean controls
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -109,6 +112,8 @@ export default function TriagePage() {
   }, []);
 
   useEffect(() => { if (configured) load(filter); }, [configured, filter, load]);
+  // Full model roster (incl. Epsilon/Zeta clean controls) — once, from the registry SSOT.
+  useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels).catch(() => {}); }, [configured]);
 
   const onAction = async (id, action, assignee = null) => {
     try { setBusy(true); await alertAction(id, action, assignee); await load(filter); }
@@ -136,14 +141,25 @@ export default function TriagePage() {
   const total = Object.values(counts).reduce((s, n) => s + Number(n || 0), 0);
 
   // Client-side refinement over the loaded queue (status is already server-filtered).
-  const models = [...new Set((data.alerts || []).map(a => a.device_model).filter(Boolean))].sort();
+  const affectedModels = new Set((data.alerts || []).map(a => a.device_model).filter(Boolean));
+  // Dropdown lists the FULL registry roster; clean (alert-free) models render disabled —
+  // the control cohort visibly "has nothing to triage". Falls back to affected-only
+  // until/unless the registry query resolves.
+  const modelOptions = allModels.length ? allModels : [...affectedModels].sort();
   const q = search.trim().toLowerCase();
   const filtered = (data.alerts || []).filter(a =>
     (faultFilter === 'all' || a.alert_type === faultFilter) &&
     (modelFilter === 'all' || a.device_model === modelFilter) &&
     (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
+  // Sort: severity = the server's triage order (open first, HIGH first). The other two
+  // interleave the cohorts (an "all faults" view is otherwise a wall of HIGH/under-read).
+  const sorted = sortBy === 'patient'
+    ? [...filtered].sort((a, b) => a.patient_id.localeCompare(b.patient_id))
+    : sortBy === 'updated'
+      ? [...filtered].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+      : filtered;
   const VISIBLE_CAP = 100; // keep the DOM light; filters narrow the rest
-  const visible = filtered.slice(0, VISIBLE_CAP);
+  const visible = sorted.slice(0, VISIBLE_CAP);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
@@ -231,7 +247,15 @@ export default function TriagePage() {
                 <select value={modelFilter} onChange={e => setModelFilter(e.target.value)}
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
                   <option value="all">all models</option>
-                  {models.map(m => <option key={m} value={m}>{m}</option>)}
+                  {modelOptions.map(m => affectedModels.has(m)
+                    ? <option key={m} value={m}>{m}</option>
+                    : <option key={m} value={m} disabled>{m} — clean, no alerts</option>)}
+                </select>
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)} title="Severity = triage order (most critical first); the others interleave the cohorts"
+                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
+                  <option value="severity">sort: severity</option>
+                  <option value="patient">sort: patient id</option>
+                  <option value="updated">sort: recently updated</option>
                 </select>
                 <span className="text-slate-500 ml-auto">{filtered.length} matching{filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}</span>
               </div>

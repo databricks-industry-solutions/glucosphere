@@ -59,6 +59,28 @@ export async function executeSQLQuery(query) {
  * Get count of distinct devices from patient registry
  * @returns {Promise<number>} Count of distinct devices
  */
+// ALL device models from the registry (per-patient SSOT) — incl. the clean control
+// models that never raise alerts. Used by the Triage page's model dropdown so the
+// unaffected models show as "clean" (disabled) rather than silently missing.
+export async function getAllDeviceModels() {
+  const { catalog, schema } = await getConfig();
+  const query = `SELECT DISTINCT CAST(device_model AS STRING) AS device_model FROM ${catalog}.${schema}.silver_patient_registry ORDER BY device_model`;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return v[0]?.string_value ?? v[0];
+      }).filter(Boolean);
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to get device models:', error);
+    return [];
+  }
+}
+
 export async function getDistinctDeviceCount() {
   const { catalog, schema } = await getConfig();
   const query = `SELECT COUNT(DISTINCT device_id) as device_count FROM ${catalog}.${schema}.silver_patient_registry`;
