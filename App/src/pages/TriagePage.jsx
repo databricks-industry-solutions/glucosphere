@@ -284,6 +284,11 @@ export default function TriagePage() {
     const models = new Set(hits.map(a => a.device_model));
     if (hits.length && types.size === 1 && faultFilter === 'all') setFaultFilter([...types][0]);
     if (hits.length && models.size === 1 && modelFilter === 'all') setModelFilter([...models][0]);
+    // SMART LANDING: a patient deep-link matching ZERO alerts (e.g. a clean-control
+    // device — its danger-band readings are physiology, not device fault) would dead-end
+    // on an empty queue. Land on the live last-3h view instead, search kept: the
+    // watchlist row + its Queue "—" tell the no-device-alert story (booth 2026-06-12).
+    if (!hits.length && data.alerts.length) setScenario('last3h');
     snappedRef.current = true;
   }, [data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
