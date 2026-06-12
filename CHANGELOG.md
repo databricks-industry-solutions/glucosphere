@@ -116,7 +116,10 @@ to before (wip labels intact).
   queue-counts header ("0 open · …" against 100 rows) now reads "queue counts n/a in the
   live readings view" (same NA treatment as the other queue-only controls), and the
   "N patients in the danger bands" label derives from the same filtered set as the table —
-  it reacts to the model/search filters instead of sitting at the full fetch count.
+  it reacts to the model/search filters instead of sitting at the full fetch count. The NA
+  text was then upgraded to a **bridge stat**: "N of these M patients also have open device
+  alerts in the queue" (danger-band ∩ open-alerts overlap, computed client-side) — separating
+  physiological risk from device-fault fallout at a glance.
 - **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
   the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
   are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any

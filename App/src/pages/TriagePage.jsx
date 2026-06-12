@@ -312,6 +312,13 @@ export default function TriagePage() {
   const watchFiltered = (watchlist || []).filter(w =>
     (modelFilter === 'all' || w.deviceModel === modelFilter) &&
     (!q || w.patientId.toLowerCase().includes(q)));
+  // Bridge stat between the two views: how many of the live danger-band patients
+  // ALSO sit in the alert queue with an open device alert — separates physiological
+  // risk from device-fault fallout at a glance (replaces a dead "n/a" label).
+  const watchIds = new Set(watchFiltered.map(w => w.patientId));
+  const watchAlertOverlap = new Set((data.alerts || [])
+    .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
+    .map(a => a.patient_id)).size;
   // refined = every filter EXCEPT the status tab → the header counts break this
   // set down by status, so they update live as filters narrow the queue.
   const refined = (data.alerts || []).filter(a =>
@@ -388,11 +395,14 @@ export default function TriagePage() {
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
                   {isWatch ? (
-                    // Queue counts are an ALERTS concept — the live readings view has no
-                    // queue status, so showing "0 open" against 100 rows reads as a
-                    // contradiction (caught at the booth 2026-06-12). Same NA treatment
-                    // as the other queue-only controls.
-                    <span className="text-slate-500" title={NA_WATCH}>queue counts n/a in the live readings view</span>
+                    // Queue counts are an ALERTS concept — readings rows have no status, so
+                    // per-status counts would contradict the table (booth catch 2026-06-12).
+                    // Show the BRIDGE stat instead: danger-band patients ∩ open device alerts —
+                    // physiological risk vs device-fault fallout at a glance.
+                    <span className="text-slate-400"
+                      title="Overlap between the danger-band patients below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
+                      <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchFiltered.length} patients also have open device alerts in the queue
+                    </span>
                   ) : (<>
                   <span className="text-rose-300">{counts.open || 0} open</span>
                   <span className="text-slate-600">·</span>
