@@ -962,27 +962,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <tr className="border-b border-slate-800 bg-slate-900">
                         <td colSpan="9" className="px-4 py-4">
                           <div className="grid grid-cols-2 gap-6">
-                            {/* Reading Details */}
+                            {/* Reading Details — ONE band → ONE color, used by the value,
+                                the Range Status text, and the action banner below (a mixed
+                                amber value + white status + rose banner read as three
+                                different severities for the same reading — booth catch). */}
+                            {(() => { const v = device.glucose_value;
+                              const band = (v < 54 || v > 250) ? 'critical' : (v < 70 || v > 180) ? 'warn' : 'ok';
+                              const bandText = band === 'critical' ? 'text-rose-400' : band === 'warn' ? 'text-amber-400' : 'text-emerald-400';
+                              return (
                             <div>
                               <h4 className="text-sm font-medium text-slate-300 mb-3">Reading Details</h4>
                               <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
-                                  <span className={`font-mono font-bold ${
-                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
-                                      : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
-                                      : 'text-emerald-400'
-                                  }`}>
-                                    {Math.round(device.glucose_value)} mg/dL
+                                  <span className={`font-mono font-bold ${bandText}`}>
+                                    {Math.round(v)} mg/dL
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Range Status:</span>
-                                  <span className="text-slate-300">
-                                    {device.glucose_value < 54 ? 'Very Low (<54)' :
-                                     device.glucose_value < 70 ? 'Low (54–69)' :
-                                     device.glucose_value > 250 ? 'Very High (>250)' :
-                                     device.glucose_value > 180 ? 'High (181–250)' :
+                                  <span className={bandText}>
+                                    {v < 54 ? 'Very Low (<54)' :
+                                     v < 70 ? 'Low (54–69)' :
+                                     v > 250 ? 'Very High (>250)' :
+                                     v > 180 ? 'High (181–250)' :
                                      'In range (70–180)'}
                                   </span>
                                 </div>
@@ -996,9 +999,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               </div>
                               
-                              {(device.glucose_value < 70 || device.glucose_value > 180) ? (
+                              {band === 'critical' ? (
                                 <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
-                                  ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
+                                  ⚠️ <strong>Action Required:</strong> This reading is in a danger band (&lt;54 / &gt;250). Consider patient notification and clinical review.
+                                </div>
+                              ) : band === 'warn' ? (
+                                <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-300">
+                                  ⚠️ <strong>Monitor:</strong> This reading is outside the 70–180 target band. Keep watching; escalate if it trends toward the danger bands.
                                 </div>
                               ) : (
                                 <div className="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded text-xs text-emerald-300">
@@ -1006,6 +1013,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               )}
                             </div>
+                              ); })()}
                             
                             {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}
                             <div>
