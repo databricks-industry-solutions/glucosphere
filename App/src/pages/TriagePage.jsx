@@ -554,7 +554,8 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Status filter" title={isWatch ? NA_WATCH : undefined}>
                     {FILTERS.map(f => (
                       <button key={f} onClick={() => setFilter(f)} disabled={isWatch}
-                        className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f}</button>
+                        title={f === 'all' ? 'All statuses — the search/fault/model filters below still apply' : undefined}
+                        className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f === 'all' ? 'All statuses' : f}</button>
                     ))}
                   </div>
                 </div>
@@ -593,7 +594,14 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
                     className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
                 )}
-                <span className="text-slate-500 ml-auto">{scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}</span>
+                <span className="text-slate-500 ml-auto">
+                  {scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
+                  {(q || faultFilter !== 'all' || modelFilter !== 'all' || fwFilter !== 'all') && (
+                    <button onClick={() => { setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all'); setJumpCtx(null); }}
+                      title="Clear the search / fault / model / firmware filters (status tab + scenario stay)"
+                      className="ml-2 text-cyan-400 hover:text-cyan-300 underline decoration-dotted">✕ clear filters</button>
+                  )}
+                </span>
               </div>
 
               {jumpCtx && scenario === 'week' && (
