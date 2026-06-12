@@ -5,7 +5,8 @@ import { useLakebaseConfigured } from '../hooks/useLakebase';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
-// step's target element, and renders a Next/Back/Done card.
+// step's target element, and renders a Next/Back/Done card with a step
+// scrubber (drag to jump to any step).
 export default function GuidedTour() {
   const [active, setActive] = useState(false);
   const [variant, setVariant] = useState(null); // null → show Quick/Full chooser; 'quick' | 'full' once picked
@@ -205,7 +206,10 @@ export default function GuidedTour() {
 
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
-      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} onClick={close} />
+      {/* Backdrop deliberately does NOT close the tour: a stray click outside the card used
+          to silently end it mid-walkthrough with no way back to the current step (booth
+          feedback 2026-06-12). Skip (and Done) are the explicit exits. */}
+      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} />
       {rect && (
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
           style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2,6,23,0.55)' }} />
@@ -221,12 +225,23 @@ export default function GuidedTour() {
             (step.explore) → "Explore". Pure-narrative steps and the FAB step — where the next steps
             auto-open the assistant — get a plain Next, no redundant pause. */}
         {variant === 'interactive' && (step.interactive || step.openAssistant || step.explore) && (
-          <button onClick={() => { setPaused(true); setJustResumed(false); }}
-            className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
-            ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
-          </button>
+          <>
+            <button onClick={() => { setPaused(true); setJustResumed(false); }}
+              className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
+              ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
+            </button>
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-snug">
+              While you explore, an amber <span className="text-amber-300">▶ Resume tour</span> pill stays
+              on screen — click it to come back to this step.
+            </p>
+          </>
         )}
-        <div className="flex justify-between items-center mt-4">
+        {/* Step scrubber: drag to jump to any step (fast-forward back after a wrong turn —
+            e.g. an accidental Skip and restart — without clicking Next n times). */}
+        <input type="range" min={1} max={steps.length} value={i + 1} aria-label="Jump to tour step"
+          onChange={(e) => { setI(Number(e.target.value) - 1); setJustResumed(false); }}
+          className="w-full mt-4 h-1 accent-cyan-400 cursor-pointer" />
+        <div className="flex justify-between items-center mt-2">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
             {i > 0 && <button onClick={() => { setI(i - 1); setJustResumed(false); }} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}

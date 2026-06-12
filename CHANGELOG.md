@@ -107,6 +107,11 @@ to before (wip labels intact).
   on the flag); **all three tour variants now end on the Full Loop page** (the Quick tour's
   "Explore from here" close; Full + Interactive gained a matching "The full loop" closing step
   the same day).
+- **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
+  the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
+  are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any
+  step — the fast-forward after a wrong turn); the pause button gains a hint that the amber
+  **▶ Resume tour** pill stays on screen during explore.
 
 ### Changed — IA / naming honesty
 - **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
