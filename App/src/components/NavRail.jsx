@@ -14,7 +14,9 @@ const ROLES = [
 ];
 const MORE = [
   { to: '/metrics-explained', icon: BookOpen, label: 'Metrics Explained', sub: 'How metrics compute' },
-  { to: '/roadmap', icon: Telescope, label: 'Detect · Diagnose · Assess', sub: 'How it comes together' },
+  // label/sub inverted vs the page header: the rail is ~224px, so the long arc
+  // line rides the smaller sub font and the short phrase carries the label.
+  { to: '/roadmap', icon: Telescope, label: 'How it comes together', sub: 'Detect·Diagnose·Assess' },
   { to: '/about', icon: Info, label: 'About', sub: 'Naming · data · repo' },
 ];
 
