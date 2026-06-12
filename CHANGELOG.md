@@ -107,6 +107,11 @@ to before (wip labels intact).
   on the flag); **all three tour variants now end on the Full Loop page** (the Quick tour's
   "Explore from here" close; Full + Interactive gained a matching "The full loop" closing step
   the same day).
+- **Triage counts react to filters** (booth feedback): the header `open · acked · resolved`
+  counts were whole-DB totals and sat frozen while filters narrowed the queue. The page now
+  fetches all statuses once and derives both the status tabs AND the counts client-side from
+  the filtered set; "queue is empty + Seed" shows only when the DB is truly empty, and a
+  filters-match-nothing state offers **Clear filters** instead.
 - **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
   the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
   are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any

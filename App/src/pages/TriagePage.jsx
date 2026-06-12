@@ -198,7 +198,7 @@ export default function TriagePage() {
   const configured = useLakebaseConfigured();
   const [searchParams] = useSearchParams();
   const [data, setData] = useState({ alerts: [], counts: {} });
-  const [filter, setFilter] = useState('open');          // status — server-side
+  const [filter, setFilter] = useState('open');          // status tab — client-side (we fetch all statuses once)
   // Deep-links carry their context: Population Risk passes ?model=, Firmware
   // passes ?fw=, anything can pass ?fault= / ?q=. (Alerts carry no region, so a
   // region-filtered roster lands unfiltered.)
@@ -214,15 +214,19 @@ export default function TriagePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (f) => {
+  // Fetch ALL statuses once (600-alert demo scale; server caps at 1000) so the
+  // status tabs AND the header counts can both react client-side to the active
+  // search/fault/model/fw filters — server-side status fetches made the header
+  // counts static under filters (caught at the booth 2026-06-12).
+  const load = useCallback(async () => {
     try {
       setLoading(true); setError('');
-      setData(await fetchAlerts(f));
+      setData(await fetchAlerts('all'));
     } catch (e) { setError(String(e.message || e)); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { if (configured) load(filter); }, [configured, filter, load]);
+  useEffect(() => { if (configured) load(); }, [configured, load]);
   // Full model roster (incl. Epsilon/Zeta clean controls) — once, from the registry SSOT.
   useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels).catch(() => {}); }, [configured]);
   // Scenario vantage: day presets force the matching fault filter; the last-3h
@@ -246,13 +250,13 @@ export default function TriagePage() {
   }, [faultFilter, data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onAction = async (id, action, assignee = null) => {
-    try { setBusy(true); await alertAction(id, action, assignee); await load(filter); }
+    try { setBusy(true); await alertAction(id, action, assignee); await load(); }
     catch (e) { setError(String(e.message || e)); }
     finally { setBusy(false); }
   };
 
   const onSeed = async () => {
-    try { setBusy(true); setError(''); await seedAlerts(); await load(filter); }
+    try { setBusy(true); setError(''); await seedAlerts(); await load(); }
     catch (e) { setError(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -264,7 +268,7 @@ export default function TriagePage() {
   const [showBulkOther, setShowBulkOther] = useState(false);
   const onBulk = async (action, resolution = null) => {
     setBulkOpen(false); setShowBulkOther(false);
-    try { setBusy(true); setError(''); await bulkAlerts(filtered.map(a => a.alert_id), action, resolution); await load(filter); }
+    try { setBusy(true); setError(''); await bulkAlerts(filtered.map(a => a.alert_id), action, resolution); await load(); }
     catch (e) { setError(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -274,13 +278,13 @@ export default function TriagePage() {
   const onReset = async () => {
     if (!resetArmed) { setResetArmed(true); setTimeout(() => setResetArmed(false), 4000); return; }
     setResetArmed(false);
-    try { setBusy(true); setError(''); await resetAlerts(); await load(filter); }
+    try { setBusy(true); setError(''); await resetAlerts(); await load(); }
     catch (e) { setError(String(e.message || e)); }
     finally { setBusy(false); }
   };
 
-  const counts = data.counts || {};
-  const total = Object.values(counts).reduce((s, n) => s + Number(n || 0), 0);
+  // (data.counts — the server's whole-DB totals — is superseded by the dynamic
+  // per-filter counts computed below from the refined set.)
   // Live-readings view: rows are readings, not alerts — no fault direction, no
   // queue status, no severity. Queue-only controls grey out (search+model still apply).
   const isWatch = scenario === 'last3h';
@@ -302,11 +306,17 @@ export default function TriagePage() {
   // until/unless the registry query resolves.
   const modelOptions = allModels.length ? allModels : [...affectedModels].sort();
   const q = search.trim().toLowerCase();
-  const filtered = (data.alerts || []).filter(a =>
+  // refined = every filter EXCEPT the status tab → the header counts break this
+  // set down by status, so they update live as filters narrow the queue.
+  const refined = (data.alerts || []).filter(a =>
     (faultFilter === 'all' || a.alert_type === faultFilter) &&
     (modelFilter === 'all' || a.device_model === modelFilter) &&
     (fwFilter === 'all' || a.firmware === fwFilter) &&
     (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
+  const counts = { open: 0, acked: 0, resolved: 0 };
+  refined.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
+  const total = refined.length;
+  const filtered = filter === 'all' ? refined : refined.filter(a => a.status === filter);
   // Sort: severity = the server's triage order (open first, HIGH first). The other two
   // interleave the cohorts (an "all faults" view is otherwise a wall of HIGH/under-read).
   const sorted = sortBy === 'patient'
@@ -517,7 +527,7 @@ export default function TriagePage() {
                 )
               ) : loading ? (
                 <div className="flex items-center justify-center h-40 text-slate-500">Loading alert queue…</div>
-              ) : total === 0 ? (
+              ) : (data.alerts || []).length === 0 ? (
                 <div className="text-center py-10">
                   <p className="text-sm text-slate-400 mb-3">The queue is empty.</p>
                   <button disabled={busy} onClick={onSeed}
@@ -525,6 +535,14 @@ export default function TriagePage() {
                     {busy ? 'Seeding…' : '⚡ Seed from the affected cohort'}
                   </button>
                   <p className="text-[11px] font-mono text-slate-600 mt-2">Inserts one open alert per affected patient-device from the gold layer (idempotent).</p>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-sm text-slate-400 mb-3">No alerts match the current filters.</p>
+                  <button onClick={() => { setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all'); setFilter('all'); }}
+                    className="text-xs font-mono px-3 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800">
+                    Clear filters
+                  </button>
                 </div>
               ) : (
                 <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
