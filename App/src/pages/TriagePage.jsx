@@ -5,7 +5,7 @@ import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchAlerts, alertAction, seedAlerts, resetAlerts } from '../api/triage';
-import { getAllDeviceModels, getLiveRiskWatchlist } from '../api/databricksSQL';
+import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot } from '../api/databricksSQL';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
 // resolve + an audit trail, backed by Lakebase (Postgres OLTP) — the app's only
@@ -41,11 +41,24 @@ function AlertRow({ alert, onAction, busy }) {
   const [assignee, setAssignee] = useState('');
   const [note, setNote] = useState('');
   const [resolveOpen, setResolveOpen] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const [showOther, setShowOther] = useState(false);
+  // Patient context (the in-incident discovery) — lazily fetched on first expand,
+  // so the triager sees device-vs-true BEFORE picking a resolution.
+  const [snapshot, setSnapshot] = useState(undefined); // undefined → not fetched · 'loading' · null → none · {…}
+  const toggleExpand = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && snapshot === undefined) {
+      setSnapshot('loading');
+      getPatientIncidentSnapshot(alert.patient_id).then(setSnapshot).catch(() => setSnapshot(null));
+    }
+  };
   return (
     <>
       <tr className="border-t border-slate-800 hover:bg-slate-900/40">
         <td className="p-2 align-middle">
-          <button onClick={() => setExpanded(e => !e)} className="text-slate-500 hover:text-slate-300" aria-label="Toggle audit trail">
+          <button onClick={toggleExpand} className="text-slate-500 hover:text-slate-300" aria-label="Toggle patient context + audit trail">
             {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           </button>
         </td>
@@ -76,11 +89,26 @@ function AlertRow({ alert, onAction, busy }) {
                 <div className="absolute right-0 top-full mt-1 z-20 min-w-[260px] bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden text-left">
                   {RESOLUTIONS.map(r => (
                     <button key={r} disabled={busy}
-                      onClick={() => { setResolveOpen(false); onAction(alert.alert_id, 'resolve', r); }}
+                      onClick={() => { setResolveOpen(false); setShowOther(false); onAction(alert.alert_id, 'resolve', r); }}
                       className="block w-full text-left px-3 py-2 text-[11px] font-mono text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-40">
                       {r}
                     </button>
                   ))}
+                  {/* Other… free-text outcome */}
+                  {!showOther ? (
+                    <button disabled={busy} onClick={() => setShowOther(true)}
+                      className="block w-full text-left px-3 py-2 text-[11px] font-mono text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-300 border-t border-slate-800 disabled:opacity-40">
+                      ✏️ Other…
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 p-2 border-t border-slate-800">
+                      <input autoFocus value={otherText} onChange={e => setOtherText(e.target.value)} placeholder="describe the resolution…"
+                        className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-300 placeholder:text-slate-600 flex-1" />
+                      <button disabled={busy || !otherText.trim()}
+                        onClick={() => { setResolveOpen(false); setShowOther(false); onAction(alert.alert_id, 'resolve', `✏️ ${otherText.trim()}`); setOtherText(''); }}
+                        className="text-[11px] font-mono px-2 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">OK</button>
+                    </div>
+                  )}
                 </div>
               )}
             </span>
@@ -90,6 +118,20 @@ function AlertRow({ alert, onAction, busy }) {
       {expanded && (
         <tr className="border-t border-slate-800/50 bg-slate-900/30">
           <td colSpan={8} className="p-3 pl-10">
+            {/* Patient context — the discovery that informs the resolution choice */}
+            <div className="mb-2 text-[11px] font-mono">
+              {snapshot === 'loading' && <span className="text-slate-600">loading patient context…</span>}
+              {snapshot && snapshot !== 'loading' && (
+                <span className="text-slate-400">
+                  <span className="text-slate-300">Patient context</span> — at the fault's peak ({snapshot.time}): device showed{' '}
+                  <span className={snapshot.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}>{snapshot.observed}</span> vs true{' '}
+                  <span className="text-slate-200">{snapshot.trueGlucose}</span> mg/dL{' '}
+                  ({snapshot.direction === 'positive' ? '↑ over-read by' : '↓ under-read by'} ~{Math.abs(snapshot.observed - snapshot.trueGlucose)}) ·{' '}
+                  <Link to={`/diabetes-coach?patient=${encodeURIComponent(alert.patient_id)}`} className="text-cyan-400 hover:text-cyan-300">full picture in Coach →</Link>
+                </span>
+              )}
+              {snapshot === null && <span className="text-slate-600">no in-incident readings recorded for this patient</span>}
+            </div>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               {/* audit trail — every action lands a row in alert_audit */}
               <ol className="text-[11px] font-mono text-slate-500 space-y-0.5">

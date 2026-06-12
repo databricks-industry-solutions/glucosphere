@@ -284,7 +284,18 @@ export default function PopulationRiskPage() {
                       className="border-b border-slate-800/50 hover:bg-slate-800/40 cursor-pointer"
                       title="Open this patient in the Diabetes Coach view"
                     >
-                      <td className="py-2 pr-3 text-cyan-300 hover:text-cyan-200">{r.patientId}</td>
+                      <td className="py-2 pr-3 text-cyan-300 hover:text-cyan-200">
+                        {r.patientId}
+                        {/* → this patient's alert in the triage queue (flag-gated);
+                            stopPropagation so it doesn't also open the Coach row-click */}
+                        {lakebaseConfigured && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(r.patientId)}`); }}
+                            className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
+                            title={`Find ${r.patientId} in the Alert Triage queue`}
+                          >⚑ triage</button>
+                        )}
+                      </td>
                       <td className="py-2 pr-3">{r.deviceId}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.deviceModel}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.region}</td>

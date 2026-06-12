@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle } from '../api/databricksSQL';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle, getPatientIncidentSnapshot, getPatientRecent3h } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import { getConfig } from '../api/config';
@@ -30,6 +31,7 @@ const mdComponents = {
 export default function DeviceSupportDashboard() {
   const navigate = useNavigate();
   const goBack = useGoBack();
+  const lakebaseConfigured = useLakebaseConfigured();
   const [expandedDevice, setExpandedDevice] = useState(null);
   const [filterModel, setFilterModel] = useState('all');
   // Deep-link from a patient's Device panel (Coach → "Device fleet diagnostics"):
@@ -39,6 +41,10 @@ export default function DeviceSupportDashboard() {
   const focusModel = searchParams.get('model');
   const focusDevice = searchParams.get('device');
   const [focusRow, setFocusRow] = useState(null);       // that device's latest reading (OOR/3h gate overridden)
+  // Layered time context for the focused device: fault window ("then") +
+  // last-3h danger-band summary ("recent") — so arriving from a triage alert
+  // or the live watchlist doesn't contradict a healthy "latest" reading.
+  const [focusCtx, setFocusCtx] = useState(null);
   const [focusLoading, setFocusLoading] = useState(false);
   const [deviceCount, setDeviceCount] = useState('...');
   const [deviceCountLoading, setDeviceCountLoading] = useState(true);
@@ -98,6 +104,20 @@ export default function DeviceSupportDashboard() {
     })();
     return () => { alive = false; };
   }, [focusDevice]);
+
+  // Layered time context for the focused device — fetched once per focus:
+  // "then" (the patient's worst in-incident moment) + "recent" (last-3h
+  // danger-band summary). Whichever frame the visitor arrived from (triage
+  // alert / live watchlist / roster), the panel shows it next to "now".
+  useEffect(() => {
+    const pid = focusRow?.patient_id;
+    if (!pid) { setFocusCtx(null); return; }
+    let alive = true;
+    Promise.all([getPatientIncidentSnapshot(pid), getPatientRecent3h(pid)])
+      .then(([snap, recent]) => { if (alive) setFocusCtx({ snap, recent }); })
+      .catch(() => { if (alive) setFocusCtx(null); });
+    return () => { alive = false; };
+  }, [focusRow?.patient_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear the patient-focus deep-link (drops the banner + the focused device, resets the
   // filter — back to the full out-of-range fleet view).
@@ -779,6 +799,29 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               <button onClick={clearFocus} className="text-xs font-mono text-slate-400 hover:text-slate-200 shrink-0">clear ✕</button>
             </div>
           )}
+          {/* Layered time context — "then / recent / now" — so the focus view never
+              contradicts the alert or watchlist that sent the visitor here. */}
+          {focusDevice && focusRow && focusCtx && (
+            <div className="mb-4 px-3 py-2.5 rounded-lg border border-slate-700 bg-slate-900/50 text-[11px] font-mono space-y-1">
+              {focusCtx.snap && (
+                <p className="text-slate-400">
+                  <span className="text-slate-300">🕰 Fault window</span> (peak, {focusCtx.snap.time}): device showed{' '}
+                  <span className={focusCtx.snap.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}>{focusCtx.snap.observed}</span> vs true{' '}
+                  <span className="text-slate-200">{focusCtx.snap.trueGlucose}</span> mg/dL — {focusCtx.snap.direction === 'positive' ? '↑ over-read by' : '↓ under-read by'} ~{Math.abs(focusCtx.snap.observed - focusCtx.snap.trueGlucose)}
+                </p>
+              )}
+              {focusCtx.recent && (
+                <p className="text-slate-400">
+                  <span className="text-slate-300">⏱ Last 3h</span>: {(focusCtx.recent.veryLow || focusCtx.recent.veryHigh)
+                    ? <><span className="text-sky-300">{focusCtx.recent.veryLow} very-low</span> · <span className="text-rose-300">{focusCtx.recent.veryHigh} very-high</span> readings (range {focusCtx.recent.min}–{focusCtx.recent.max} mg/dL)</>
+                    : <>no danger-band readings{focusCtx.recent.min != null ? ` (range ${focusCtx.recent.min}–${focusCtx.recent.max} mg/dL)` : ''}</>}
+                </p>
+              )}
+              <p className="text-slate-500">
+                <span className="text-slate-400">📍 Now</span>: the latest reading below{focusCtx.snap ? ' — in-range here means the fix landed for this device' : ''}.
+              </p>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
@@ -854,6 +897,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         >
                           {device.patient}
                         </button>
+                        {/* → this patient's alert in the triage queue (flag-gated) */}
+                        {lakebaseConfigured && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}`); }}
+                            className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
+                            title={`Find ${device.patient} in the Alert Triage queue`}
+                          >⚑ triage</button>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>

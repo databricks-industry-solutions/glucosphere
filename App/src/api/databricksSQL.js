@@ -81,6 +81,77 @@ export async function getAllDeviceModels() {
   }
 }
 
+// PATIENT INCIDENT SNAPSHOT — one patient's worst in-incident moment (peak
+// |observed − true|): the "discovery" a triager needs BEFORE picking a
+// resolution. Returns { time, observed, trueGlucose, direction } or null.
+export async function getPatientIncidentSnapshot(patientId) {
+  const { catalog, schema } = await getConfig();
+  const pid = String(patientId).replace(/'/g, "''");
+  const query = `
+    SELECT p.time, p.glucose_observed, p.glucose_true, p.incident_direction
+    FROM ${catalog}.${schema}.pseudo_incident_7d_labeled p
+    WHERE p.patient_id = '${pid}'
+      AND p.incident_direction IN ('positive', 'negative')
+      AND p.time >= p.incident_start_time AND p.time < p.incident_end_time
+    ORDER BY ABS(p.glucose_observed - p.glucose_true) DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const v = rows[0].values || rows[0];
+      const g = i => v[i]?.string_value ?? v[i];
+      return {
+        time: g(0),
+        observed: Math.round(parseFloat(g(1))),
+        trueGlucose: Math.round(parseFloat(g(2))),
+        direction: g(3),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get patient incident snapshot:', error);
+    return null;
+  }
+}
+
+// PATIENT RECENT-3H SUMMARY — one patient's danger-band exposure in the last 3
+// hours of data (the High-Risk window). Complements getPatientIncidentSnapshot:
+// fault window = "then", this = "recent", the focus row's latest reading = "now".
+export async function getPatientRecent3h(patientId) {
+  const { catalog, schema } = await getConfig();
+  const pid = String(patientId).replace(/'/g, "''");
+  const query = `
+    SELECT COUNT(CASE WHEN glucose < 54  THEN 1 END) AS very_low,
+           COUNT(CASE WHEN glucose > 250 THEN 1 END) AS very_high,
+           MIN(glucose) AS min_g, MAX(glucose) AS max_g, COUNT(*) AS n
+    FROM ${catalog}.${schema}.gold_patient_device_readings
+    WHERE patient_id = '${pid}'
+      AND time >= (
+        SELECT MAX(time) - INTERVAL 3 HOUR
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const v = rows[0].values || rows[0];
+      const g = i => v[i]?.string_value ?? v[i];
+      return {
+        veryLow: parseInt(g(0), 10) || 0, veryHigh: parseInt(g(1), 10) || 0,
+        min: Math.round(parseFloat(g(2))) || null, max: Math.round(parseFloat(g(3))) || null,
+        readings: parseInt(g(4), 10) || 0,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get patient recent-3h summary:', error);
+    return null;
+  }
+}
+
 // LIVE RISK WATCHLIST — patients with a Battelino level-2 danger-band reading
 // (<54 / >250 mg/dL) in the LAST 3 HOURS of data: the High-Risk-Alerts tile's
 // logic, in list form, for the Triage page's "last 3h" scenario. Deliberately
