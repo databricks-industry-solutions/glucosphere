@@ -165,7 +165,13 @@ classes; both are now fixed at the source:
   permission denied / 404 credentials); grants-preflight + `grant_app_sp.py` note Lakebase
   needs NO grants; `.env.bundle.example` + root README + CONTRIBUTING smoke-count updated;
   `AGENTS.md` gains §10 (Lakebase gotchas for agents); both READMEs now document the
-  **self-guided tour** (variants, pause/resume, scrubber, flag-gated stops).
+  **self-guided tour** (variants, pause/resume, scrubber, flag-gated stops). Dependency +
+  license tables moved to dedicated per-area **`DEPENDENCIES.md`** files (App +
+  Data_DataGen) — the App backend table gains the missing **`psycopg` (LGPL-3.0)** row,
+  the `@types/*` dev-deps, and a **Lakebase** platform-services row; root README links
+  both inventories for license/legal audits; CONTRIBUTING convention updated. DEPLOY.md's
+  Architecture-Overview mermaid gains the Lakebase node (the App's only write path);
+  REPO_LAYOUT.md's stale "database_instances commented out" claims corrected.
 - **DEPLOY.md runbooks**: Lakebase one-time setup (create-project command validated live);
   teardown notes the project survives destroy (+ explicit `delete-project` for full removal);
   recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the

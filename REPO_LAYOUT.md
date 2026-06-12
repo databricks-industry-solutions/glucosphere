@@ -11,7 +11,7 @@ Glucosphere is a Databricks Asset Bundle (DAB)–deployed CGM intelligence demo.
 - a **SDP (Spark Declarative Pipeline)** for bronze → silver → gold CGM tables
 - a **multi-stage workflow job** (`glucosphere_full_setup`) that runs ingest → forecast modeling → incident inference → endpoint deploy → agent setup → grant chain
 - a **Databricks App** (Flask backend + React frontend)
-- a **Lakebase OLTP** instance, **SQL warehouse**, and **ML serving endpoints**
+- a **Lakebase Autoscaling Postgres** project (alert-triage OLTP; created once outside the bundle, wired by name — see DEPLOY.md), a **SQL warehouse**, and **ML serving endpoints**
 - optional **MAS / KA / Genie** agent endpoints + AI/BI dashboards
 
 The entire deployable surface is described by a single file: [`databricks.yml`](databricks.yml).
@@ -172,7 +172,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ### App resources
 
 - All of `App/` (React + Flask backend + config + committed Vite build output)
-- `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` (the `database_instances.glucosphere_oltp` Lakebase block is currently commented out — re-enabled when the Lakebase path lands per issue #3)
+- `databricks.yml` → `resources.apps.glucosphere_app` (carries the Lakebase `postgres` binding on Lakebase-enabled targets — the project itself is external; issue #3 landed 2026-06-12 as the alert-triage queue) + `sql_warehouses.glucosphere_warehouse`
 
 ### Configuration & assets
 

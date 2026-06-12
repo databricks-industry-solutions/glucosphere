@@ -45,7 +45,7 @@ The committed `databricks.yml` includes target stanzas pointed at maintainer wor
 
 ## Keeping dependency tables current
 
-Component READMEs (`App/README.md`, `Data_DataGen_ModelForecast/README.md`) carry a **"Dependencies used and their corresponding license information"** table — one row per direct dependency with: name, where it's used, why, source URL, and license. When you add, remove, or upgrade a direct dependency (anything in `App/package.json`, `App/databricks/requirements.txt`, or a notebook-level `%pip install`), update the table in the same PR:
+Per-area **`DEPENDENCIES.md`** files (`App/DEPENDENCIES.md`, `Data_DataGen_ModelForecast/DEPENDENCIES.md` — linked from each area's README and the repo-root README) carry the dependency + license inventory — one row per direct dependency with: name, where it's used, why, source URL, and license. When you add, remove, or upgrade a direct dependency (anything in `App/package.json`, `App/databricks/requirements.txt`, or a notebook-level `%pip install`), update the table in the same PR:
 
 - **Verify the license** from an authoritative source: `node_modules/<pkg>/package.json` `license` field for frontend; PyPI `info.license` / `info.license_expression` or `dist-info/METADATA` `License:` for backend; the upstream repo's `LICENSE` / `pyproject.toml` for edge cases.
 - **Keep the "Where used" specific** — file paths, not vague subsystems. Future grepability matters when assessing impact.

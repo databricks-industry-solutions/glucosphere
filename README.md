@@ -114,6 +114,9 @@ End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy
 - **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
 - **[App/README.md](App/README.md)** — frontend + backend dev setup + agent endpoint detail
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — branch + commit conventions, dependency-table convention, CHANGELOG-update convention
+- **Dependencies & licenses** (for license/legal audits) — per-area inventories:
+  - [`Data_DataGen_ModelForecast/DEPENDENCIES.md`](Data_DataGen_ModelForecast/DEPENDENCIES.md) — pipeline/notebook Python deps
+  - [`App/DEPENDENCIES.md`](App/DEPENDENCIES.md) — frontend npm + backend Python (note the **LGPL-3.0** `psycopg` driver) + runtime platform services
 - **[CHANGELOG.md](CHANGELOG.md)** — dated history of every commit group
 
 ## For maintainers — optional Claude Code plugins

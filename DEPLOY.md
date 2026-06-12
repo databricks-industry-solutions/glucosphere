@@ -89,6 +89,7 @@ flowchart TD
     KA[/KA endpoint<br/><i>RAG over WHO_NCD_NCS_99.2.pdf<br/>copied to UC Volume pipeline_data/who_docs/</i>/]:::endpoint
     MAS[/MAS endpoint<br/><i>routes clinical → KA,<br/>structured → Genie</i>/]:::endpoint
     APP{{Databricks App}}:::app
+    LB[("Lakebase Autoscaling Postgres<br/><i>triage.alerts + triage.alert_audit<br/>(Lakebase-enabled targets; external project,<br/>App binds by name — see Lakebase one-time setup)</i>")]:::data
     NB09[09_grant_app_permissions.py<br/><i>App SP grants on UC + endpoints + warehouse + Genie + KA</i>]:::nb
 
     V -- synthetic --> NB01
@@ -105,6 +106,7 @@ flowchart TD
     GENIE -- /api/genie/query --> APP
     MAS -- /api/agent/query --> APP
     KA -.routed-by.-> MAS
+    APP -- "alert triage reads/writes<br/>(/api/alerts*)" --> LB
     NB09 -.SP grants.-> APP
 ```
 
