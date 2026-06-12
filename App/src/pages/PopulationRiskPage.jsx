@@ -5,6 +5,7 @@ import BrandMark from '../components/BrandMark';
 import CohortFaultPanel from '../components/CohortFaultPanel';
 import { GlucoseAbsoluteChart } from '../components/IncidentCharts';
 import { useGoBack } from '../hooks/useGoBack';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { getPopulationRisk, getCohortAffected, getCohortAffectedBreakdown, getAffectedTotal, getFaultConfusionMatrix } from '../api/databricksSQL';
 
 // Stacked split bar: affected patients per label, segmented by DEVICE-bias direction —
@@ -47,6 +48,7 @@ function SplitBars({ title, dim, rows, max, activeLabel, onSelect }) {
 export default function PopulationRiskPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
+  const lakebaseConfigured = useLakebaseConfigured();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState([]);
@@ -214,8 +216,10 @@ export default function PopulationRiskPage() {
               <button onClick={() => setOutreachOpen(true)} className="text-xs font-mono px-3 py-2 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors">
                 ✉ Draft patient outreach
               </button>
-              <button onClick={() => navigate('/roadmap')} className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
-                → Send to triage queue <span className="text-slate-500">(Live Alert · wip)</span>
+              {/* Lakebase-configured targets get the REAL queue; others keep the wip
+                  preview pointing at the roadmap (pixel-identical to pre-Lakebase). */}
+              <button onClick={() => navigate(lakebaseConfigured ? '/triage' : '/roadmap')} className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
+                → Send to triage queue {lakebaseConfigured ? <span className="text-emerald-300">(Live Alert)</span> : <span className="text-slate-500">(Live Alert · wip)</span>}
               </button>
             </div>
           </div>
