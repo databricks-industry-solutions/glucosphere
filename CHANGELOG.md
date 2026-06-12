@@ -122,6 +122,12 @@ to before (wip labels intact).
   physiological risk from device-fault fallout at a glance; a per-row **Queue column**
   identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
   "—" = looks physiological).
+- **Watchlist→queue jump breadcrumb** (booth catch): clicking "⚑ open alert" in the live
+  view flips the scenario to the retrospective queue (the queue only exists there), but
+  the flip was silent and read as "my filters got reset". The jump now leaves an amber
+  banner — "Jumped from the live last-3h view to <patient>'s device alert…" — with a
+  one-click **⏱ Back to live view** that restores the scenario + its filters; manual
+  scenario changes dismiss it.
 - **Deep-link filter coherence** (booth catch): a patient `?q=` deep-link into Triage now
   snaps the fault/model pills to the matched alert's attributes (one-time, only when the
   pills are untouched and the match is unambiguous) — the filter row reads coherently with

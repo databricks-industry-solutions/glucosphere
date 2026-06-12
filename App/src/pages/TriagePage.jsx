@@ -317,6 +317,11 @@ ORDER BY u.at DESC LIMIT 20;`;
   // In-page raw-rows peek: the same join the SQL-editor path runs, rendered under
   // the queue and refreshed with every queue load — click Ack, watch the row land.
   const [rawOpen, setRawOpen] = useState(false);
+  // Breadcrumb for the watchlist→queue jump: the scenario flip (live → week) is
+  // necessary (the queue only exists in queue views) but was SILENT — confusing
+  // (booth 2026-06-12). The jump now leaves a visible banner with a one-click
+  // return that restores the live view + its filters.
+  const [jumpCtx, setJumpCtx] = useState(null); // { patient, search, modelFilter }
   const [raw, setRaw] = useState(null);
   useEffect(() => {
     if (rawOpen) fetchRawRows().then(setRaw).catch(() => setRaw({ error: true }));
@@ -516,7 +521,7 @@ ORDER BY u.at DESC LIMIT 20;`;
 
               {/* refinement bar — client-side over the loaded queue */}
               <div className="flex items-center gap-2 flex-wrap mb-2 text-[11px] font-mono">
-                <select value={scenario} onChange={e => setScenario(e.target.value)}
+                <select value={scenario} onChange={e => { setScenario(e.target.value); setJumpCtx(null); }}
                   title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
                   className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
                   {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
@@ -550,6 +555,19 @@ ORDER BY u.at DESC LIMIT 20;`;
                 <span className="text-slate-500 ml-auto">{scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}</span>
               </div>
 
+              {jumpCtx && scenario === 'week' && (
+                <div className="flex items-center gap-3 text-xs font-mono mb-4 border border-amber-500/30 bg-amber-500/5 rounded-lg px-3 py-2">
+                  <span className="text-amber-300">⚑</span>
+                  <span className="text-slate-300">
+                    Jumped from the <span className="text-amber-300">live last-3h view</span> to{' '}
+                    <span className="text-cyan-300">{jumpCtx.patient}</span>'s device alert — the queue lives in the retrospective views.
+                  </span>
+                  <button onClick={() => { setScenario('last3h'); setSearch(jumpCtx.search); setModelFilter(jumpCtx.modelFilter); setJumpCtx(null); }}
+                    className="ml-auto shrink-0 px-2.5 py-1 rounded-md border border-amber-500/40 text-amber-300 hover:bg-amber-500/10">
+                    ⏱ Back to live view
+                  </button>
+                </div>
+              )}
               {SCENARIOS[scenario].prose && (
                 <p className="text-xs text-slate-400 leading-relaxed font-mono mb-4 border-l-2 border-cyan-500/40 pl-3">{SCENARIOS[scenario].prose}</p>
               )}
@@ -632,7 +650,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                             <td className="p-2 font-mono text-xs text-right text-slate-400">{Math.round(w.minGlucose)} · {Math.round(w.maxGlucose)}</td>
                             <td className="p-2 font-mono text-xs text-right">
                               {alertPatients.has(w.patientId) ? (
-                                <button onClick={() => { setScenario('week'); setFilter('open'); setSearch(w.patientId); }}
+                                <button onClick={() => { setJumpCtx({ patient: w.patientId, search, modelFilter }); setScenario('week'); setFilter('open'); setSearch(w.patientId); }}
                                   title="This patient also has an open device alert — open it in the queue (full-week view, searched to this patient)."
                                   className="text-rose-300 hover:text-rose-200 hover:underline">⚑ open alert</button>
                               ) : <span className="text-slate-600" title="No open device alert — the danger-band readings look physiological, not device-fault fallout.">—</span>}
