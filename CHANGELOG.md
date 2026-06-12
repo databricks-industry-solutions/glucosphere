@@ -131,7 +131,10 @@ to before (wip labels intact).
   newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
   seeing your own ack/assign/note actions as Postgres rows. Readable by any viewer thanks
   to the bootstrap's read grants. (First shipped as an inline honest-note link — too
-  buried; promoted to a button the same day.)
+  buried; promoted to a button the same day.) The dropdown also offers **"Peek right
+  here ↓"** — an in-page panel (`GET /api/alerts/raw`) rendering the exact SQL + its live
+  result right under the queue, refetching on every queue action: click Ack above, watch
+  the row land below.
 - **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
   trailing 3-hour window (amber, distinct from the rose incident band) when it contains
   very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250

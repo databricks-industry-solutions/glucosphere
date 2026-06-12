@@ -10,6 +10,11 @@ async function asJson(resp) {
   return body;
 }
 
+/** The alerts ⋈ audit join, newest first — the in-app "Verify in Postgres" peek. */
+export async function fetchRawRows(limit = 12) {
+  return asJson(await fetch(`/api/alerts/raw?limit=${limit}`));
+}
+
 /** Queue + per-status counts + per-alert audit trails. status: open|acked|resolved|all */
 export async function fetchAlerts(status = 'all') {
   return asJson(await fetch(`/api/alerts?status=${encodeURIComponent(status)}`));

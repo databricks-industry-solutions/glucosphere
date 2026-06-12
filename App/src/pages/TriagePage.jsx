@@ -4,7 +4,7 @@ import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link, useSearchParams } from 'react-router-dom';
-import { fetchAlerts, alertAction, seedAlerts, resetAlerts, bulkAlerts } from '../api/triage';
+import { fetchAlerts, alertAction, seedAlerts, resetAlerts, bulkAlerts, fetchRawRows } from '../api/triage';
 import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot } from '../api/databricksSQL';
 import { getConfig } from '../api/config';
 
@@ -306,6 +306,13 @@ FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)
 ORDER BY u.at DESC LIMIT 20;`;
   const [sqlCopied, setSqlCopied] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  // In-page raw-rows peek: the same join the SQL-editor path runs, rendered under
+  // the queue and refreshed with every queue load — click Ack, watch the row land.
+  const [rawOpen, setRawOpen] = useState(false);
+  const [raw, setRaw] = useState(null);
+  useEffect(() => {
+    if (rawOpen) fetchRawRows().then(setRaw).catch(() => setRaw({ error: true }));
+  }, [rawOpen, data]); // refetch whenever the queue reloads (i.e. after every action)
   const copySampleSql = () => {
     navigator.clipboard?.writeText(SAMPLE_SQL).then(() => {
       setSqlCopied(true); setTimeout(() => setSqlCopied(false), 2000);
@@ -473,6 +480,10 @@ ORDER BY u.at DESC LIMIT 20;`;
                             2 · Open the Lakebase SQL editor ↗
                           </a>
                           <p className="text-[10px] text-slate-500 mt-2 leading-snug">In the editor: pick the glucosphere OLTP project → <span className="font-mono">databricks_postgres</span> → paste → run.</p>
+                          <button onClick={() => { setRawOpen(v => !v); setVerifyOpen(false); }}
+                            className="w-full text-left text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 mt-2">
+                            {rawOpen ? 'Hide the in-page peek' : 'or · Peek right here ↓'}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -655,6 +666,53 @@ ORDER BY u.at DESC LIMIT 20;`;
                 </table>
               )}
             </section>
+
+            {/* In-page Postgres peek — the exact join the SQL editor would run, live.
+                Refetches on every queue reload, so an Ack above lands here instantly. */}
+            {rawOpen && (
+              <section className="bg-slate-900/50 border border-cyan-500/30 rounded-lg p-6 mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-cyan-300 font-mono">🛢 Raw Postgres rows — live</h3>
+                  <button onClick={() => setRawOpen(false)} className="text-xs text-slate-500 hover:text-slate-300">✕ hide</button>
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono mb-3">
+                  Straight from Lakebase (<span className="text-slate-400">triage.alerts ⋈ triage.alert_audit</span>, newest first) —
+                  act on an alert above and the row appears here on the next refresh. Same query, same result, in the
+                  workspace SQL editor via <span className="text-cyan-400">🛢 Verify in Postgres</span>.
+                </p>
+                {raw?.sql && (
+                  <pre className="text-[10px] font-mono text-slate-500 bg-slate-950 border border-slate-800 rounded p-2 mb-3 overflow-x-auto">{raw.sql}</pre>
+                )}
+                {raw?.error ? (
+                  <p className="text-xs text-rose-300 font-mono">couldn't fetch rows — try ↻ Refresh</p>
+                ) : !raw ? (
+                  <p className="text-xs text-slate-500 font-mono">loading…</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] font-mono">
+                      <thead>
+                        <tr className="text-[10px] text-slate-500 uppercase tracking-wider">
+                          {['patient_id', 'status', 'assigned_to', 'action', 'actor', 'detail', 'at'].map(c => <th key={c} className="p-1.5 pr-4">{c}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(raw.rows || []).map((r, i) => (
+                          <tr key={i} className="border-t border-slate-800 text-slate-300">
+                            <td className="p-1.5 pr-4 text-cyan-300">{r.patient_id}</td>
+                            <td className="p-1.5 pr-4">{r.status}</td>
+                            <td className="p-1.5 pr-4">{r.assigned_to || '—'}</td>
+                            <td className="p-1.5 pr-4 text-amber-300">{r.action}</td>
+                            <td className="p-1.5 pr-4 text-slate-400">{r.actor}</td>
+                            <td className="p-1.5 pr-4 text-slate-400 max-w-[16rem] truncate" title={r.detail || ''}>{r.detail || '—'}</td>
+                            <td className="p-1.5 text-slate-500">{r.at}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
           </>
         )}
       </main>

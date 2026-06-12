@@ -745,6 +745,20 @@ def _actor() -> str:
     return request.headers.get('X-Forwarded-Email') or request.headers.get('X-Forwarded-Preferred-Username') or 'operator'
 
 
+@app.route('/api/alerts/raw')
+def raw_alert_rows():
+    """The alerts ⋈ audit join, newest first — the in-app "Verify in Postgres"
+    peek panel (shows the exact SQL + its live result without leaving the page)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        return jsonify(lakebase.raw_audit(limit=int(request.args.get('limit', 12))))
+    except Exception as e:
+        print(f"[TRIAGE] raw_audit failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/alerts')
 def list_alerts():
     guard = _lakebase_guard()

@@ -280,6 +280,27 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
     return len(done)
 
 
+# The exact SQL the "Verify in Postgres" panel shows + runs — kept as ONE constant
+# so the UI displays precisely what executes (honesty: no hidden massaging).
+RAW_AUDIT_SQL = (
+    "SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at\n"
+    "FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)\n"
+    "ORDER BY u.at DESC LIMIT %s"
+)
+
+
+def raw_audit(limit: int = 12):
+    """The alerts ⋈ audit join, newest first — the in-app "see your click as a
+    Postgres row" peek (same query the Verify dropdown offers for the SQL editor)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(RAW_AUDIT_SQL, (limit,))
+        cols = ('patient_id', 'status', 'assigned_to', 'action', 'actor', 'detail', 'at')
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r['at'] = str(r['at'])
+    return {'sql': RAW_AUDIT_SQL % 'N', 'rows': rows}
+
+
 def reset_alerts():
     """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
