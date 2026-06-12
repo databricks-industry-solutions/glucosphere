@@ -193,6 +193,23 @@ New views slot into this spine as their own page rather than growing an existing
 cross-page deep-links (e.g. Population Risk → "send to triage", Firmware → "flag for
 rollback") carry the operator between moves.
 
+### Self-guided tour
+
+First-time visitors get an offer to take a **built-in guided tour** (no external library —
+`App/src/components/GuidedTour.jsx` + `App/src/tour/steps.js`); it's relaunchable anytime
+from the nav rail. Two variants from the chooser:
+
+- **Quick overview** — the Detect → Diagnose → Assess (→ Act) story in ~9 spotlight steps.
+- **Interactive walkthrough** — every panel, with **"⏸ Try it yourself — I'll wait here"**
+  pauses on hands-on steps: the overlay steps aside so the page is fully clickable and an
+  amber **▶ Resume tour** pill stays on screen to return to the same step. It also opens
+  and drives the assistant (Genie tab, Fast ⇄ MAS engine switch) mid-tour.
+
+Both variants end on **The Full Loop** page (`/full-loop`) and adapt to the deploy target:
+the Alert-Triage stops appear only when Lakebase is configured (step counts adjust). Each
+card carries a **step scrubber slider** — drag to jump to any step; clicking outside the
+card never ends the tour (Skip/Done are the explicit exits).
+
 ### Landing Page
 - **Active Patients**: Real-time count from gold table
 - **Devices Online**: Devices with recent readings

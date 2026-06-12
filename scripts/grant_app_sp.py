@@ -18,6 +18,11 @@ WHAT IT GRANTS (idempotent — safe to re-run)
       - SQL warehouse:    CAN_USE
       - serving endpoints (MAS + KA + FM): CAN_QUERY
       - Genie space:      CAN_RUN
+
+    Lakebase is deliberately ABSENT here: the App's `postgres` binding
+    (databricks.yml) auto-creates the SP's PG role at deploy, and the app
+    bootstraps + owns its `triage` schema at runtime (lakebase.py) — there is
+    no grant to apply.
     Grants take effect per-request — no app redeploy needed afterward.
 
 RUN SEQUENCE

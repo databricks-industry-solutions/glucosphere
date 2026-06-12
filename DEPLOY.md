@@ -18,6 +18,7 @@ flowchart TD
 
     S1[Step 1 — databricks auth login]:::cmd
     S2[Step 2 — cp .env.bundle.example .env.bundle.&lt;target&gt;<br/><i>fill in catalog / schema / profile</i>]:::cmd
+    S2L[Step 2½ — Lakebase one-time create-project<br/><i>REQUIRED for gsphere / gsphere_fw_v2;<br/>other targets skip — no Lakebase</i>]:::cmd
     S3[Step 3 — optional MAS pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S4[Step 4 — optional Genie pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S5[Step 5 — npm install + npm run build<br/><i>skip if App/databricks/static/ is fresh</i>]:::cmd
@@ -28,9 +29,9 @@ flowchart TD
     E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
     F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
     G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
-    H[Step 10 — scripts/smoke_test.py<br/><i>8-check automated gate; non-zero exit on any failure</i>]:::gate
+    H[Step 10 — scripts/smoke_test.py<br/><i>automated gate: 8 checks + a 9th on Lakebase targets;<br/>non-zero exit on any failure</i>]:::gate
 
-    S1 --> S2 --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
+    S1 --> S2 --> S2L --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
     S2 -.-> S3
     S2 -.-> S4
     S3 -.-> S5
@@ -193,9 +194,10 @@ the app SP `CAN_USE` on that id directly.
 
 ### Lakebase one-time setup (Lakebase-enabled targets)
 
-Targets that set `lakebase_project_id` (currently `gsphere_fw_v2`) expect the
+Targets that set `lakebase_project_id` (currently **`gsphere` + `gsphere_fw_v2`**) expect the
 Autoscaling Postgres project to **already exist** — create it once, before the
-first `bundle deploy`:
+first `bundle deploy`, or that deploy fails at the App with
+`Failed to add resource database. Postgres branch projects/<id>/branches/production does not exist`:
 
 ```bash
 databricks postgres create-project <lakebase_project_id> --profile <profile> --json '{
@@ -227,6 +229,22 @@ provider never reads back `spec`, so a bound project always re-plans as
 the project (and alert data) intact, and a redeploy just re-binds the App by
 name. Full incident notes:
 `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
+
+**Deploying WITHOUT Lakebase**: every other target (`gsphere_synth_e2e` /
+`gsphere_from_table_e2e` / `gsphere_from_source_e2e` / `dais`) has no
+`lakebase_project_id` and deploys with **zero Lakebase setup** — the App detects
+the absence at runtime (`lakebase_configured` flag) and renders the
+pre-Lakebase UI (the `/triage` queue and its entry-links stay hidden). To strip
+Lakebase from `gsphere` itself, comment out that target's `lakebase_project_id`
+variable and its `apps.glucosphere_app` resources block (the
+`&glucosphere_lakebase_binding` anchor) in `databricks.yml` — and move the
+anchor definition to `gsphere_fw_v2`, which references it.
+
+**What Lakebase costs/needs**: the one CLI command above (any workspace where
+your identity can create Lakebase Autoscaling projects), ~0.5–1 CU that
+scales to zero after 10 idle minutes, and nothing else — no manual grants
+(the App's binding auto-creates its PG role; the app bootstraps and owns its
+`triage` schema at first touch).
 
 ---
 
@@ -434,7 +452,7 @@ You specify only `--app` (the deployed app's name) and `--profile`; the script *
 
 ### Automated subset (recommended pre-PR gate)
 
-Run the 8-check smoke test:
+Run the automated smoke test (8 checks, + a 9th on Lakebase-enabled targets):
 
 ```bash
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
@@ -615,6 +633,7 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 - `CAN_USE` on the SQL warehouse (handled by the `sql-warehouse` resource block in `app.yaml`)
 - `CAN_QUERY` on the MAS and KA serving endpoints (handled by the `mas-endpoint` / `ka-endpoint` resource blocks)
 - `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `09_grant_app_permissions.py` during the setup job)
+- **Lakebase needs NO grant here** — the App's `postgres` binding (databricks.yml) auto-creates the SP's PG role at deploy, and the app bootstraps + owns its `triage` schema at runtime (`App/databricks/lakebase.py`)
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
@@ -731,6 +750,9 @@ the control plane reassigns the orphaned objects to the project owner — then e
 | `DATABRICKS_TOKEN not set` | Ensure the App is deployed (token is auto-injected by runtime) |
 | `CATALOG_NOT_FOUND` during job task | Pre-flight catalog/schema/volume creation was skipped — create them before `bundle run` (see [Pre-flight section below](#pre-flight-catalog--schema--volume-creation)) |
 | `deploy_model_endpoints` task fails | Ensure model serving is enabled on the workspace |
+| `Failed to add resource database. Postgres branch … does not exist` (App create) | The target's Lakebase project doesn't exist yet — run the one-time `databricks postgres create-project` (see [Lakebase one-time setup](#lakebase-one-time-setup-lakebase-enabled-targets)) |
+| Triage queue: `permission denied for schema triage` | App-SP rotation against a schema bootstrapped by a pre-2026-06-12 build — see the App-SP rotation note in [Teardown → Lakebase recovery](#teardown) (`postgres delete-role` on the old SP's role, then re-grant or `DROP SCHEMA triage CASCADE`) |
+| Triage actions return `404 …/api/2.0/postgres/credentials` | The Lakebase project was deleted (soft) — `databricks api post /api/2.0/postgres/projects/<id>/undelete`, then restart the app; smoke check 9 is the detector |
 | `create_genie_ka_mas` task fails | Check Agent Bricks / Genie are available on this workspace tier; KA endpoint must reach `ONLINE` status before MAS is created (10 min timeout) |
 | App shows "Not Found" | Frontend build wasn't run (`npm run build` in `App/`) before deploy |
 | App shows no data (SQL 500 errors) | Gold table doesn't exist — check `run_dlt_pipeline` task in the Step 7 setup job completed; or app SP missing grants — re-run `grant_app_permissions` task |

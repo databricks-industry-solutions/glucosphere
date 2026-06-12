@@ -158,6 +158,14 @@ classes; both are now fixed at the source:
   app's `GET /api/alerts` with the operator's OAuth token and asserts HTTP 200 — proving
   credential mint + PG connect + schema usability end-to-end (exactly the layer the rotation
   failure hid in).
+- **New-adopter docs pass**: the at-a-glance flow gains a "Step 2½ — Lakebase one-time
+  create-project" node (required for `gsphere`/`gsphere_fw_v2`; all other targets deploy
+  Lakebase-free and the app hides triage automatically — stated explicitly); Troubleshooting
+  gains the three Lakebase failure signatures (branch-does-not-exist at App create / schema
+  permission denied / 404 credentials); grants-preflight + `grant_app_sp.py` note Lakebase
+  needs NO grants; `.env.bundle.example` + root README + CONTRIBUTING smoke-count updated;
+  `AGENTS.md` gains §10 (Lakebase gotchas for agents); both READMEs now document the
+  **self-guided tour** (variants, pause/resume, scrubber, flag-gated stops).
 - **DEPLOY.md runbooks**: Lakebase one-time setup (create-project command validated live);
   teardown notes the project survives destroy (+ explicit `delete-project` for full removal);
   recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the

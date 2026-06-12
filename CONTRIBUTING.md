@@ -88,7 +88,7 @@ fixes) often don't.
 ## Before opening a PR
 
 - [ ] Code runs against the bundle's `glucosphere_full_setup` job end-to-end (or a harness target if changes are isolated)
-- [ ] **Smoke test passes 8/8**: `uv run python scripts/smoke_test.py --target <your-target> --profile <your-profile>`
+- [ ] **Smoke test passes** (8/8; 9/9 on Lakebase-enabled targets): `uv run python scripts/smoke_test.py --target <your-target> --profile <your-profile>`
 - [ ] Visual sanity check on the App if you touched pipeline / data / App code:
   - Metrics Explained page renders the 4-panel comparison PNG
   - Device Support page heatmap shows expected firmware variety
