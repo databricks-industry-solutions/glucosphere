@@ -255,7 +255,8 @@ export default function GlobalAssistant() {
           onClick={() => setOpen(true)}
           aria-label="Open assistant"
           data-tour="assistant-fab"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 pl-4 pr-5 py-3 rounded-full bg-slate-900 border-2 border-cyan-500/60 text-cyan-300 shadow-lg shadow-cyan-500/20 hover:bg-cyan-500/10 hover:shadow-cyan-500/40 hover:scale-105 transition-all"
+          style={{ backgroundColor: '#0f172a' }}  // opaque slate-900: the Tailwind utility's --tw-bg-opacity lets the page bleed through (same fix as the tour's Resume pill)
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 pl-4 pr-5 py-3 rounded-full border-2 border-cyan-500/60 text-cyan-300 shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:scale-105 transition-all"
         >
           <Sparkles className="w-5 h-5" />
           <span className="text-sm font-medium">Ask</span>

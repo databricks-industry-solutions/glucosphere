@@ -548,7 +548,11 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         {/* Population Overview */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-1">
-            <Users className="w-5 h-5 text-cyan-400" />
+            <span className="relative w-6 h-5 shrink-0" aria-hidden="true">
+              {/* "two spanners" — the device-fleet sibling of Coach's two-person Users icon */}
+              <Wrench className="w-4 h-4 text-cyan-400 absolute left-0 top-0" />
+              <Wrench className="w-4 h-4 text-cyan-400/70 absolute left-2 top-1" />
+            </span>
             <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Population Overview
             </h2>
