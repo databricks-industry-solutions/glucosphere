@@ -478,32 +478,41 @@ ORDER BY u.at DESC LIMIT 20;`;
             <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">→ ACT</span>
               <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live alert queue — the recall, operationalized</h2>
-              <p className="text-sm text-slate-400 leading-7 max-w-4xl">
-                Every affected patient-device from the calibration incident lands here as an alert.
-                <span className="text-slate-200"> Acknowledge</span> it, <span className="text-slate-200">assign</span> a technician, <span className="text-slate-200">resolve</span> it —
-                each action writes an <span className="text-slate-300">audit row</span> (expand a row to see its trail).
-                Backed by <span className="text-cyan-300">Lakebase</span> (managed Postgres): the dashboards read the lakehouse; the queue is the app's <span className="text-slate-200">transactional write path</span>.
-              </p>
-              {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
-              <div className="mt-4 max-w-4xl border-l-2 border-slate-700 pl-3 py-1">
-                <p className="text-xs text-slate-500 leading-6 font-mono">
-                  <span className="text-slate-400 font-semibold">Scenario</span> · firmware <span className="text-rose-300">4.0</span> shipped an <span className="text-rose-300">↑ over-read</span> fault
-                  (Day 2, Alpha/Gamma · false highs, <span className="text-amber-300">MEDIUM</span>);
-                  its hotfix <span className="text-sky-300">4.0.3</span> overcorrected into an <span className="text-sky-300">↓ under-read</span>
-                  (Day 5, Beta/Delta · masked real highs, <span className="text-rose-300">HIGH</span>) — ~600 devices total.
-                  Severity ranks the queue: masked highs first.
-                </p>
+              {/* Two-column on wide screens (booth monitors): lead prose left,
+                  scenario/honesty callouts right — fills the card instead of
+                  leaving a dead right half. Stacks on narrow viewports. */}
+              <div className="grid lg:grid-cols-2 gap-x-10 gap-y-4 items-start">
+                <div>
+                  <p className="text-sm text-slate-400 leading-7">
+                    Every affected patient-device from the calibration incident lands here as an alert.
+                    <span className="text-slate-200"> Acknowledge</span> it, <span className="text-slate-200">assign</span> a technician, <span className="text-slate-200">resolve</span> it —
+                    each action writes an <span className="text-slate-300">audit row</span> (expand a row to see its trail).
+                    Backed by <span className="text-cyan-300">Lakebase</span> (managed Postgres): the dashboards read the lakehouse; the queue is the app's <span className="text-slate-200">transactional write path</span>.
+                  </p>
+                  <Link to="/population-risk" className="inline-block mt-3 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+                    ← See the clinical blast radius these alerts came from (Population Risk)
+                  </Link>
+                </div>
+                <div>
+                  {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
+                  <div className="border-l-2 border-slate-700 pl-3 py-1">
+                    <p className="text-xs text-slate-500 leading-6 font-mono">
+                      <span className="text-slate-400 font-semibold">Scenario</span> · firmware <span className="text-rose-300">4.0</span> shipped an <span className="text-rose-300">↑ over-read</span> fault
+                      (Day 2, Alpha/Gamma · false highs, <span className="text-amber-300">MEDIUM</span>);
+                      its hotfix <span className="text-sky-300">4.0.3</span> overcorrected into an <span className="text-sky-300">↓ under-read</span>
+                      (Day 5, Beta/Delta · masked real highs, <span className="text-rose-300">HIGH</span>) — ~600 devices total.
+                      Severity ranks the queue: masked highs first.
+                    </p>
+                  </div>
+                  {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
+                  <div className="mt-3 border-l-2 border-amber-500/30 pl-3 py-1">
+                    <p className="text-[11px] font-mono text-slate-500 leading-6">
+                      <span className="text-amber-300/80 font-semibold">Honest note</span> · alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming.
+                      With live ingestion (see <Link to="/full-loop" className="text-cyan-400 hover:text-cyan-300">what's next</Link>) the same queue raises them in real time.
+                    </p>
+                  </div>
+                </div>
               </div>
-              {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
-              <div className="mt-3 max-w-4xl border-l-2 border-amber-500/30 pl-3 py-1">
-                <p className="text-[11px] font-mono text-slate-500 leading-6">
-                  <span className="text-amber-300/80 font-semibold">Honest note</span> · alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming.
-                  With live ingestion (see <Link to="/full-loop" className="text-cyan-400 hover:text-cyan-300">what's next</Link>) the same queue raises them in real time.
-                </p>
-              </div>
-              <Link to="/population-risk" className="inline-block mt-4 text-xs font-mono text-cyan-400 hover:text-cyan-300">
-                ← See the clinical blast radius these alerts came from (Population Risk)
-              </Link>
             </section>
 
             <section data-tour="triage-queue" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
