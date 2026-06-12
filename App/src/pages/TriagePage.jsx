@@ -481,8 +481,8 @@ ORDER BY u.at DESC LIMIT 20;`;
               {/* Two-column on wide screens (booth monitors): lead prose left,
                   scenario/honesty callouts right — fills the card instead of
                   leaving a dead right half. Stacks on narrow viewports. */}
-              <div className="grid lg:grid-cols-2 gap-x-10 gap-y-4 items-start">
-                <div>
+              <div className="grid lg:grid-cols-2 gap-x-10 gap-y-4 items-center">
+                <div className="self-center">
                   <p className="text-sm text-slate-400 leading-7">
                     Every affected patient-device from the calibration incident lands here as an alert.
                     <span className="text-slate-200"> Acknowledge</span> it, <span className="text-slate-200">assign</span> a technician, <span className="text-slate-200">resolve</span> it —
