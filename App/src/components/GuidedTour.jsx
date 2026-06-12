@@ -115,6 +115,13 @@ export default function GuidedTour() {
     if (!rect || !cardRef.current) { setCardStyle(null); return; }
     const card = cardRef.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
+    // Assistant steps: the slide-over panel owns the RIGHT side — dock the card
+    // hard LEFT so the panel (the thing being toured) stays fully visible
+    // (booth catch 2026-06-12: the generic placement covered the panel).
+    if (step?.openAssistant) {
+      setCardStyle({ position: 'fixed', top: Math.max(M, Math.min(rect.top, vh - card.height - M)), left: M, pointerEvents: 'auto' });
+      return;
+    }
     const clampX = (x) => Math.max(M, Math.min(x, vw - card.width - M));
     const clampY = (y) => Math.max(M, Math.min(y, vh - card.height - M));
     const cx = rect.left + rect.width / 2 - card.width / 2;   // horizontally centered on element

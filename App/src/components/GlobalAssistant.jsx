@@ -255,7 +255,7 @@ export default function GlobalAssistant() {
           onClick={() => setOpen(true)}
           aria-label="Open assistant"
           data-tour="assistant-fab"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 pl-4 pr-5 py-3 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:scale-105 transition-all"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 pl-4 pr-5 py-3 rounded-full bg-slate-900 border-2 border-cyan-500/60 text-cyan-300 shadow-lg shadow-cyan-500/20 hover:bg-cyan-500/10 hover:shadow-cyan-500/40 hover:scale-105 transition-all"
         >
           <Sparkles className="w-5 h-5" />
           <span className="text-sm font-medium">Ask</span>
@@ -268,8 +268,8 @@ export default function GlobalAssistant() {
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <Bot className="w-5 h-5 text-white" />
+              <div className="w-9 h-9 rounded-lg border border-cyan-500/40 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-cyan-400" />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-slate-200">Glucosphere Assistant</h3>
