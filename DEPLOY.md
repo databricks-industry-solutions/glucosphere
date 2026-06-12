@@ -647,7 +647,9 @@ uv run python scripts/teardown_target.py --profile <profile> --suffix _<harness_
 uv run python scripts/teardown_target.py --profile <profile> \
     --names Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min
 
-# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app):
+# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app — and, on
+#    Lakebase-enabled targets, the postgres project INCLUDING ITS ALERT/AUDIT DATA;
+#    disposable demo state here, but see the footgun note in databricks.yml):
 source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-approve
 
 # 3. Unity Catalog schema + its tables/volumes/models (NOT removed by the above; needs a warehouse):
@@ -656,6 +658,18 @@ source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-appr
 
 `bundle destroy` alone does **not** delete the Agent-Bricks tiles/endpoints, the Genie
 space, or any UC tables / volumes / registered models — run steps 1 + 3 too for a clean slate.
+
+**Lakebase drift recovery** (don't CLI/UI-delete a bundle-managed postgres project — `bundle deploy`
+won't recreate it, since deployment state isn't refreshed against the workspace). Deletion is soft;
+to restore (settings, roles, and storage survive):
+
+```bash
+databricks api post /api/2.0/postgres/projects/<project-id>/undelete --profile <profile>
+databricks bundle run glucosphere_app -t <target>    # restart the app to reconnect
+```
+
+Failure signature while the project is gone: the app's queue actions log
+`404 …/api/2.0/postgres/credentials`, and `scripts/smoke_test.py` check 9 fails.
 
 ---
 
