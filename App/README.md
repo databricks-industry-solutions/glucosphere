@@ -178,6 +178,21 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 
 ## Key Features
 
+The app's information architecture follows the demo's operational story — **detect →
+diagnose → assess → act** — with one surface per move, so navigation mirrors how a fleet
+operator would actually work an incident:
+
+| Move | Surface | Question it answers |
+|---|---|---|
+| **① Detect** | Landing (control tower) · Device Support (firmware × day heatmap) | *Is something wrong, and where?* |
+| **② Diagnose** | Firmware Lifecycle | *Which firmware, which direction, how bad?* |
+| **③ Assess** | Population Risk | *Who got pushed into danger — what's the blast radius?* |
+| **→ Act** | Diabetes Coach (per-patient) · Alert Triage (fleet queue, Lakebase-backed; shown only when the deploy target configures Lakebase) | *Intervene: outreach one patient / work the alert queue* |
+
+New views slot into this spine as their own page rather than growing an existing one —
+cross-page deep-links (e.g. Population Risk → "send to triage", Firmware → "flag for
+rollback") carry the operator between moves.
+
 ### Landing Page
 - **Active Patients**: Real-time count from gold table
 - **Devices Online**: Devices with recent readings
@@ -191,7 +206,7 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 - **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
 ### Firmware Lifecycle
-- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~3-hour fault isn't diluted by a whole-day average
+- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~12-hour fault isn't diluted by a whole-day average
 - **Calibration drift panel**: per-firmware over-/under-read direction and magnitude, with a deep-link to the affected cohort on Population Risk
 
 ### Population Risk

@@ -2,6 +2,8 @@ from flask import Flask, send_from_directory, request, jsonify
 import os
 import requests
 
+import lakebase
+
 app = Flask(__name__)
 
 # Static config (safe to read at startup).
@@ -77,6 +79,10 @@ def get_auth():
         else:
             print(f"[AUTH] No credentials available")
     return host, token
+
+# Lakebase reuses get_auth's cached M2M token to mint PG credentials (no second
+# OAuth implementation). No-op on targets without the Lakebase binding.
+lakebase.init(get_auth)
 
 @app.route('/api/sql/query', methods=['POST'])
 def execute_sql():
@@ -718,7 +724,106 @@ def get_config():
         'mas_endpoint_url': mas_endpoint_url,
         'ka_endpoint_url': ka_endpoint_url,
         'forecast_endpoint_url': forecast_endpoint_url,
+        # Feature flag for the Alert Triage page (Lakebase OLTP). True only when
+        # the deploy target rendered the Lakebase binding (render_app_yaml.py);
+        # false → React hides /triage + keeps the "wip" labels, so non-Lakebase
+        # targets look exactly as before.
+        'lakebase_configured': lakebase.is_configured(),
     })
+
+
+# ── Alert Triage (Lakebase OLTP) — flag-gated; see lakebase.py ────────────────
+def _lakebase_guard():
+    """503 for every triage route on targets without the Lakebase binding."""
+    if not lakebase.is_configured():
+        return jsonify({'error': 'lakebase not configured for this deploy target'}), 503
+    return None
+
+
+def _actor() -> str:
+    """Audit actor: the signed-in user when the Apps proxy forwards it, else 'operator'."""
+    return request.headers.get('X-Forwarded-Email') or request.headers.get('X-Forwarded-Preferred-Username') or 'operator'
+
+
+@app.route('/api/alerts')
+def list_alerts():
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        status = request.args.get('status', 'all')
+        return jsonify(lakebase.list_alerts(status=status))
+    except Exception as e:
+        print(f"[TRIAGE] list_alerts failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<int:alert_id>/<action>', methods=['POST'])
+def alert_action(alert_id, action):
+    """Ack / assign / resolve one alert; every action appends an audit row.
+    `assign` reads the assignee from JSON body {"assignee": "..."}."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    if action not in ('ack', 'assign', 'resolve'):
+        return jsonify({'error': f'unknown action {action!r}'}), 400
+    try:
+        detail = (request.get_json(silent=True) or {}).get('assignee') if action == 'assign' else None
+        alert = lakebase.act_on_alert(alert_id, action, actor=_actor(), detail=detail)
+        if alert is None:
+            return jsonify({'error': f'alert {alert_id} not found'}), 404
+        return jsonify(alert)
+    except Exception as e:
+        print(f"[TRIAGE] {action} on alert {alert_id} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/seed', methods=['POST'])
+def seed_alerts():
+    """Seed the queue from the gold layer's affected cohort (idempotent — the
+    UNIQUE key makes re-runs no-ops). Queries the warehouse via the Statement
+    Execution API (same machinery as /api/sql/query), then bulk-inserts into
+    Postgres. Severity mirrors the demo narrative: under-read masks real highs
+    (HIGH), over-read causes false alarms (MEDIUM)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        host, token = get_auth()
+        warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+        if not (token and warehouse_id):
+            return jsonify({'error': 'warehouse auth not available'}), 500
+        seed_sql = f"""
+            SELECT p.patient_id,
+                   MAX(g.device_id)                                   AS device_id,
+                   MAX(CAST(g.device_model AS STRING))                AS device_model,
+                   MAX(CASE WHEN p.time >= p.incident_start_time AND p.time < p.incident_end_time
+                            THEN CAST(g.firmware_version AS STRING) END) AS firmware,
+                   CASE WHEN p.incident_direction = 'positive' THEN 'over-read' ELSE 'under-read' END AS alert_type,
+                   CASE WHEN p.incident_direction = 'negative' THEN 'HIGH' ELSE 'MEDIUM' END AS severity
+            FROM {CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled p
+            JOIN {CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings g
+              ON p.patient_id = g.patient_id AND p.time = g.time
+            WHERE p.incident_direction IN ('positive', 'negative')
+            GROUP BY p.patient_id, p.incident_direction
+        """
+        resp = requests.post(
+            f"{host}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {token}'},
+            json={'statement': seed_sql, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        state = body.get('status', {}).get('state')
+        if state != 'SUCCEEDED':
+            return jsonify({'error': f'seed query state={state}', 'detail': body.get('status')}), 500
+        rows = body.get('result', {}).get('data_array', []) or []
+        inserted = lakebase.seed_alerts(rows, actor=_actor())
+        return jsonify({'seeded': inserted, 'cohort_rows': len(rows)})
+    except Exception as e:
+        print(f"[TRIAGE] seed failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
 def health():
