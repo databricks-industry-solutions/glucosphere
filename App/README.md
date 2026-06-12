@@ -238,6 +238,11 @@ rollback") carry the operator between moves.
   (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
 - The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
   (`psycopg`).
+- **Drift warning**: `bundle deploy` does **not** recreate an externally-deleted project (the deployment
+  state isn't refreshed against the workspace). Lakebase deletion is soft — restore with
+  `POST /api/2.0/postgres/projects/<project-id>/undelete` (settings, roles, and storage survive), then
+  restart the app. Failure signature while the project is gone: queue actions return
+  `404 …/postgres/credentials`.
 
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)
