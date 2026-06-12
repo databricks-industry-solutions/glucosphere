@@ -161,6 +161,9 @@ function AlertRow({ alert, onAction, busy }) {
                   <button disabled={busy || !note.trim()} onClick={() => { onAction(alert.alert_id, 'note', note.trim()); setNote(''); }}
                     title="Append a free-text note to the audit trail — no status change"
                     className="text-[11px] font-mono px-2.5 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700/40 disabled:opacity-40">+ Note</button>
+                  <span className="text-[10px] font-mono text-slate-600 ml-1">
+                    writes land in Postgres instantly — if the trail above doesn't update, hit <span className="text-slate-400">↻ Refresh</span>
+                  </span>
                 </div>
                 {/* follow-up request — engagement, not closure: a required fingerstick
                     verification keeps the alert in the queue (status → acked) until
