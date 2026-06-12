@@ -544,7 +544,9 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         </div>
       </header>
 
-      <main className="max-w-[88rem] mx-auto px-6 py-8">
+      {/* pb-32: breathing room below the last section — the focused-device row was
+          pinned to the viewport bottom under the Ask FAB (booth catch 2026-06-12) */}
+      <main className="max-w-[88rem] mx-auto px-6 pt-8 pb-32">
         {/* Population Overview */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-1">
