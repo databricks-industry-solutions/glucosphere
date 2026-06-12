@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS triage.alert_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON triage.alerts(status);
 CREATE INDEX IF NOT EXISTS idx_audit_alert ON triage.alert_audit(alert_id);
+-- Read-only visibility for human operators (workspace UI SQL editor / any DB
+-- role): the tables are owned by the app SP's role, and Postgres grants nothing
+-- to others by default — without these, the schema looks empty from the UI.
+-- Writes remain the app's alone (no INSERT/UPDATE granted).
+GRANT USAGE ON SCHEMA triage TO PUBLIC;
+GRANT SELECT ON ALL TABLES IN SCHEMA triage TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA triage GRANT SELECT ON TABLES TO PUBLIC;
 """
 
 
