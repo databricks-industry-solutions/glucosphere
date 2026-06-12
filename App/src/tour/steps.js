@@ -11,9 +11,9 @@ export const TOUR_STEPS = [
   { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Ask the assistant', body: 'A built-in AI assistant on every page — device-support troubleshooting + natural-language CGM data queries (Genie).' },
   { route: '/metrics-explained', selector: '[data-tour="metrics-explained"]', title: 'Every metric, explained', body: 'How every number is computed — burden vs fault, MAE, calibration bias, time-in-range — with the SQL behind it.' },
   { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', body: 'The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace.' },
-  // Quick tour ends on the Roadmap: the launcher for the three full views + the
-  // honest backlog — the natural "explore from here" exit.
-  { route: '/roadmap', selector: '[data-tour="roadmap-views"]', title: 'Explore from here', body: 'The three full control-tower views open from these cards — and below them, the honest backlog of what\'s next (streaming, monitoring-created alerts, playback). Done returns you home.' },
+  // All three variants end on the Roadmap ("The Full Loop") page: the launcher for
+  // the three full views + the honest backlog — the natural "explore from here" exit.
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'Explore from here', body: 'The three full control-tower views open from these cards — and below them, the honest backlog of what\'s next (streaming, monitoring-created alerts, playback). Done returns you home.' },
 ];
 
 // Longer "full walkthrough" variant — the same Detect → Diagnose → Assess arc, but
@@ -32,6 +32,9 @@ export const TOUR_STEPS_FULL = [
   { route: '/population-risk', selector: '[data-tour="pop-risk"]', title: '③ Assess — blast radius', body: "The fault's clinical blast radius: each cohort's device-reported hypo/hyper exposure (top), decomposed below into what the device got right vs the false alarms and missed real events it caused. The roster further down lists who to contact." },
   { route: '/diabetes-coach', selector: '[data-tour="coach-risk"]', title: '③ Assess — per patient', body: 'Down to one patient: their near-term (15/30-min) glucose forecast from the XGBoost model.' },
   { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Ask the assistant', body: 'A built-in AI assistant — device-support troubleshooting + natural-language CGM data queries (Genie) — available on every page.' },
+  // All three variants close on The Full Loop page: it names the arc the tour just
+  // walked and hands over the explore-onward cards + the what's-next backlog.
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done returns you home.' },
 ];
 
 // "Interactive" variant — the same Detect → Diagnose → Assess arc as the full walkthrough,
@@ -60,5 +63,7 @@ export const TOUR_STEPS_INTERACTIVE = [
   { route: '/diabetes-coach', selector: '[data-tour="assistant-genie-tab"]', openAssistant: 'genie', title: 'Genie — ask the data', body: 'On the Coach view the assistant opens on "CGM data (Genie)" (the natural default here) — ask the fleet in natural language; Genie writes the SQL and returns the table plus the query it ran.' },
   { route: '/device-support', selector: '[data-tour="assistant-engine"]', openAssistant: 'mas', title: 'Fast ⇄ MAS engine switch', body: "Back on Device-support, the assistant opens on its Device-support tab — toggle the engine: ⚡ Fast (a low-latency router → Genie / Knowledge Assistant / foundation model) — the default — or 🤖 MAS (the Multi-Agent Supervisor), heavier and can be slow. Same question, two orchestration depths." },
   { route: '/metrics-explained', selector: '[data-tour="metrics-explained"]', title: 'Every metric, explained', explore: true, body: 'Each number in the app is defined here — burden vs fault, MAE, calibration bias, time-in-range — with the SQL behind it. Transparency for clinical and device decisions. ▶ Explore: scroll the metric cards and read the SQL behind any number.' },
-  { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', explore: true, body: "The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace (UC, pipeline, jobs, serving endpoints, Genie). ▶ Explore: click any node to open it in the deploying workspace. Done returns you home." },
+  { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', explore: true, body: "The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace (UC, pipeline, jobs, serving endpoints, Genie). ▶ Explore: click any node to open it in the deploying workspace." },
+  // All three variants close on The Full Loop page (same rationale as the full tour above).
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done returns you home.' },
 ];

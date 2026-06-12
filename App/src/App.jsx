@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import GlucoseLandingDashboard from './pages/GlucoseLandingDashboard'
 import CareManagementDashboard from './pages/CareManagementDashboard'
 import DiabetesCoachDashboard from './pages/DiabetesCoachDashboard'
@@ -26,7 +26,10 @@ function App() {
         <Route path="/device-support" element={<DeviceSupportDashboard />} />
         <Route path="/metrics-explained" element={<MetricsExplained />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/roadmap" element={<RoadmapPage />} />
+        <Route path="/full-loop" element={<RoadmapPage />} />
+        {/* Legacy alias: the page lived at /roadmap until the 2026-06-12 "The Full
+            Loop" rename — keep old bookmarks/shared links working via redirect. */}
+        <Route path="/roadmap" element={<Navigate to="/full-loop" replace />} />
         <Route path="/firmware-lifecycle" element={<FirmwareLifecyclePage />} />
         <Route path="/population-risk" element={<PopulationRiskPage />} />
         {/* Alert Triage (Lakebase-backed) — route always registered; the page itself

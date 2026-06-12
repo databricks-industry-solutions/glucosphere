@@ -354,7 +354,7 @@ export default function TriagePage() {
               </p>
               {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
               <p className="text-[11px] font-mono text-slate-500 leading-relaxed mt-2">
-                Honest note: alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming. With live ingestion (see <Link to="/roadmap" className="text-cyan-400 hover:text-cyan-300">what's next</Link>: real-time CGM streaming + monitoring-created alerts) the same queue raises them in real time.
+                Honest note: alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming. With live ingestion (see <Link to="/full-loop" className="text-cyan-400 hover:text-cyan-300">what's next</Link>: real-time CGM streaming + monitoring-created alerts) the same queue raises them in real time.
               </p>
               {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
               <p className="text-xs text-slate-500 leading-relaxed mt-2 font-mono">

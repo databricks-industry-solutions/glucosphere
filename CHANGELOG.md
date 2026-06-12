@@ -104,12 +104,16 @@ to before (wip labels intact).
   (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion is soft; settings/roles/storage
   survive).
 - **Tour**: Triage stop in all three variants (`requiresLakebase` — steps + chooser counts gate
-  on the flag); the **Quick tour now ends on `/roadmap`** ("Explore from here").
+  on the flag); **all three tour variants now end on the Full Loop page** (the Quick tour's
+  "Explore from here" close; Full + Interactive gained a matching "The full loop" closing step
+  the same day).
 
 ### Changed — IA / naming honesty
 - **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
   shows the full arc, gaining `→ Act` on Lakebase deploys; About gains a 4th quick-access card,
-  grid now 4-up). Route stays `/roadmap`. Named for the story — the loop literally closes now
+  grid now 4-up). Route renamed `/roadmap` → **`/full-loop`** (same day; the old path
+  client-side-redirects via a `<Navigate replace>` alias so existing bookmarks keep working).
+  Named for the story — the loop literally closes now
   that triage writes back.
 - **"Live Alert" framed as the workflow, not a latency claim**: the Triage intro + send-to-triage
   tooltips note alerts are batch-derived today; with streaming ingestion (see the what's-next
