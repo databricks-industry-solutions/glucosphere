@@ -112,6 +112,11 @@ to before (wip labels intact).
   fetches all statuses once and derives both the status tabs AND the counts client-side from
   the filtered set; "queue is empty + Seed" shows only when the DB is truly empty, and a
   filters-match-nothing state offers **Clear filters** instead.
+- **Watch-view contradictions** (booth feedback): in the last-3h live readings view, the
+  queue-counts header ("0 open · …" against 100 rows) now reads "queue counts n/a in the
+  live readings view" (same NA treatment as the other queue-only controls), and the
+  "N patients in the danger bands" label derives from the same filtered set as the table —
+  it reacts to the model/search filters instead of sitting at the full fetch count.
 - **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
   the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
   are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any

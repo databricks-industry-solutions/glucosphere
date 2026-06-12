@@ -306,6 +306,12 @@ export default function TriagePage() {
   // until/unless the registry query resolves.
   const modelOptions = allModels.length ? allModels : [...affectedModels].sort();
   const q = search.trim().toLowerCase();
+  // Watch view rows under the active model/search filters — one definition feeds
+  // BOTH the table and the "N patients in the danger bands" label, so the label
+  // reacts to filters (it sat frozen at the full fetch count before, 2026-06-12).
+  const watchFiltered = (watchlist || []).filter(w =>
+    (modelFilter === 'all' || w.deviceModel === modelFilter) &&
+    (!q || w.patientId.toLowerCase().includes(q)));
   // refined = every filter EXCEPT the status tab → the header counts break this
   // set down by status, so they update live as filters narrow the queue.
   const refined = (data.alerts || []).filter(a =>
@@ -381,11 +387,19 @@ export default function TriagePage() {
               <div className="flex items-end justify-between gap-4 flex-wrap mb-3">
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
+                  {isWatch ? (
+                    // Queue counts are an ALERTS concept — the live readings view has no
+                    // queue status, so showing "0 open" against 100 rows reads as a
+                    // contradiction (caught at the booth 2026-06-12). Same NA treatment
+                    // as the other queue-only controls.
+                    <span className="text-slate-500" title={NA_WATCH}>queue counts n/a in the live readings view</span>
+                  ) : (<>
                   <span className="text-rose-300">{counts.open || 0} open</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-amber-300">{counts.acked || 0} acked</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
+                  </>)}
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={onReset} disabled={busy || loading || isWatch}
@@ -437,7 +451,7 @@ export default function TriagePage() {
                   <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
                     className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
                 )}
-                <span className="text-slate-500 ml-auto">{scenario === 'last3h' ? `${(watchlist || []).length} patients in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}</span>
+                <span className="text-slate-500 ml-auto">{scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}</span>
               </div>
 
               {SCENARIOS[scenario].prose && (
@@ -510,8 +524,7 @@ export default function TriagePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {watchlist
-                        .filter(w => (modelFilter === 'all' || w.deviceModel === modelFilter) && (!q || w.patientId.toLowerCase().includes(q)))
+                      {watchFiltered
                         .map(w => (
                           <tr key={w.patientId} className="border-t border-slate-800 hover:bg-slate-900/40">
                             <td className="p-2 font-mono text-xs"><Link to={`/diabetes-coach?patient=${encodeURIComponent(w.patientId)}`} className="text-cyan-300 hover:text-cyan-200 hover:underline">{w.patientId}</Link></td>
