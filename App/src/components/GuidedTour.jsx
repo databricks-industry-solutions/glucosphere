@@ -248,7 +248,7 @@ export default function GuidedTour() {
             {i < steps.length - 1
               ? <button onClick={() => { setI(i + 1); setJustResumed(false); }}
                   className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${justResumed ? 'bg-cyan-500 text-slate-950 font-semibold border border-cyan-400 ring-2 ring-cyan-400/50' : 'text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/10'}`}>Next</button>
-              : <button onClick={() => { close(); navigate('/'); }} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
+              : <button onClick={close} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
           </div>
         </div>
       </div>

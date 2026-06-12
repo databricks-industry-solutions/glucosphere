@@ -13,7 +13,7 @@ export const TOUR_STEPS = [
   { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', body: 'The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace.' },
   // All three variants end on the Roadmap ("The Full Loop") page: the launcher for
   // the three full views + the honest backlog — the natural "explore from here" exit.
-  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'Explore from here', body: 'The three full control-tower views open from these cards — and below them, the honest backlog of what\'s next (streaming, monitoring-created alerts, playback). Done returns you home.' },
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'Explore from here', body: 'The three full control-tower views open from these cards — and below them, the honest backlog of what\'s next (streaming, monitoring-created alerts, playback). Done leaves you right here — explore on.' },
 ];
 
 // Longer "full walkthrough" variant — the same Detect → Diagnose → Assess arc, but
@@ -34,7 +34,7 @@ export const TOUR_STEPS_FULL = [
   { route: '/diabetes-coach', selector: '[data-tour="assistant-fab"]', title: 'Ask the assistant', body: 'A built-in AI assistant — device-support troubleshooting + natural-language CGM data queries (Genie) — available on every page.' },
   // All three variants close on The Full Loop page: it names the arc the tour just
   // walked and hands over the explore-onward cards + the what's-next backlog.
-  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done returns you home.' },
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done leaves you right here — explore on.' },
 ];
 
 // "Interactive" variant — the same Detect → Diagnose → Assess arc as the full walkthrough,
@@ -65,5 +65,5 @@ export const TOUR_STEPS_INTERACTIVE = [
   { route: '/metrics-explained', selector: '[data-tour="metrics-explained"]', title: 'Every metric, explained', explore: true, body: 'Each number in the app is defined here — burden vs fault, MAE, calibration bias, time-in-range — with the SQL behind it. Transparency for clinical and device decisions. ▶ Explore: scroll the metric cards and read the SQL behind any number.' },
   { route: '/about', selector: '[data-tour="about-hood"]', title: 'Under the hood', explore: true, body: "The platform plumbing — Data → ML/AI → Agentic — each node deep-links into the deploying workspace (UC, pipeline, jobs, serving endpoints, Genie). ▶ Explore: click any node to open it in the deploying workspace." },
   // All three variants close on The Full Loop page (same rationale as the full tour above).
-  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done returns you home.' },
+  { route: '/full-loop', selector: '[data-tour="roadmap-views"]', title: 'The full loop', body: 'Detect → Diagnose → Assess — you\'ve just walked the whole loop (on Lakebase deploys, → Act closes it). These cards reopen each view; below them, the honest backlog of what\'s next. Done leaves you right here — explore on.' },
 ];
