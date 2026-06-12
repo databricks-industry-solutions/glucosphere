@@ -79,8 +79,7 @@ delay multiplies and the chain blows past the **~300s Databricks Apps gateway ti
 `504 upstream request timeout`. The direct router makes one call (or two for routing), so it
 stays fast even under load — matching Databricks' own guidance that deterministic
 chains/routers have "typically lower latency (fewer LLM calls for orchestration)." The CGM-data
-(Genie) mode is unchanged and always calls Genie directly. Full root-cause analysis:
-[`ref_notes/2026-05-31_mas-latency-troubleshooting.md`](../ref_notes/2026-05-31_mas-latency-troubleshooting.md).
+(Genie) mode is unchanged and always calls Genie directly.
 
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%

@@ -128,8 +128,8 @@ So:
 
 The triage queue's Postgres lives OUTSIDE the bundle; the bundle only carries the App's
 `postgres` resource binding (referencing `projects/<id>/branches/production` by name).
-Hard-won rules (all from the 2026-06-12 destroy→rebuild incident — full notes in
-`ref_notes/lakebase/` and DEPLOY.md → *Lakebase one-time setup* / *Teardown*):
+Hard-won rules (all from the 2026-06-12 destroy→rebuild incident — see
+`lakebase_probe/README.md` and DEPLOY.md → *Lakebase one-time setup* / *Teardown*):
 
 - **Never bundle-manage a stateful DB.** `bundle destroy` deletes the project INCLUDING
   data, and Lakebase deletion is soft — the id stays tombstoned (~7 days), so a same-id

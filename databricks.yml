@@ -354,7 +354,7 @@ targets:
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
       # Lakebase Autoscaling project — the App's OLTP store for the alert-triage
-      # MVP (alerts + alert_audit; see ref_notes/lakebase/2026-06-12 probe doc).
+      # MVP (alerts + alert_audit; see lakebase_probe/README.md).
       # The project is created OUTSIDE the bundle (one-time, see DEPLOY.md):
       #   databricks postgres create-project --json '{"project": {"project_id":
       #     "<lakebase_project_id>", "spec": {"pg_version": 17,
@@ -793,7 +793,7 @@ resources:
   # target's comments for why the project is not bundle-managed). The PROVISIONED `database_instances`
   # stub below is kept for reference only — do NOT re-enable it; Autoscaling is
   # the go-forward model (scale-to-zero; `databricks postgres` API). See
-  # ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md.
+  # lakebase_probe/README.md.
   # Note: CU_1 instances bill continuously while deployed, so keeping this
   # commented avoids paying for unused infra. Also: the hardcoded
   # `glucosphere-oltp-mmt-aws-usw2` name would need to become per-target

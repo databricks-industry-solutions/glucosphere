@@ -229,8 +229,8 @@ redeploy fails with `project with such id already exists`. Recovering required
 provider never reads back `spec`, so a bound project always re-plans as
 `recreate`). External creation removes the whole failure class: destroy leaves
 the project (and alert data) intact, and a redeploy just re-binds the App by
-name. Full incident notes:
-`ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
+name. The committed connection-probe reference (incl. the gotchas list):
+[`lakebase_probe/README.md`](lakebase_probe/README.md).
 
 **Deploying WITHOUT Lakebase**: every other target (`gsphere_synth_e2e` /
 `gsphere_from_table_e2e` / `gsphere_from_source_e2e` / `dais`) has no
