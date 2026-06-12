@@ -49,7 +49,7 @@ export default function RoadmapPage() {
             </p>
           )}
         </section>
-        <SplashGallery />
+        <div data-tour="roadmap-views"><SplashGallery /></div>
 
         {/* Planned enhancements — the textual backlog the in-app "on the roadmap"
             references (e.g. Coach forecast) point to. Kept honest: real logged items. */}

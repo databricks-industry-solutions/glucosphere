@@ -221,7 +221,9 @@ export default function PopulationRiskPage() {
               {/* Carries the roster's model filter into the queue (?model=…). Region
                   can't carry — alerts don't store region — so region-filtered rosters
                   land on the unfiltered queue. */}
-              <button onClick={() => navigate(lakebaseConfigured ? `/triage${filter?.dim === 'model' ? `?model=${encodeURIComponent(filter.label)}` : ''}` : '/roadmap')} className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
+              <button onClick={() => navigate(lakebaseConfigured ? `/triage${filter?.dim === 'model' ? `?model=${encodeURIComponent(filter.label)}` : ''}` : '/roadmap')}
+                title={lakebaseConfigured ? '"Live Alert" = the workflow — alerts are batch-derived today; streaming ingestion would raise them in real time (Roadmap).' : undefined}
+                className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
                 → Send to triage queue {lakebaseConfigured ? <span className="text-emerald-300">(Live Alert)</span> : <span className="text-slate-500">(Live Alert · wip)</span>}
               </button>
             </div>

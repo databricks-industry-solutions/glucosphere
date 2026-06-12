@@ -352,6 +352,10 @@ export default function TriagePage() {
                 each action writes an <span className="text-slate-300">audit row</span> (expand a row to see its trail).
                 Backed by <span className="text-cyan-300">Lakebase</span> (managed Postgres): the dashboards read the lakehouse; the queue is the app's <span className="text-slate-200">transactional write path</span>.
               </p>
+              {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
+              <p className="text-[11px] font-mono text-slate-500 leading-relaxed mt-2">
+                Honest note: alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming. With live ingestion (see <Link to="/roadmap" className="text-cyan-400 hover:text-cyan-300">Roadmap</Link>: real-time CGM streaming + monitoring-created alerts) the same queue raises them in real time.
+              </p>
               {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
               <p className="text-xs text-slate-500 leading-relaxed mt-2 font-mono">
                 Scenario: firmware <span className="text-rose-300">4.0</span> shipped an <span className="text-rose-300">↑ over-read</span> fault (Day 2, Alpha/Gamma · false highs, <span className="text-amber-300">MEDIUM</span>),
@@ -363,7 +367,7 @@ export default function TriagePage() {
               </Link>
             </section>
 
-            <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <section data-tour="triage-queue" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <div className="flex items-end justify-between gap-4 flex-wrap mb-3">
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
