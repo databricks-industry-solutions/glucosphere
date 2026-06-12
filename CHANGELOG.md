@@ -164,6 +164,25 @@ to before (wip labels intact).
   step — the fast-forward after a wrong turn); the pause button gains a hint that the amber
   **▶ Resume tour** pill stays on screen during explore.
 
+### Changed — booth-polish round-up (same day, late)
+- **Reset demo resets the view too**: clears the patient search + jump breadcrumb and strips
+  URL deep-link params (sticky filters made a completed reset look like a hang).
+- **Smart landing**: a patient deep-link matching zero alerts (clean-control device —
+  physiological readings) lands on the live last-3h view with the search kept, instead of an
+  empty queue.
+- **One band, one color**: Device-Support reading details derive a single band (critical /
+  warn / ok) driving the value, Range-Status text, AND the action banner — which gains an
+  honest amber "Monitor" middle tier (rose reserved for <54/>250).
+- **Unified page headers**: every page header icon is a cyan **outlined** square (filled
+  gradients retired) holding the page's own nav icon (Telescope = Full Loop, Info = About,
+  BookOpen = Metrics, HeartHandshake = Coach, Wrench = Device Support; BrandMark elsewhere),
+  and every header icon links home. Device-Support's Population-Overview section icon matches
+  Coach's (cyan Users).
+- **Tour**: chooser dialog centered in the viewport; **Done now ends ON The Full Loop page**
+  (no bounce home — "Done leaves you right here"); the Interactive triage stop split into
+  "work the queue" + a dedicated **"🛢 Proof: it's real Postgres"** step spotlighting the
+  Verify button (new `verify-postgres` tour anchor; counts self-update).
+
 ### Changed — IA / naming honesty
 - **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
   shows the full arc, gaining `→ Act` on Lakebase deploys; About gains a 4th quick-access card,
