@@ -137,6 +137,28 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA triage
 
 def _ensure_schema(conn):
     import psycopg  # deferred (see get_conn)
+    # Fast path: schema already bootstrapped — possibly by a PREVIOUS app SP
+    # (every app recreate rotates the SP). Re-running the DDL as a rotated
+    # non-owner SP fails: CREATE INDEX IF NOT EXISTS checks table OWNERSHIP
+    # before the IF-NOT-EXISTS short-circuit ("must be owner of table alerts",
+    # observed 2026-06-12), even though the PUBLIC read/write grants below make
+    # the schema fully usable. So probe usability instead of re-running DDL.
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM triage.alerts LIMIT 1")
+            cur.execute("SELECT 1 FROM triage.alert_audit LIMIT 1")
+        return  # usable as-is (rotated SP relies on the owner's PUBLIC grants)
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()  # genuine first bootstrap — fall through to the DDL
+    except psycopg.errors.InsufficientPrivilege as e:
+        conn.rollback()
+        raise RuntimeError(
+            "triage schema exists but this app SP cannot use it — likely a "
+            "schema bootstrapped by a pre-2026-06-12 build (read-only grants) "
+            "under a rotated-away SP. Fix: DEPLOY.md 'App-SP rotation note' "
+            "(postgres delete-role on the old SP's role, then re-grant or "
+            "DROP SCHEMA triage CASCADE and restart the app)."
+        ) from e
     with conn.cursor() as cur:
         cur.execute(_SCHEMA_SQL)
     conn.commit()
@@ -145,9 +167,10 @@ def _ensure_schema(conn):
             cur.execute(_GRANTS_SQL)
         conn.commit()
     except psycopg.errors.InsufficientPrivilege:
-        # Rotated (non-owner) app SP: GRANT requires the grant option, which
-        # only the schema owner holds. The owner's PUBLIC grants above are
-        # already in place from the original bootstrap — safe to continue.
+        # Mixed-ownership edge (non-owner SP re-creating missing tables in an
+        # existing schema): GRANT requires the grant option, which only the
+        # schema owner holds. The owner's PUBLIC grants are already in place
+        # from the original bootstrap — safe to continue.
         conn.rollback()
 
 
@@ -260,9 +283,12 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
 def reset_alerts():
     """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
-    demo state by design — see the bundle-destroy footgun note in databricks.yml."""
+    demo state by design. NO `RESTART IDENTITY`: restarting a sequence requires
+    sequence OWNERSHIP, which a rotated app SP doesn't have ("must be owner of
+    sequence alert_audit_audit_id_seq", observed 2026-06-12) — plain TRUNCATE
+    only needs the granted TRUNCATE privilege; ids simply keep climbing."""
     with get_conn() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE triage.alert_audit, triage.alerts RESTART IDENTITY")
+        cur.execute("TRUNCATE triage.alert_audit, triage.alerts")
         conn.commit()
 
 

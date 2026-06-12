@@ -130,10 +130,17 @@ classes; both are now fixed at the source:
 - **App-SP rotation proofing** (`App/databricks/lakebase.py`): every app recreate issues a
   **new service principal**, and the rotated SP doesn't own the `triage` objects its predecessor
   created — the rebuilt app failed every queue call with `permission denied for schema triage`
-  while smoke's project+binding checks passed. The schema bootstrap now grants
-  **read/write to all roles on the database** (tables + sequences + matching default
-  privileges; `PUBLIC` reaches only roles provisioned on the project) and tolerates the GRANT
-  statements failing for a non-owner SP. Demo-grade posture, documented in `App/README.md`.
+  while smoke's project+binding checks passed. Three ownership edges fixed: (1) the schema
+  bootstrap now grants **read/write to all roles on the database** (tables + sequences +
+  matching default privileges; `PUBLIC` reaches only roles provisioned on the project) and
+  tolerates the GRANT statements failing for a non-owner SP; (2) the bootstrap **probes
+  usability first** and only runs DDL on genuine first boot — `CREATE INDEX IF NOT EXISTS`
+  checks table *ownership* before the IF-NOT-EXISTS short-circuit, so re-running DDL as a
+  rotated SP failed `must be owner of table alerts`; (3) demo reset drops `RESTART IDENTITY`
+  (restarting a sequence requires sequence *ownership*) — plain `TRUNCATE` runs on the granted
+  privilege, ids just keep climbing. Verified live: a 3rd-rotation SP read, acked, and
+  reset/reseeded 600 alerts with zero manual PG steps. Demo-grade posture, documented in
+  `App/README.md`.
 - **`smoke_test.py` check 9 gains the functional leg**: after project + binding, it calls the
   app's `GET /api/alerts` with the operator's OAuth token and asserts HTTP 200 — proving
   credential mint + PG connect + schema usability end-to-end (exactly the layer the rotation
