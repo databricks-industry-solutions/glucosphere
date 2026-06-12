@@ -134,7 +134,27 @@ export default function DiabetesCoachDashboard() {
     const idxs = series.map((d, i) => ({ t: new Date(d.time).getTime(), i })).filter((o) => o.t >= s && o.t <= e).map((o) => o.i);
     return idxs.length ? { x1: xOf(idxs[0]), x2: xOf(idxs[idxs.length - 1]) } : null;
   })();
+  // "Now" window — the trailing 3 hours (the same lookback the High-Risk tile and
+  // the Triage live watchlist scan, <54/>250). Shaded only when it actually contains
+  // danger-band readings, so the chart shows WHY this patient is flagged as current.
+  const nowX = (() => {
+    if (series.length < 2) return null;
+    const lastT = new Date(series[series.length - 1].time).getTime();
+    const cutoff = lastT - 3 * 3600 * 1000;
+    const idxs = series.map((d, i) => ({ t: new Date(d.time).getTime(), i })).filter((o) => o.t >= cutoff).map((o) => o.i);
+    if (!idxs.length) return null;
+    const danger = idxs.some((i) => { const v = series[i].observed; return v != null && (v < 54 || v > 250); });
+    return danger ? { x1: xOf(idxs[0]), x2: xOf(idxs[idxs.length - 1]) } : null;
+  })();
   const fmtTick = (t) => new Date(t).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit' });
+  // "Now" chip → forecast handoff: scroll the forecast card into view + flash it
+  // (what just happened → where it's heading).
+  const [forecastFlash, setForecastFlash] = useState(false);
+  const jumpToForecast = () => {
+    document.getElementById('forecast-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setForecastFlash(true);
+    setTimeout(() => setForecastFlash(false), 1800);
+  };
 
   // Rule-based risk band (not a trained classifier), built on the SYMMETRIC Battelino
   // 2019 Time-in-Ranges bands: Very Low <54 / Low <70 / Target 70–180 / High >180 /
@@ -491,6 +511,14 @@ export default function DiabetesCoachDashboard() {
                     <div className="w-3 h-0.5 bg-emerald-500" />
                     <span className="text-[11px] text-slate-400 font-mono">Target 70–180</span>
                   </div>
+                  {nowX && (
+                    <button onClick={jumpToForecast}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 rounded border border-amber-500/40 hover:bg-amber-500/10 cursor-pointer"
+                      title="The trailing 3-hour window with very-low (<54) or very-high (>250) readings — the live-risk lookback that flags this patient as CURRENTLY at risk (same window as the High-Risk tile and the Triage live view). Click: jump to where it's heading (the near-term forecast).">
+                      <div className="w-3 h-2.5 bg-amber-500/20 border-x border-amber-500/50" />
+                      <span className="text-[11px] text-amber-300 font-mono">⚠ Now (last 3h) → forecast</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -499,6 +527,12 @@ export default function DiabetesCoachDashboard() {
                 {/* Incident window shading (device-fault period) — drawn first so lines sit on top */}
                 {incX && (
                   <div className="absolute top-0 bottom-0 bg-rose-500/10 border-x border-rose-500/30" style={{ left: `${incX.x1}%`, width: `${Math.max(0.5, incX.x2 - incX.x1)}%` }} />
+                )}
+
+                {/* "Now" live-risk window (trailing 3h with <54/>250 readings) — why this
+                    patient is CURRENTLY flagged; amber to distinguish from the rose incident. */}
+                {nowX && (
+                  <div className="absolute top-0 bottom-0 bg-amber-500/10 border-x border-amber-500/40" style={{ left: `${nowX.x1}%`, width: `${Math.max(0.8, nowX.x2 - nowX.x1)}%` }} />
                 )}
 
                 {/* Target Range Band (70–180) — positioned on the dynamic scale */}
@@ -616,7 +650,8 @@ export default function DiabetesCoachDashboard() {
           {/* Right Column - Forecast & Device */}
           <div className="col-span-4 space-y-6">
             {/* Near-term glucose forecast — real XGBoost 15/30-min model output */}
-            <div data-tour="coach-risk" className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
+            <div id="forecast-panel" data-tour="coach-risk"
+              className={`bg-slate-900/50 border border-slate-800 rounded-lg p-6 transition-shadow duration-500 ${forecastFlash ? 'ring-2 ring-amber-400/70 shadow-lg shadow-amber-500/20' : ''}`}>
               <h3 className="text-sm font-medium text-slate-300 mb-1">Near-term glucose forecast</h3>
               <p className="text-xs text-slate-500 font-mono mb-4">XGBoost · 15 / 30-min horizons · from last batch run</p>
 

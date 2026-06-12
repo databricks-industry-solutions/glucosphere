@@ -122,6 +122,12 @@ to before (wip labels intact).
   physiological risk from device-fault fallout at a glance; a per-row **Queue column**
   identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
   "—" = looks physiological).
+- **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
+  trailing 3-hour window (amber, distinct from the rose incident band) when it contains
+  very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250
+  · 3h lookback as the High-Risk tile and the Triage live view). The legend chip
+  "⚠ Now (last 3h) → forecast" clicks through to the near-term forecast card (scroll +
+  flash) — what just happened → where it's heading.
 - **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
   the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
   are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any
