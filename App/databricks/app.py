@@ -770,7 +770,11 @@ def alert_action(alert_id, action):
         return jsonify({'error': f'unknown action {action!r}'}), 400
     try:
         body = request.get_json(silent=True) or {}
-        detail = body.get('assignee') if action == 'assign' else body.get('note') if action == 'note' else None
+        # resolve carries an optional {"resolution": "..."} — the outcome (rollback /
+        # device swap / not-a-device-issue / EMS escalation) lands in the audit trail.
+        detail = (body.get('assignee') if action == 'assign'
+                  else body.get('note') if action == 'note'
+                  else body.get('resolution') if action == 'resolve' else None)
         if action == 'note' and not (detail or '').strip():
             return jsonify({'error': 'note requires non-empty {"note": "..."}'}), 400
         alert = lakebase.act_on_alert(alert_id, action, actor=_actor(), detail=detail)

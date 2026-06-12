@@ -24,10 +24,23 @@ const STATUS = {
 };
 const FILTERS = ['open', 'acked', 'resolved', 'all'];
 
+// Resolution outcomes — picked at resolve time, recorded in the audit trail.
+// Deliberately includes the non-device and emergency paths: triage's job is
+// routing, and "it wasn't the device" / "this is a medical emergency" are
+// first-class outcomes, not edge cases.
+const RESOLUTIONS = [
+  '🔧 Firmware rolled back',
+  '📦 Device replaced — swap shipped',
+  '🩸 Fingerstick-verified — readings OK',
+  '↪ Not a device issue — routed to care team',
+  '🚑 EMS dispatched (911) — patient escalated',
+];
+
 function AlertRow({ alert, onAction, busy }) {
   const [expanded, setExpanded] = useState(false);
   const [assignee, setAssignee] = useState('');
   const [note, setNote] = useState('');
+  const [resolveOpen, setResolveOpen] = useState(false);
   return (
     <>
       <tr className="border-t border-slate-800 hover:bg-slate-900/40">
@@ -55,9 +68,22 @@ function AlertRow({ alert, onAction, busy }) {
               className="text-[11px] font-mono px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 mr-1.5">Ack</button>
           )}
           {alert.status !== 'resolved' && (
-            <button disabled={busy} onClick={() => onAction(alert.alert_id, 'resolve')}
-              title={'Resolve — the fix landed: e.g. firmware rolled back / device swapped / patient advised to fingerstick-verify. Closes the alert (status → resolved) + audit row — the trail is the recall\'s compliance record.'}
-              className="text-[11px] font-mono px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Resolve</button>
+            <span className="relative inline-block">
+              <button disabled={busy} onClick={() => setResolveOpen(o => !o)}
+                title="Resolve — pick the outcome (rollback / device swap / not-a-device-issue / EMS escalation). The choice lands in the audit trail — the recall's compliance record."
+                className="text-[11px] font-mono px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Resolve ▾</button>
+              {resolveOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20 min-w-[260px] bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden text-left">
+                  {RESOLUTIONS.map(r => (
+                    <button key={r} disabled={busy}
+                      onClick={() => { setResolveOpen(false); onAction(alert.alert_id, 'resolve', r); }}
+                      className="block w-full text-left px-3 py-2 text-[11px] font-mono text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-40">
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
           )}
         </td>
       </tr>
@@ -340,10 +366,14 @@ export default function TriagePage() {
               {SCENARIOS[scenario].prose && (
                 <p className="text-xs text-slate-400 leading-relaxed font-mono mb-4 border-l-2 border-cyan-500/40 pl-3">{SCENARIOS[scenario].prose}</p>
               )}
-              {/* why "all faults" fronts under-reads — the severity ranking is clinical */}
-              {scenario !== 'last3h' && sortBy === 'severity' && faultFilter === 'all' && (
+              {/* why "masked highs first" — the severity ranking, honestly framed:
+                  both directions are dangerous; the HIGH/MEDIUM split mirrors the
+                  documented harm profile of the two real recalls. */}
+              {scenario !== 'last3h' && (
                 <p className="text-[11px] text-slate-500 leading-relaxed font-mono mb-4">
-                  Severity sort fronts <span className="text-sky-300">↓ under-read</span> (<span className="text-rose-300">HIGH</span>): an under-reading device <span className="text-slate-300">masks real highs</span> — the clinically worse failure (delayed treatment). The <span className="text-rose-300">↑ over-read</span> cohort (<span className="text-amber-300">MEDIUM</span>, false alarms) follows below — switch sort to interleave.
+                  <span className="text-slate-300">Why "masked highs first"?</span> Both fault directions are dangerous in opposite ways: an <span className="text-rose-300">↑ over-read</span> hides real lows and cries wolf on highs (false alarms → over-treatment);
+                  an <span className="text-sky-300">↓ under-read</span> hides real highs — hyperglycemia goes untreated (DKA risk). The queue ranks under-read <span className="text-rose-300">HIGH</span> because it mirrors the <span className="text-slate-300">2025 under-read recall</span>, the failure mode tied to documented deaths
+                  (the 2024 over-read recall reported injuries, no deaths) — a recall-informed triage heuristic, not a clinical absolute. Switch sort to interleave the cohorts.
                 </p>
               )}
 
