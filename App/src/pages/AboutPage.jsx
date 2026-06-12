@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
-  HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink,
+  HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink, Info,
   Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare, HardDrive, Telescope,
 } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
@@ -152,7 +152,8 @@ export default function AboutPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3 min-w-0">
-            <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><Info className="w-5 h-5 text-cyan-400" /></Link>
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>About Glucosphere</h1>
               <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>

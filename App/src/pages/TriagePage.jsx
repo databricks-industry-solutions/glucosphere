@@ -462,7 +462,8 @@ ORDER BY u.at DESC LIMIT 20;`;
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <BrandMark className="w-7 h-7 text-cyan-400" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><BrandMark className="w-5 h-5 text-cyan-400" /></Link>
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Alert Triage</h1>
               <p className="text-xs text-slate-500 font-mono">→ Act — work the live alert queue: acknowledge · assign · resolve</p>

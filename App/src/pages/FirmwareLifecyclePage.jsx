@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, ChevronRight } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import FirmwareLifecycleChart from '../components/FirmwareLifecycleChart';
@@ -63,7 +63,8 @@ export default function FirmwareLifecyclePage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <BrandMark className="w-7 h-7 text-cyan-400" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><BrandMark className="w-5 h-5 text-cyan-400" /></Link>
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Firmware Lifecycle</h1>
               <p className="text-xs text-slate-500 font-mono">② Diagnose — trace the spike to the firmware at fault</p>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Users, Loader2, ChevronRight, Wrench, User } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics, getPatientList, getPatientDetail } from './DiabetesCoachDashboard/queries';
 import { getFirmwareLifecycle } from '../api/databricksSQL';
@@ -207,9 +207,10 @@ export default function DiabetesCoachDashboard() {
               </svg>
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <HeartHandshake className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <HeartHandshake className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Diabetes Coach Dashboard

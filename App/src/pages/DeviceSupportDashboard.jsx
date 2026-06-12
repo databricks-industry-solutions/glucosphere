@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
@@ -518,9 +518,10 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               </svg>
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <Wrench className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <Wrench className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Device Support Dashboard

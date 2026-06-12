@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
 import { useGoBack } from '../hooks/useGoBack';
@@ -57,9 +57,10 @@ export default function MetricsExplained() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <BookOpen className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Metrics Explained
