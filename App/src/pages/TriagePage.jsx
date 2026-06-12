@@ -87,7 +87,10 @@ export default function TriagePage() {
   const goBack = useGoBack();
   const configured = useLakebaseConfigured();
   const [data, setData] = useState({ alerts: [], counts: {} });
-  const [filter, setFilter] = useState('open');
+  const [filter, setFilter] = useState('open');          // status — server-side
+  const [search, setSearch] = useState('');               // patient/device — client-side
+  const [faultFilter, setFaultFilter] = useState('all');  // over/under — client-side
+  const [modelFilter, setModelFilter] = useState('all');  // device model — client-side
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -116,6 +119,16 @@ export default function TriagePage() {
 
   const counts = data.counts || {};
   const total = Object.values(counts).reduce((s, n) => s + Number(n || 0), 0);
+
+  // Client-side refinement over the loaded queue (status is already server-filtered).
+  const models = [...new Set((data.alerts || []).map(a => a.device_model).filter(Boolean))].sort();
+  const q = search.trim().toLowerCase();
+  const filtered = (data.alerts || []).filter(a =>
+    (faultFilter === 'all' || a.alert_type === faultFilter) &&
+    (modelFilter === 'all' || a.device_model === modelFilter) &&
+    (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
+  const VISIBLE_CAP = 100; // keep the DOM light; filters narrow the rest
+  const visible = filtered.slice(0, VISIBLE_CAP);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
@@ -155,7 +168,7 @@ export default function TriagePage() {
             </section>
 
             <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
-              <div className="flex items-end justify-between gap-4 flex-wrap mb-4">
+              <div className="flex items-end justify-between gap-4 flex-wrap mb-3">
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
                   <span className="text-rose-300">{counts.open || 0} open</span>
@@ -164,12 +177,34 @@ export default function TriagePage() {
                   <span className="text-slate-600">·</span>
                   <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
                 </div>
-                <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">
-                  {FILTERS.map(f => (
-                    <button key={f} onClick={() => setFilter(f)}
-                      className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f}</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => load(filter)} disabled={busy || loading} title="Reload the queue"
+                    className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
+                  <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">
+                    {FILTERS.map(f => (
+                      <button key={f} onClick={() => setFilter(f)}
+                        className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* refinement bar — client-side over the loaded queue */}
+              <div className="flex items-center gap-2 flex-wrap mb-4 text-[11px] font-mono">
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="search patient / device…"
+                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 placeholder:text-slate-600 w-52" />
+                <div className="inline-flex rounded-md border border-slate-700 overflow-hidden" role="group" aria-label="Fault filter">
+                  {[['all', 'all faults'], ['over-read', '↑ over-read'], ['under-read', '↓ under-read']].map(([v, l], i) => (
+                    <button key={v} onClick={() => setFaultFilter(v)}
+                      className={`px-2.5 py-1 transition-colors ${i ? 'border-l border-slate-700' : ''} ${faultFilter === v ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{l}</button>
                   ))}
                 </div>
+                <select value={modelFilter} onChange={e => setModelFilter(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
+                  <option value="all">all models</option>
+                  {models.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <span className="text-slate-500 ml-auto">{filtered.length} matching{filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}</span>
               </div>
 
               {error && <p className="text-xs font-mono text-rose-300 mb-3">⚠ {error}</p>}
@@ -200,7 +235,7 @@ export default function TriagePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.alerts.map(a => <AlertRow key={a.alert_id} alert={a} onAction={onAction} busy={busy} />)}
+                    {visible.map(a => <AlertRow key={a.alert_id} alert={a} onAction={onAction} busy={busy} />)}
                   </tbody>
                 </table>
               )}

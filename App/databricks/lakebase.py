@@ -8,9 +8,10 @@ minted per ~50 min via POST /api/2.0/postgres/credentials (raw REST, matching
 app.py's requests-based style; shape verified live — see
 ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md).
 
-Schema (created idempotently on first use):
-  alerts       — one row per affected patient-device-faulttype; status open|acked|resolved
-  alert_audit  — append-only action trail (created/acked/assigned/resolved)
+Schema (created idempotently on first use, in the app-owned `triage` PG schema —
+PG 15+ denies CREATE in `public`; CAN_CONNECT_AND_CREATE lets the app make its own):
+  triage.alerts       — one row per affected patient-device-faulttype; status open|acked|resolved
+  triage.alert_audit  — append-only action trail (created/acked/assigned/resolved)
 """
 import os
 import time
@@ -81,7 +82,11 @@ def get_conn():
 
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS alerts (
+-- Own schema: PG 15+ removed default CREATE on `public`; the binding's
+-- CAN_CONNECT_AND_CREATE grants database-level CREATE (= create schemas),
+-- so the app provisions its own namespace — no manual grants needed.
+CREATE SCHEMA IF NOT EXISTS triage;
+CREATE TABLE IF NOT EXISTS triage.alerts (
   alert_id     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   patient_id   TEXT NOT NULL,
   device_id    TEXT NOT NULL,
@@ -95,16 +100,16 @@ CREATE TABLE IF NOT EXISTS alerts (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (patient_id, device_id, alert_type)    -- makes seeding idempotent
 );
-CREATE TABLE IF NOT EXISTS alert_audit (
+CREATE TABLE IF NOT EXISTS triage.alert_audit (
   audit_id  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  alert_id  BIGINT NOT NULL REFERENCES alerts(alert_id),
+  alert_id  BIGINT NOT NULL REFERENCES triage.alerts(alert_id),
   action    TEXT NOT NULL,                      -- created | acked | assigned | resolved
   actor     TEXT,
   detail    TEXT,
   at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
-CREATE INDEX IF NOT EXISTS idx_audit_alert ON alert_audit(alert_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON triage.alerts(status);
+CREATE INDEX IF NOT EXISTS idx_audit_alert ON triage.alert_audit(alert_id);
 """
 
 
@@ -119,24 +124,24 @@ _ALERT_COLS = ('alert_id', 'patient_id', 'device_id', 'device_model', 'firmware'
                'alert_type', 'severity', 'status', 'assigned_to', 'created_at', 'updated_at')
 
 
-def list_alerts(status: str | None = None, limit: int = 200):
+def list_alerts(status: str | None = None, limit: int = 1000):
     """Alerts (optionally filtered by status) + per-status counts + audit trails."""
     where, params = '', []
     if status and status != 'all':
         where, params = 'WHERE status = %s', [status]
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
-            f"SELECT {', '.join(_ALERT_COLS)} FROM alerts {where} "
+            f"SELECT {', '.join(_ALERT_COLS)} FROM triage.alerts {where} "
             f"ORDER BY (status = 'open') DESC, severity = 'HIGH' DESC, updated_at DESC "
             f"LIMIT %s", params + [limit])
         alerts = [dict(zip(_ALERT_COLS, row)) for row in cur.fetchall()]
-        cur.execute("SELECT status, COUNT(*) FROM alerts GROUP BY status")
+        cur.execute("SELECT status, COUNT(*) FROM triage.alerts GROUP BY status")
         counts = dict(cur.fetchall())
         ids = [a['alert_id'] for a in alerts]
         audits: dict[int, list] = {i: [] for i in ids}
         if ids:
             cur.execute(
-                "SELECT alert_id, action, actor, detail, at FROM alert_audit "
+                "SELECT alert_id, action, actor, detail, at FROM triage.alert_audit "
                 "WHERE alert_id = ANY(%s) ORDER BY at", (ids,))
             for aid, action, actor, detail, at in cur.fetchall():
                 audits[aid].append({'action': action, 'actor': actor,
@@ -163,19 +168,19 @@ def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = No
     with get_conn() as conn, conn.cursor() as cur:
         if action == 'assign':
             cur.execute(
-                "UPDATE alerts SET status=%s, assigned_to=%s, updated_at=now() "
+                "UPDATE triage.alerts SET status=%s, assigned_to=%s, updated_at=now() "
                 "WHERE alert_id=%s RETURNING " + ', '.join(_ALERT_COLS),
                 (new_status, detail or 'unassigned', alert_id))
         else:
             cur.execute(
-                "UPDATE alerts SET status=%s, updated_at=now() "
+                "UPDATE triage.alerts SET status=%s, updated_at=now() "
                 "WHERE alert_id=%s RETURNING " + ', '.join(_ALERT_COLS),
                 (new_status, alert_id))
         row = cur.fetchone()
         if row is None:
             return None
         cur.execute(
-            "INSERT INTO alert_audit (alert_id, action, actor, detail) VALUES (%s,%s,%s,%s)",
+            "INSERT INTO triage.alert_audit (alert_id, action, actor, detail) VALUES (%s,%s,%s,%s)",
             (alert_id, action + ('ed' if not action.endswith('e') else 'd'), actor, detail))
         conn.commit()
     alert = dict(zip(_ALERT_COLS, row))
@@ -192,14 +197,14 @@ def seed_alerts(rows, actor: str = 'seed'):
     with get_conn() as conn, conn.cursor() as cur:
         for r in rows:
             cur.execute(
-                "INSERT INTO alerts (patient_id, device_id, device_model, firmware, alert_type, severity) "
+                "INSERT INTO triage.alerts (patient_id, device_id, device_model, firmware, alert_type, severity) "
                 "VALUES (%s,%s,%s,%s,%s,%s) "
                 "ON CONFLICT (patient_id, device_id, alert_type) DO NOTHING "
                 "RETURNING alert_id", r)
             got = cur.fetchone()
             if got:
                 cur.execute(
-                    "INSERT INTO alert_audit (alert_id, action, actor) VALUES (%s,'created',%s)",
+                    "INSERT INTO triage.alert_audit (alert_id, action, actor) VALUES (%s,'created',%s)",
                     (got[0], actor))
                 inserted += 1
         conn.commit()
