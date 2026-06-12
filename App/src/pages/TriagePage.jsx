@@ -550,7 +550,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                   </button>
                   {workspaceHost && (
                     <div className="relative">
-                      <button onClick={() => setVerifyOpen(v => !v)}
+                      <button onClick={() => setVerifyOpen(v => !v)} data-tour="verify-postgres"
                         title="Prove the queue is real Postgres state — see your own actions as rows"
                         className={`text-[11px] font-mono px-2.5 py-1 rounded-md border ${verifyOpen ? 'border-cyan-500/60 text-cyan-200 bg-cyan-500/10' : 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10'}`}>
                         🛢 Verify in Postgres ▾
