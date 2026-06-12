@@ -760,13 +760,14 @@ def list_alerts():
 
 @app.route('/api/alerts/<int:alert_id>/<action>', methods=['POST'])
 def alert_action(alert_id, action):
-    """Ack / assign / resolve / note one alert; every action appends an audit row.
-    `assign` reads {"assignee": "..."} from the body; `note` (an audit-only
-    addendum — no status change) reads {"note": "..."}."""
+    """Ack / assign / resolve / note / followup one alert; every action appends an
+    audit row. Body fields: assign={"assignee"}, note={"note"} (audit-only),
+    resolve={"resolution"} (the outcome), followup={"followup"} (e.g. fingerstick
+    verification requested — engagement, not closure: status → acked)."""
     guard = _lakebase_guard()
     if guard:
         return guard
-    if action not in ('ack', 'assign', 'resolve', 'note'):
+    if action not in ('ack', 'assign', 'resolve', 'note', 'followup'):
         return jsonify({'error': f'unknown action {action!r}'}), 400
     try:
         body = request.get_json(silent=True) or {}
@@ -774,7 +775,8 @@ def alert_action(alert_id, action):
         # device swap / not-a-device-issue / EMS escalation) lands in the audit trail.
         detail = (body.get('assignee') if action == 'assign'
                   else body.get('note') if action == 'note'
-                  else body.get('resolution') if action == 'resolve' else None)
+                  else body.get('resolution') if action == 'resolve'
+                  else body.get('followup') if action == 'followup' else None)
         if action == 'note' and not (detail or '').strip():
             return jsonify({'error': 'note requires non-empty {"note": "..."}'}), 400
         alert = lakebase.act_on_alert(alert_id, action, actor=_actor(), detail=detail)

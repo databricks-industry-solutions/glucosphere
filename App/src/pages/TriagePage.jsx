@@ -161,6 +161,15 @@ function AlertRow({ alert, onAction, busy }) {
                     title="Append a free-text note to the audit trail — no status change"
                     className="text-[11px] font-mono px-2.5 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700/40 disabled:opacity-40">+ Note</button>
                 </div>
+                {/* follow-up request — engagement, not closure: a required fingerstick
+                    verification keeps the alert in the queue (status → acked) until
+                    the result comes back, then resolve with the real outcome. */}
+                {alert.status !== 'resolved' && (
+                  <button disabled={busy}
+                    onClick={() => onAction(alert.alert_id, 'followup', '🩸 fingerstick verification requested — awaiting patient reading')}
+                    title="Request a fingerstick verification from the patient — keeps the alert open (acked) until the reading comes back; then resolve with the outcome"
+                    className="text-[11px] font-mono px-2.5 py-1 rounded border border-rose-400/40 text-rose-300 hover:bg-rose-500/10 disabled:opacity-40 self-start">🩸 Request fingerstick</button>
+                )}
               </div>
             </div>
           </td>

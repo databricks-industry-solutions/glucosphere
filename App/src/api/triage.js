@@ -15,13 +15,15 @@ export async function fetchAlerts(status = 'all') {
   return asJson(await fetch(`/api/alerts?status=${encodeURIComponent(status)}`));
 }
 
-/** action: ack | assign | resolve | note. `detail` = assignee (assign), the
- * addendum text (note — audit-only), or the resolution outcome (resolve).
+/** action: ack | assign | resolve | note | followup. `detail` = assignee (assign),
+ * addendum text (note — audit-only), resolution outcome (resolve), or the
+ * follow-up request (followup — keeps the alert working, status → acked).
  * Returns the updated alert. */
 export async function alertAction(alertId, action, detail = null) {
   const body = action === 'assign' && detail ? { assignee: detail }
     : action === 'note' && detail ? { note: detail }
     : action === 'resolve' && detail ? { resolution: detail }
+    : action === 'followup' && detail ? { followup: detail }
     : {};
   return asJson(await fetch(`/api/alerts/${alertId}/${action}`, {
     method: 'POST',

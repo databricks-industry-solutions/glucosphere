@@ -155,14 +155,20 @@ def list_alerts(status: str | None = None, limit: int = 1000):
 
 _ACTIONS = {  # action → resulting status; None = audit-only (no status change)
     'ack': 'acked',
-    'assign': 'acked',  # assign implies acked
+    'assign': 'acked',    # assign implies acked
     'resolve': 'resolved',
-    'note': None,       # free-text addendum to the audit trail
+    'note': None,         # free-text addendum to the audit trail
+    'followup': 'acked',  # a follow-up request (e.g. fingerstick verification) is
+                          # engagement, not closure — alert stays in the queue
+}
+_AUDIT_ACTION = {  # action → audit-trail verb (explicit; no suffix guessing)
+    'ack': 'acked', 'assign': 'assigned', 'resolve': 'resolved',
+    'note': 'note', 'followup': 'follow-up requested',
 }
 
 
 def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = None):
-    """Apply ack/assign/resolve/note + append the audit row. Returns the updated alert."""
+    """Apply ack/assign/resolve/note/followup + append the audit row. Returns the updated alert."""
     if action not in _ACTIONS:
         raise ValueError(f"unknown action {action!r} (expected one of {sorted(_ACTIONS)})")
     new_status = _ACTIONS[action]
@@ -185,10 +191,9 @@ def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = No
         row = cur.fetchone()
         if row is None:
             return None
-        audit_action = 'note' if action == 'note' else action + ('ed' if not action.endswith('e') else 'd')
         cur.execute(
             "INSERT INTO triage.alert_audit (alert_id, action, actor, detail) VALUES (%s,%s,%s,%s)",
-            (alert_id, audit_action, actor, detail))
+            (alert_id, _AUDIT_ACTION[action], actor, detail))
         conn.commit()
     alert = dict(zip(_ALERT_COLS, row))
     alert['created_at'] = str(alert['created_at'])
@@ -212,11 +217,10 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
             (new_status, list(ids)))
         done = [r[0] for r in cur.fetchall()]
         if done:
-            audit_action = action + ('ed' if not action.endswith('e') else 'd')
             cur.execute(
                 "INSERT INTO triage.alert_audit (alert_id, action, actor, detail) "
                 "SELECT unnest(%s::bigint[]), %s, %s, %s",
-                (done, audit_action, actor, detail))
+                (done, _AUDIT_ACTION[action], actor, detail))
         conn.commit()
     return len(done)
 
