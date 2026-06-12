@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink,
-  Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare,
+  Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare, HardDrive, Telescope,
 } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
@@ -22,10 +22,12 @@ const ROLE_CARDS = [
   { icon: Wrench, title: 'Device Support', sub: 'Biomedical Engineering', route: '/device-support' },
   { icon: HeartHandshake, title: 'Diabetes Coach', sub: 'Diabetes Coaching', route: '/diabetes-coach' },
   { icon: BookOpen, title: 'Metrics Explained', sub: 'How every metric is computed', route: '/metrics-explained' },
+  { icon: Telescope, title: 'The Full Loop', sub: 'Detect · Diagnose · Assess — how it comes together', route: '/roadmap' },
 ];
 
 // "Under the hood" platform stack, grouped as a Data → ML/AI → Agentic pipeline flow.
-// Declarative so a future layer (Lakebase, streaming) is a one-line add. `hrefKey`
+// Declarative so a future layer (streaming, …) is a one-line add — the Lakebase tile
+// below landed exactly that way (flag-gated via `flagKey`). `hrefKey`
 // resolves to a live workspace deep-link built from /api/config at render time
 // (see linksFromConfig); naming matches the repo — no "Mosaic".
 // Icons are lucide monochrome line-icons (consistent with the rest of the app) as a
@@ -36,6 +38,9 @@ const STAGES = [
     key: 'data', label: 'Data', items: [
       { icon: Layers, name: 'Delta Live Tables', blurb: 'silver → gold medallion', hrefKey: 'pipeline' },
       { icon: Database, name: 'Unity Catalog', blurb: 'governed data + models', hrefKey: 'uc' },
+      // Shown only on deployments with the Lakebase binding (lakebase_configured) —
+      // the Alert Triage queue's OLTP store, the app's transactional write path.
+      { icon: HardDrive, name: 'Lakebase', blurb: 'OLTP alert-triage state (managed Postgres)', hrefKey: 'lakebase', flagKey: 'lakebase' },
     ],
   },
   {
@@ -75,6 +80,7 @@ function linksFromConfig(cfg) {
     // deep-link straight to the forecast endpoint (the list page has no URL filter);
     // fall back to the full endpoints listing if the name wasn't discovered.
     serving: cfg?.forecast_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
+    lakebase: wh ? `${wh}/lakebase` : '',
     genie: wh && cfg?.genie_space_id ? `${wh}/genie/rooms/${cfg.genie_space_id}` : '',
     ka: cfg?.ka_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
     mas: cfg?.mas_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
@@ -128,9 +134,13 @@ export default function AboutPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
   const [links, setLinks] = useState(() => linksFromConfig(null));
+  const [lakebaseOn, setLakebaseOn] = useState(false);  // gates the Lakebase stack tile
 
   useEffect(() => {
-    getConfig().then((cfg) => setLinks(linksFromConfig(cfg))).catch(() => {});
+    getConfig().then((cfg) => {
+      setLinks(linksFromConfig(cfg));
+      setLakebaseOn(Boolean(cfg.lakebase_configured));
+    }).catch(() => {});
   }, []);
 
   return (
@@ -209,7 +219,7 @@ export default function AboutPage() {
                 <div className="flex-1 rounded-lg border border-slate-800/80 bg-slate-900/40 p-3">
                   <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">{stage.label}</div>
                   <div className="space-y-2">
-                    {stage.items.map((it) => (
+                    {stage.items.filter((it) => !it.flagKey || lakebaseOn).map((it) => (
                       <StackNode key={it.name} icon={it.icon} name={it.name} blurb={it.blurb}
                         href={it.hrefKey ? links[it.hrefKey] : undefined}
                         subLinks={it.subLinks} resolve={(k) => links[k]} />
@@ -273,7 +283,8 @@ export default function AboutPage() {
             sensor-quality telemetry. The operator views are unchanged — same Firmware × Day heatmap and its
             In-incident ⇄ Fleet-wide toggle — only the cell metric swaps from <em>error-vs-truth</em> to
             <em> distribution divergence from a matched baseline</em>. On this same Lakehouse that would run as streaming
-            drift detection, with a low-latency operational store (Lakebase) holding the live alert state.
+            drift detection, with a low-latency operational store (Lakebase) holding the live alert state — the app's
+            Alert Triage queue already runs on exactly that store (on deployments that enable it).
             <span className="text-slate-500"> (CGM accuracy methods are general industry practice — confirm against
             device-specific documentation for a real deployment.)</span>
           </p>
@@ -281,8 +292,9 @@ export default function AboutPage() {
 
         <section>
           <h2 className="text-lg font-semibold mb-2.5 text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Jump to a view</h2>
-          {/* compact icon-left cards (vs tall stacked) so the row tucks into the fold */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* compact icon-left cards (vs tall stacked) so the row tucks into the fold;
+              4 columns on wide screens so the Full Loop card doesn't wrap alone */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {ROLE_CARDS.map((c) => (
               <button key={c.title} onClick={() => navigate(c.route)}
                 className="bg-slate-900/50 border border-slate-800 rounded-lg p-3.5 text-left hover:border-cyan-500/40 transition-colors group flex items-center gap-3">

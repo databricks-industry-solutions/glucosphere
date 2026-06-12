@@ -1,0 +1,8 @@
+command: ["python", "app.py"]
+env:
+  - name: LAKEBASE_ENDPOINT
+    value: "projects/test/branches/production/endpoints/primary"
+  - name: LAKEBASE_HOST
+    value: "ep-divine-fire-d1m4940h.database.us-west-2.cloud.databricks.com"
+  - name: LAKEBASE_DB
+    value: "databricks_postgres"

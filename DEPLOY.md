@@ -163,6 +163,7 @@ Top-level bundle variables (defined in `databricks.yml`):
 | `harness_suffix` | `.env.bundle.<target>` (`BUNDLE_VAR_harness_suffix`) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
 | `existing_warehouse_id` | `.env.bundle.<target>` (optional, `BUNDLE_VAR_existing_warehouse_id`) | `""` | **Reuse** an existing SQL warehouse instead of creating one — for workspaces where the deploy identity lacks SQL-warehouse-create entitlement (e.g. a shared booth). Empty → the target creates its own `glucosphere-warehouse-<target>`. When set, pass the same id to the renderer (`render_app_yaml.py --warehouse-id <id>`) and the target omits the `sql_warehouses` resource. |
 | `mas_endpoint` / `ka_endpoint` / `genie_space_id` | `.env.bundle.<target>` (optional, `BUNDLE_VAR_*`) | `""` | App-assistant agent coords. Normally passed to `render_app_yaml.py` as `--mas-endpoint` / `--ka-endpoint` / `--genie-space-id`; set them here instead for a target that renders from its env file alone (e.g. a reuse/booth target) so render auto-fills `app.yaml` **without** flags. Empty → render leaves `app.yaml`'s value unchanged. The names are Agent-Bricks hex (`databricks serving-endpoints list`); update if the agents are recreated. |
+| `lakebase_project_id` | target `variables:` block (or `BUNDLE_VAR_lakebase_project_id`) | `""` | Lakebase **Autoscaling** project id for the App's OLTP alert-triage store (becomes `projects/<id>`; lowercase/digits/hyphens). When set, the target declares a `postgres_projects` resource **and** the App's `database` postgres binding (both in `databricks.yml`; the binding auto-creates the App SP's PG role + injects `PG*` env vars — note app.yaml's `resources:` section is *not* applied by app deploys), and `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (`--lakebase-project-id` flag also works). Empty → no Lakebase resource, render strips/omits the binding, and the App's triage panel stays hidden (runtime `lakebase_configured` flag). ⚠️ `bundle destroy` on a Lakebase-enabled target **deletes the project incl. its data** (disposable demo state here; footgun note in `databricks.yml`). Currently enabled on `gsphere_fw_v2`. |
 
 `warehouse_id` is **not** a bundle variable. Each create-own target declares
 its own `sql_warehouses.glucosphere_warehouse` resource (defined once via the
@@ -646,7 +647,9 @@ uv run python scripts/teardown_target.py --profile <profile> --suffix _<harness_
 uv run python scripts/teardown_target.py --profile <profile> \
     --names Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min
 
-# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app):
+# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app — and, on
+#    Lakebase-enabled targets, the postgres project INCLUDING ITS ALERT/AUDIT DATA;
+#    disposable demo state here, but see the footgun note in databricks.yml):
 source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-approve
 
 # 3. Unity Catalog schema + its tables/volumes/models (NOT removed by the above; needs a warehouse):
@@ -655,6 +658,18 @@ source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-appr
 
 `bundle destroy` alone does **not** delete the Agent-Bricks tiles/endpoints, the Genie
 space, or any UC tables / volumes / registered models — run steps 1 + 3 too for a clean slate.
+
+**Lakebase drift recovery** (don't CLI/UI-delete a bundle-managed postgres project — `bundle deploy`
+won't recreate it, since deployment state isn't refreshed against the workspace). Deletion is soft;
+to restore (settings, roles, and storage survive):
+
+```bash
+databricks api post /api/2.0/postgres/projects/<project-id>/undelete --profile <profile>
+databricks bundle run glucosphere_app -t <target>    # restart the app to reconnect
+```
+
+Failure signature while the project is gone: the app's queue actions log
+`404 …/api/2.0/postgres/credentials`, and `scripts/smoke_test.py` check 9 fails.
 
 ---
 

@@ -5,6 +5,7 @@ import BrandMark from '../components/BrandMark';
 import CohortFaultPanel from '../components/CohortFaultPanel';
 import { GlucoseAbsoluteChart } from '../components/IncidentCharts';
 import { useGoBack } from '../hooks/useGoBack';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { getPopulationRisk, getCohortAffected, getCohortAffectedBreakdown, getAffectedTotal, getFaultConfusionMatrix } from '../api/databricksSQL';
 
 // Stacked split bar: affected patients per label, segmented by DEVICE-bias direction —
@@ -47,6 +48,7 @@ function SplitBars({ title, dim, rows, max, activeLabel, onSelect }) {
 export default function PopulationRiskPage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
+  const lakebaseConfigured = useLakebaseConfigured();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState([]);
@@ -214,8 +216,15 @@ export default function PopulationRiskPage() {
               <button onClick={() => setOutreachOpen(true)} className="text-xs font-mono px-3 py-2 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors">
                 ✉ Draft patient outreach
               </button>
-              <button onClick={() => navigate('/roadmap')} className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
-                → Send to triage queue <span className="text-slate-500">(Live Alert · wip)</span>
+              {/* Lakebase-configured targets get the REAL queue; others keep the wip
+                  preview pointing at the roadmap (pixel-identical to pre-Lakebase). */}
+              {/* Carries the roster's model filter into the queue (?model=…). Region
+                  can't carry — alerts don't store region — so region-filtered rosters
+                  land on the unfiltered queue. */}
+              <button onClick={() => navigate(lakebaseConfigured ? `/triage${filter?.dim === 'model' ? `?model=${encodeURIComponent(filter.label)}` : ''}` : '/roadmap')}
+                title={lakebaseConfigured ? '"Live Alert" = the workflow — alerts are batch-derived today; streaming ingestion would raise them in real time (see what\'s next).' : undefined}
+                className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
+                → Send to triage queue {lakebaseConfigured ? <span className="text-emerald-300">(Live Alert)</span> : <span className="text-slate-500">(Live Alert · wip)</span>}
               </button>
             </div>
           </div>
@@ -277,7 +286,18 @@ export default function PopulationRiskPage() {
                       className="border-b border-slate-800/50 hover:bg-slate-800/40 cursor-pointer"
                       title="Open this patient in the Diabetes Coach view"
                     >
-                      <td className="py-2 pr-3 text-cyan-300 hover:text-cyan-200">{r.patientId}</td>
+                      <td className="py-2 pr-3 text-cyan-300 hover:text-cyan-200">
+                        {r.patientId}
+                        {/* → this patient's alert in the triage queue (flag-gated);
+                            stopPropagation so it doesn't also open the Coach row-click */}
+                        {lakebaseConfigured && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(r.patientId)}`); }}
+                            className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
+                            title={`Find ${r.patientId} in the Alert Triage queue`}
+                          >⚑ triage</button>
+                        )}
+                      </td>
                       <td className="py-2 pr-3">{r.deviceId}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.deviceModel}</td>
                       <td className="py-2 pr-3 text-slate-400">{r.region}</td>

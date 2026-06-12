@@ -228,6 +228,12 @@ def main() -> int:
                         "bundle-managed warehouse by name. Falls back to the `existing_warehouse_id` "
                         "bundle var, then to by-name discovery. For reuse targets (e.g. the DAIS booth, "
                         "whose identity can't create warehouses) that point at a shared warehouse.")
+    p.add_argument("--lakebase-project-id", default=None,
+                   help="Lakebase Autoscaling project id (else `lakebase_project_id` bundle var). "
+                        "When set, renders the LAKEBASE_ENDPOINT env (the credential-mint "
+                        "coordinate); when empty it's stripped/omitted so targets without a "
+                        "Lakebase project deploy unchanged. The `database` postgres binding "
+                        "itself is bundle-declared (databricks.yml app resource), not rendered here.")
     args = p.parse_args()
 
     vars_ = get_bundle_vars(args.target, args.profile)
@@ -251,6 +257,7 @@ def main() -> int:
     mas_endpoint = args.mas_endpoint or vars_.get("mas_endpoint") or ""
     ka_endpoint = args.ka_endpoint or vars_.get("ka_endpoint") or ""
     genie_space_id = args.genie_space_id or vars_.get("genie_space_id") or ""
+    lakebase_project_id = args.lakebase_project_id or vars_.get("lakebase_project_id") or ""
 
     print(f"Rendering {APP_YAML.relative_to(REPO_ROOT)} for target={args.target}:")
     print(f"  catalog        = {catalog}")
@@ -262,6 +269,7 @@ def main() -> int:
     print(f"  mas-endpoint   = {mas_endpoint or '(unchanged)'}")
     print(f"  ka-endpoint    = {ka_endpoint or '(unchanged)'}")
     print(f"  genie-space-id = {genie_space_id or '(unchanged)'}")
+    print(f"  lakebase-proj  = {lakebase_project_id or '(not configured — LAKEBASE_ENDPOINT omitted)'}")
 
     if not APP_YAML.exists():
         print(f"[FATAL] {APP_YAML} not found", file=sys.stderr)
@@ -331,6 +339,39 @@ def main() -> int:
         content = patch(content,
             r'(- name: genie-space\b[\s\S]*?genie_space:\s+id: )\S+',
             rf'\g<1>{genie_space_id}', "resource genie-space.id")
+
+    # Lakebase (Autoscaling) — OPTIONAL, marker-rendered LAKEBASE_ENDPOINT env.
+    # NOTE the binding itself is NOT rendered here: app.yaml's `resources:` section
+    # is not applied by app deploys (verified 2026-06-12 — the prod app object
+    # carries 0 resources), so the `database` postgres binding is declared on the
+    # bundle's App resource in databricks.yml (gsphere_fw_v2 target). That binding
+    # auto-creates the App SP's PG role + injects PGHOST/PGUSER/PGDATABASE.
+    # This env var is the credential-mint coordinate: the app POSTs
+    # /api/2.0/postgres/credentials {"endpoint": LAKEBASE_ENDPOINT} for a ~1h
+    # token used as the PG password (lakebase.py). No password is ever rendered.
+    # Strip-then-append keeps re-renders idempotent; empty project id → omitted.
+    content = re.sub(
+        r'\n  # --- lakebase env \(rendered by render_app_yaml\.py\) ---[\s\S]*?  # --- /lakebase env ---\n',
+        '\n', content)
+    content = re.sub(
+        r'\n  # --- lakebase resource \(rendered by render_app_yaml\.py\) ---[\s\S]*?  # --- /lakebase resource ---\n?',
+        '\n', content)  # legacy: strip the inert resource block from older renders
+    if lakebase_project_id:
+        branch = f"projects/{lakebase_project_id}/branches/production"
+        env_block = (
+            "  # --- lakebase env (rendered by render_app_yaml.py) ---\n"
+            "  # Endpoint path for the PG-credential mint (token = the PG password, ~1h\n"
+            "  # expiry → app refreshes). PGHOST/PGUSER/PGDATABASE are injected by the\n"
+            "  # bundle-declared `database` postgres binding (databricks.yml app resource);\n"
+            "  # PGPASSWORD never is, by design.\n"
+            "  - name: LAKEBASE_ENDPOINT\n"
+            f"    value: \"{branch}/endpoints/primary\"\n"
+            "  # --- /lakebase env ---\n"
+        )
+        content = content.replace("\nresources:", "\n" + env_block + "resources:", 1)
+        print(f"  [ok]   lakebase: LAKEBASE_ENDPOINT rendered (projects/{lakebase_project_id}; binding = databricks.yml app resource)")
+    else:
+        print("  [ok]   lakebase: not configured — LAKEBASE_ENDPOINT omitted")
 
     APP_YAML.write_text(content)
     print(f"Wrote {APP_YAML.relative_to(REPO_ROOT)}")

@@ -6,12 +6,14 @@ import FirmwareLifecycleChart from '../components/FirmwareLifecycleChart';
 import CalibrationDriftPanel from '../components/CalibrationDriftPanel';
 import { getFirmwareLifecycle, getFirmwareImpact } from '../api/databricksSQL';
 import { useGoBack } from '../hooks/useGoBack';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
 
 // ② Diagnose — trace a fleet-wide accuracy spike to the device firmware at fault,
 // then hand off to ACT: who was faulted on that firmware + flag it for rollback.
 export default function FirmwareLifecyclePage() {
   const navigate = useNavigate();
   const goBack = useGoBack();
+  const lakebaseConfigured = useLakebaseConfigured();
   const [data, setData] = useState([]);
   const [impact, setImpact] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -135,11 +137,16 @@ export default function FirmwareLifecyclePage() {
                           <> · <span className="text-slate-200 font-mono">{f.impact.affectedPatients.toLocaleString()}</span> patients <span className="text-slate-500">(1 device each)</span> faulted — recall / outreach list</>
                         )}
                       </div>
+                      {/* Lakebase-configured targets land in the REAL triage queue;
+                          others keep the wip preview pointing at the roadmap. */}
+                      {/* Carries THIS firmware into the queue (?fw=…) so the operator
+                          lands on exactly the rollback cohort. */}
                       <button
-                        onClick={() => navigate('/roadmap')}
+                        onClick={() => navigate(lakebaseConfigured ? `/triage?fw=${encodeURIComponent(f.fw)}` : '/roadmap')}
+                        title={lakebaseConfigured ? `Open the triage queue filtered to FW ${f.fw}. "Live Alert" = the workflow — alerts are batch-derived today; streaming ingestion would raise them in real time (see what's next).` : undefined}
                         className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors shrink-0"
                       >
-                        → Flag FW {f.fw} for rollback <span className="text-slate-500">(Live Alert · wip)</span>
+                        → Flag FW {f.fw} for rollback {lakebaseConfigured ? <span className="text-emerald-300">(Live Alert)</span> : <span className="text-slate-500">(Live Alert · wip)</span>}
                       </button>
                     </div>
                   ))}

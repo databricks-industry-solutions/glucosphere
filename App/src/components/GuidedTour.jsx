@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TOUR_STEPS, TOUR_STEPS_FULL, TOUR_STEPS_INTERACTIVE } from '../tour/steps';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
@@ -34,9 +35,17 @@ export default function GuidedTour() {
     return () => window.removeEventListener('glucosphere:assistant-state', onState);
   }, []);
 
-  const steps = variant === 'full' ? TOUR_STEPS_FULL
-    : variant === 'interactive' ? TOUR_STEPS_INTERACTIVE
-    : TOUR_STEPS;
+  // Lakebase-gated stops (requiresLakebase) are filtered out on deploys without
+  // the binding — their /triage target shows a "not enabled" panel there, so
+  // there'd be nothing to spotlight. The chooser counts use the same arrays.
+  const lakebaseConfigured = useLakebaseConfigured();
+  const gate = (arr) => arr.filter(s => !s.requiresLakebase || lakebaseConfigured);
+  const quickSteps = gate(TOUR_STEPS);
+  const fullSteps = gate(TOUR_STEPS_FULL);
+  const interactiveSteps = gate(TOUR_STEPS_INTERACTIVE);
+  const steps = variant === 'full' ? fullSteps
+    : variant === 'interactive' ? interactiveSteps
+    : quickSteps;
   const step = variant ? steps[i] : null;
 
   // Ensure we're on the right route for this step.
@@ -140,19 +149,19 @@ export default function GuidedTour() {
             <button onClick={() => { setVariant('quick'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Quick overview
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess → platform</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{quickSteps.length} steps · Detect → Diagnose → Assess{lakebaseConfigured ? ' → Act' : ''} → platform</span>
             </button>
             {/* Full walkthrough commented out for now: the Interactive variant is Full + pause-to-try
                 + the metrics/about close, so it subsumes Full. Un-comment to restore the read-only path. */}
             {/* <button onClick={() => { setVariant('full'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Full walkthrough
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_FULL.length} steps · every panel + AI assistant</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{fullSteps.length} steps · every panel + AI assistant</span>
             </button> */}
             <button onClick={() => { setVariant('interactive'); setI(0); }}
               className="px-3 py-2.5 text-sm text-amber-300 border border-amber-500/50 rounded-lg hover:bg-amber-500/10 text-left">
               Interactive walkthrough
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_INTERACTIVE.length} steps · pause any step to try it, then resume</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{interactiveSteps.length} steps · pause any step to try it, then resume</span>
             </button>
           </div>
           <button onClick={close} className="mt-3 text-xs text-slate-500 hover:text-slate-300">Skip</button>

@@ -1,2 +1,6 @@
 flask==3.1.3
 requests==2.33.0
+# Lakebase (Alert Triage OLTP) — psycopg is NOT pre-installed in the Apps runtime.
+# Imported lazily (lakebase.get_conn) and exercised only on Lakebase-configured
+# targets; installed everywhere so one requirements file serves all targets.
+psycopg[binary]>=3.1

@@ -178,6 +178,21 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 
 ## Key Features
 
+The app's information architecture follows the demo's operational story — **detect →
+diagnose → assess → act** — with one surface per move, so navigation mirrors how a fleet
+operator would actually work an incident:
+
+| Move | Surface | Question it answers |
+|---|---|---|
+| **① Detect** | Landing (control tower) · Device Support (firmware × day heatmap) | *Is something wrong, and where?* |
+| **② Diagnose** | Firmware Lifecycle | *Which firmware, which direction, how bad?* |
+| **③ Assess** | Population Risk | *Who got pushed into danger — what's the blast radius?* |
+| **→ Act** | Diabetes Coach (per-patient) · Alert Triage (fleet queue, Lakebase-backed; shown only when the deploy target configures Lakebase) | *Intervene: outreach one patient / work the alert queue* |
+
+New views slot into this spine as their own page rather than growing an existing one —
+cross-page deep-links (e.g. Population Risk → "send to triage", Firmware → "flag for
+rollback") carry the operator between moves.
+
 ### Landing Page
 - **Active Patients**: Real-time count from gold table
 - **Devices Online**: Devices with recent readings
@@ -191,12 +206,43 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 - **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
 ### Firmware Lifecycle
-- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~3-hour fault isn't diluted by a whole-day average
+- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~12-hour fault isn't diluted by a whole-day average
 - **Calibration drift panel**: per-firmware over-/under-read direction and magnitude, with a deep-link to the affected cohort on Population Risk
 
 ### Population Risk
 - **Cohort exposure → fault classification**: each cohort's device-reported %hypo/%hyper bars sit above an aligned 3×3 confusion matrix (Under-read · Baseline-control · Over-read), normalizable by share-of-all (default) or per-true-band — separating what the device *reported* from what was *truly* happening during the fault window
 - **Affected-patient roster**: the worst-N firmware-recall-cohort patients ranked by clinical burden (filterable by region / device model), each deep-linking to the Diabetes Coach
+
+### Alert Triage (Lakebase — flag-gated)
+- **Live alert queue** (`/triage`): the affected cohort as actionable alerts — **acknowledge / assign /
+  resolve** (resolution-outcome menu incl. "not a device issue" and EMS escalation), free-text **notes**,
+  **fingerstick follow-up** requests, and **bulk actions** over the filtered set (e.g. one "firmware rolled
+  back" resolves a whole cohort) — every action appends an **audit row** (the recall's compliance trail)
+- **Scenario vantages**: full week / Day-2 rollout / Day-5 hotfix fault / **last-3h live-risk view**
+  (readings-only detection — no incident labels, the production-realistic path)
+- Backed by **Lakebase** (managed Postgres, Autoscaling): the dashboards read the lakehouse; the queue is
+  the app's **transactional write path**. Enabled per deploy target via the `lakebase_project_id` bundle
+  variable (see `DEPLOY.md`); targets without it render the pre-Lakebase UI unchanged
+
+**Operational notes (Lakebase):**
+- **Division of labor** — the **Asset Bundle provisions the infrastructure** (the `postgres_projects`
+  resource + the app's `postgres` resource binding, which auto-creates the app service principal's PG role
+  and injects `PGHOST`/`PGUSER`/`PGDATABASE`); the **app bootstraps its own schema at runtime**
+  (`App/databricks/lakebase.py`, idempotent on first DB touch). The schema can't move to deploy time:
+  its objects must be **owned by the app SP's role**, an identity only the app runs as.
+- **Tables live in the app-owned `triage` schema** (`triage.alerts`, `triage.alert_audit`) — not `public`
+  (PG 15+ denies CREATE there). The bootstrap GRANTs **read-only** visibility (`USAGE` + `SELECT`) to
+  other database roles so operators can browse/query from the workspace SQL editor; writes remain the
+  app's alone.
+- **Auth**: no password is stored or injected — the app mints short-lived OAuth tokens
+  (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
+- The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
+  (`psycopg`).
+- **Drift warning**: `bundle deploy` does **not** recreate an externally-deleted project (the deployment
+  state isn't refreshed against the workspace). Lakebase deletion is soft — restore with
+  `POST /api/2.0/postgres/projects/<project-id>/undelete` (settings, roles, and storage survive), then
+  restart the app. Failure signature while the project is gone: queue actions return
+  `404 …/postgres/credentials`.
 
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)

@@ -1,19 +1,31 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
 
-// The pitch trio (detect · diagnose · assess). ② Diagnose + ③ Assess are now
-// LIVE views (link out); ① Detect (Live Alert & Triage) stays a preview — it's
-// the Lakebase-backed one (wip). Pure card grid; framing supplied by RoadmapPage.
+// The pitch trio (detect · diagnose · assess). ② Diagnose + ③ Assess are
+// LIVE views (link out); ① Detect (Live Alert & Triage) is the Lakebase-backed
+// one — LIVE on targets with the Lakebase binding, preview elsewhere.
+// Pure card grid; framing supplied by RoadmapPage.
 // Explicit per-card classes (no interpolation) so Tailwind's purge keeps them.
 export default function SplashGallery() {
+  const lakebaseConfigured = useLakebaseConfigured();
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-      {/* ① Detect — preview (Lakebase-backed, wip) */}
-      <div className="border border-dashed border-cyan-500/30 rounded-lg p-5 bg-slate-900/30 h-full flex flex-col">
-        <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">PREVIEW · ① DETECT</span>
-        <h3 className="text-base font-semibold text-slate-200 mt-3" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live Alert &amp; Triage</h3>
-        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">Monitoring raises alerts — a cohort drifting vs its pre-rollout / peer-firmware baseline (fingerstick-corroborated) → acknowledge / assign, audit trail (Lakebase-backed — wip).</p>
-      </div>
+      {/* ① Detect — LIVE when Lakebase is configured for this target; preview otherwise */}
+      {lakebaseConfigured ? (
+        <Link to="/triage" className="group border border-cyan-500/40 rounded-lg p-5 bg-slate-900/30 hover:bg-slate-900/60 hover:border-cyan-400/70 transition-colors flex flex-col h-full">
+          <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/40">● LIVE · ① DETECT</span>
+          <h3 className="text-base font-semibold text-slate-200 mt-3" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live Alert &amp; Triage</h3>
+          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">The affected cohort lands as a live alert queue — acknowledge / assign / resolve with an audit trail (Lakebase-backed Postgres, the app's transactional write path).</p>
+          <span className="text-xs text-cyan-300 font-mono mt-auto pt-3 inline-block group-hover:translate-x-0.5 transition-transform">Open queue →</span>
+        </Link>
+      ) : (
+        <div className="border border-dashed border-cyan-500/30 rounded-lg p-5 bg-slate-900/30 h-full flex flex-col">
+          <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">PREVIEW · ① DETECT</span>
+          <h3 className="text-base font-semibold text-slate-200 mt-3" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live Alert &amp; Triage</h3>
+          <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">Monitoring raises alerts — a cohort drifting vs its pre-rollout / peer-firmware baseline (fingerstick-corroborated) → acknowledge / assign, audit trail (Lakebase-backed — wip).</p>
+        </div>
+      )}
 
       {/* ② Diagnose — LIVE */}
       <Link to="/firmware-lifecycle" className="group border border-amber-500/40 rounded-lg p-5 bg-slate-900/30 hover:bg-slate-900/60 hover:border-amber-400/70 transition-colors flex flex-col h-full">
