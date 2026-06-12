@@ -389,6 +389,12 @@ uv run python scripts/render_app_yaml.py \
 databricks bundle deploy -t <target> --profile <profile>
 ```
 
+> **Lakebase needs nothing here.** Unlike the KA/MAS/Genie ids (job outputs you must
+> capture), `LAKEBASE_ENDPOINT` auto-fills on **every** render from the target's
+> `lakebase_project_id` bundle variable — no flag, no log-capture (a `--lakebase-project-id`
+> override exists but is never needed in the standard flow). Targets without the variable
+> get no `LAKEBASE_ENDPOINT` and the app hides the triage feature.
+
 On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the existing KA/MAS/Genie by name, so **the IDs themselves don't change**. Whether you must re-run this render step on a later deploy depends on how you treat `app.yaml`:
 
 - **If you commit the rendered `app.yaml`** — the IDs persist in it, so later deploys ship them as-is and Step 8 is only needed on the first deploy.
