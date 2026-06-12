@@ -332,11 +332,16 @@ export async function getPatientDetail(patientId) {
   // on it) loads noticeably faster. Uniform sampling keeps the x-axis time-accurate; the
   // incident's masked-severity divergence is a flat ±40 offset, so 15-min spacing (≈12
   // points across the 3h window) still shows it clearly.
+  // …PLUS the patient's very latest reading regardless of grid alignment: the %15
+  // sample can drop the final 5-/10-min points, hiding a fast move (e.g. a hypo
+  // rebound 51→64 in the last 10 min) and making the batch forecast's anchor look
+  // detached from the chart tail (booth catch 2026-06-12).
   const seriesQ = `
     SELECT time, glucose_observed, glucose_true, incident_start_time, incident_end_time, incident_direction
     FROM ${inc}
     WHERE patient_id = '${id}'
-      AND MINUTE(time) % 15 = 0
+      AND (MINUTE(time) % 15 = 0
+           OR time = (SELECT MAX(time) FROM ${inc} WHERE patient_id = '${id}'))
     ORDER BY time`;
   // Device-fault incident summary (in-incident window): bias direction + true-vs-observed.
   // Powers the "masked severity" alert — under-read (negative) device on a patient whose

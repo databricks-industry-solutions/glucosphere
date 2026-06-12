@@ -725,7 +725,8 @@ Error generating stack: `+l.message+`
     SELECT time, glucose_observed, glucose_true, incident_start_time, incident_end_time, incident_direction
     FROM ${o}
     WHERE patient_id = '${r}'
-      AND MINUTE(time) % 15 = 0
+      AND (MINUTE(time) % 15 = 0
+           OR time = (SELECT MAX(time) FROM ${o} WHERE patient_id = '${r}'))
     ORDER BY time`,p=`
     SELECT incident_direction,
       ROUND(AVG(glucose_true), 0) as true_mean,
