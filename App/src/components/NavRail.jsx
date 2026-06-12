@@ -14,9 +14,10 @@ const ROLES = [
 ];
 const MORE = [
   { to: '/metrics-explained', icon: BookOpen, label: 'Metrics Explained', sub: 'How metrics compute' },
-  // label/sub inverted vs the page header: the rail is ~224px, so the long arc
-  // line rides the smaller sub font and the short phrase carries the label.
-  { to: '/roadmap', icon: Telescope, label: 'How it comes together', sub: 'Detect·Diagnose·Assess' },
+  // "The Full Loop" echoes the demo's closed-loop language (About: "Governed,
+  // closed-loop, Databricks-native") — and the loop literally closes now that
+  // triage writes back. The arc rides the smaller sub font (rail is ~224px).
+  { to: '/roadmap', icon: Telescope, label: 'The Full Loop', sub: 'Detect·Diagnose·Assess' },
   { to: '/about', icon: Info, label: 'About', sub: 'Naming · data · repo' },
 ];
 
