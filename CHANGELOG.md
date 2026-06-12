@@ -143,7 +143,8 @@ to before (wip labels intact).
   Reset/Refresh opens a 2-step dropdown — "1 · Copy the query" (alerts ⋈ audit-trail,
   newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
   seeing your own ack/assign/note actions as Postgres rows. Readable by any viewer thanks
-  to the bootstrap's read grants. (First shipped as an inline honest-note link — too
+  to the bootstrap's read grants. All three tour variants' Triage stops teach the
+  verification loop (the Interactive try-it leads with Ack → Peek → row appears). (First shipped as an inline honest-note link — too
   buried; promoted to a button the same day.) The dropdown also offers **"Peek right
   here ↓"** — an in-page panel (`GET /api/alerts/raw`) rendering the exact SQL + its live
   result right under the queue, refetching on every queue action: click Ack above, watch
