@@ -122,6 +122,13 @@ to before (wip labels intact).
   physiological risk from device-fault fallout at a glance; a per-row **Queue column**
   identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
   "—" = looks physiological).
+- **The Triage page remembers where you were** (booth catch): the booth loop detours
+  through Coach / Device-Support and returns — and every return landed on the cold
+  retrospective-week defaults. The whole view state (scenario, status tab, fault/model/fw
+  filters, search, sort) now persists per tab (sessionStorage); explicit deep-link params
+  still win, a queue-targeting deep-link overrides a remembered live view, and a fresh tab
+  gets fresh defaults. The scenario presets now apply on *change* only (the mount run used
+  to clobber the restored fault filter). The jump breadcrumb persists the same way.
 - **Watchlist→queue jump breadcrumb** (booth catch): clicking "⚑ open alert" in the live
   view flips the scenario to the retrospective queue (the queue only exists there), but
   the flip was silent and read as "my filters got reset". The jump now leaves an amber

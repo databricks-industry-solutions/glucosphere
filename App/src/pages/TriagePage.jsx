@@ -199,17 +199,33 @@ export default function TriagePage() {
   const configured = useLakebaseConfigured();
   const [searchParams] = useSearchParams();
   const [data, setData] = useState({ alerts: [], counts: {} });
-  const [filter, setFilter] = useState('open');          // status tab — client-side (we fetch all statuses once)
+  // THE PAGE REMEMBERS WHERE YOU WERE (per tab): the booth loop detours through
+  // Coach / Device-Support and returns — landing on cold defaults every time read
+  // as "my filters got reset" (booth 2026-06-12). View state persists to
+  // sessionStorage; explicit URL params (deep-links) take precedence, and a
+  // queue-targeting deep-link (?q/?fault/?model/?fw) overrides a remembered live
+  // view (those links point at queue rows). Fresh tab = fresh defaults.
+  const persisted = (() => {
+    try { return JSON.parse(sessionStorage.getItem('triageView')) || {}; } catch { return {}; }
+  })();
+  const hasQueueParams = ['q', 'fault', 'model', 'fw'].some((k) => searchParams.get(k));
+  const [filter, setFilter] = useState(persisted.filter || 'open');  // status tab — client-side (we fetch all statuses once)
   // Deep-links carry their context: Population Risk passes ?model=, Firmware
   // passes ?fw=, anything can pass ?fault= / ?q=. (Alerts carry no region, so a
   // region-filtered roster lands unfiltered.)
-  const [search, setSearch] = useState(searchParams.get('q') || '');
-  const [faultFilter, setFaultFilter] = useState(searchParams.get('fault') || 'all');
-  const [modelFilter, setModelFilter] = useState(searchParams.get('model') || 'all');
-  const [fwFilter, setFwFilter] = useState(searchParams.get('fw') || 'all');
-  const [scenario, setScenario] = useState('week');
+  const [search, setSearch] = useState(searchParams.get('q') || (hasQueueParams ? '' : persisted.search) || '');
+  const [faultFilter, setFaultFilter] = useState(searchParams.get('fault') || (hasQueueParams ? 'all' : persisted.faultFilter) || 'all');
+  const [modelFilter, setModelFilter] = useState(searchParams.get('model') || (hasQueueParams ? 'all' : persisted.modelFilter) || 'all');
+  const [fwFilter, setFwFilter] = useState(searchParams.get('fw') || (hasQueueParams ? 'all' : persisted.fwFilter) || 'all');
+  const [scenario, setScenario] = useState(hasQueueParams && persisted.scenario === 'last3h' ? 'week' : (persisted.scenario || 'week'));
   const [watchlist, setWatchlist] = useState(null);       // last3h scenario rows
-  const [sortBy, setSortBy] = useState('severity');       // severity | patient | updated
+  const [sortBy, setSortBy] = useState(persisted.sortBy || 'severity');  // severity | patient | updated
+  // Persist on every view-state change (cheap; per-tab).
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('triageView', JSON.stringify({ scenario, filter, faultFilter, modelFilter, fwFilter, search, sortBy }));
+    } catch { /* private mode — page just won't remember */ }
+  }, [scenario, filter, faultFilter, modelFilter, fwFilter, search, sortBy]);
   const [allModels, setAllModels] = useState([]);         // registry SSOT — incl. clean controls
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -232,7 +248,18 @@ export default function TriagePage() {
   useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels).catch(() => {}); }, [configured]);
   // Scenario vantage: day presets force the matching fault filter; the last-3h
   // live view lazily fetches the watchlist (readings-only — no incident labels).
+  const scenarioMounted = React.useRef(false);
   useEffect(() => {
+    // Skip the mount run: scenario presets apply on CHANGE only — running on
+    // mount would clobber the restored/deep-linked fault filter (the persisted
+    // 'week' view would force fault back to 'all').
+    if (!scenarioMounted.current) {
+      scenarioMounted.current = true;
+      if (scenario === 'last3h' && watchlist === null) {
+        getLiveRiskWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
+      }
+      return;
+    }
     const s = SCENARIOS[scenario];
     if (s?.fault) setFaultFilter(s.fault);
     if (scenario === 'week') setFaultFilter('all');
@@ -321,7 +348,20 @@ ORDER BY u.at DESC LIMIT 20;`;
   // necessary (the queue only exists in queue views) but was SILENT — confusing
   // (booth 2026-06-12). The jump now leaves a visible banner with a one-click
   // return that restores the live view + its filters.
-  const [jumpCtx, setJumpCtx] = useState(null); // { patient, search, modelFilter }
+  // Persisted in sessionStorage: the booth loop often detours through Coach /
+  // Device-Support and returns via their ⚑ buttons — a state-only breadcrumb
+  // unmounted with the page and the return landed cold on the week default
+  // (booth catch 2026-06-12). sessionStorage = per-tab, survives navigation.
+  const [jumpCtx, setJumpCtxState] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('triageJumpCtx')) || null; } catch { return null; }
+  }); // { patient, search, modelFilter }
+  const setJumpCtx = (ctx) => {
+    setJumpCtxState(ctx);
+    try {
+      if (ctx) sessionStorage.setItem('triageJumpCtx', JSON.stringify(ctx));
+      else sessionStorage.removeItem('triageJumpCtx');
+    } catch { /* private-mode etc. — banner just won't survive navigation */ }
+  };
   const [raw, setRaw] = useState(null);
   useEffect(() => {
     if (rawOpen) fetchRawRows().then(setRaw).catch(() => setRaw({ error: true }));
