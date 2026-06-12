@@ -257,6 +257,10 @@ card never ends the tour (Skip/Done are the explicit exits).
   (alert rows are disposable demo state).
 - **Auth**: no password is stored or injected — the app mints short-lived OAuth tokens
   (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
+- **Archive-on-reset**: ⟲ Reset demo snapshots the session (alerts ⋈ audit) to the Delta table
+  `<catalog>.<schema>.triage_session_archive` before truncating Postgres — sessions stay
+  queryable in UC; rolling 30-day retention; archive failure aborts the reset. Needs the app
+  SP's `CREATE TABLE` on the schema (granted by `scripts/grant_app_sp.py` / the `09` task).
 - The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
   (`psycopg`).
 - **Drift warning**: `bundle deploy` does **not** recreate an externally-deleted project (the deployment

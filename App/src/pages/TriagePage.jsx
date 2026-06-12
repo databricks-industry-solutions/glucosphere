@@ -242,6 +242,7 @@ export default function TriagePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');  // transient success note (e.g. reset archived → UC)
 
   // Fetch ALL statuses once (600-alert demo scale; server caps at 1000) so the
   // status tabs AND the header counts can both react client-side to the active
@@ -392,7 +393,9 @@ ORDER BY u.at DESC LIMIT 20;`;
     if (!resetArmed) { setResetArmed(true); setTimeout(() => setResetArmed(false), 4000); return; }
     setResetArmed(false);
     try {
-      setBusy(true); setError(''); await resetAlerts();
+      setBusy(true); setError('');
+      const res = await resetAlerts();
+      if (res?.archived) setNotice(res);  // { archived, reset_id, archive_table }
       // "Reset demo" = fresh booth state: the DATA is truncated+reseeded, so the
       // VIEW resets too — sticky filters would otherwise keep narrowing the fresh
       // 600 to the previous visitor's slice (booth catch 2026-06-12).
@@ -707,6 +710,17 @@ ORDER BY u.at DESC LIMIT 20;`;
               )}
 
               {error && <p className="text-xs font-mono text-rose-300 mb-3">⚠ {error}</p>}
+              {notice && (
+                <p className="text-xs font-mono text-emerald-300 mb-3">
+                  ✓ session archived to UC:{' '}
+                  <a href={`${workspaceHost}/explore/data/${notice.archive_table.split('.').join('/')}`} target="_blank" rel="noreferrer"
+                    className="underline decoration-dotted hover:text-emerald-200"
+                    title="Open the archive table in Unity Catalog — every reset appends this session's audit trail (rolling 30-day retention)">
+                    {notice.archive_table}
+                  </a>{' '}({notice.archived} audit rows · reset_id {notice.reset_id}) — queryable from the lakehouse
+                  <button onClick={() => setNotice('')} className="text-slate-500 hover:text-slate-300 ml-2">✕</button>
+                </p>
+              )}
 
               {scenario === 'last3h' ? (
                 /* Live risk watchlist — readings-only detection (no incident labels),

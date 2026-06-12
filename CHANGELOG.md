@@ -164,6 +164,18 @@ to before (wip labels intact).
   step — the fast-forward after a wrong turn); the pause button gains a hint that the amber
   **▶ Resume tour** pill stays on screen during explore.
 
+### Added — archive-on-reset: triage sessions land in UC (Delta)
+- **⟲ Reset demo now archives before it truncates**: the full alerts ⋈ audit state snapshots
+  to **`<catalog>.<schema>.triage_session_archive`** (Delta; one row per audit entry, tagged
+  `reset_id` + `archived_at`) via the Statement Execution API — every booth session's triage
+  work stays queryable from the lakehouse after the wipe. Archive failure **aborts the
+  reset** (preservation first). The success note in the UI deep-links to the UC table.
+  Rolling 30-day retention keeps it bounded (full cleanup = `DROP TABLE …`). The app SP
+  CREATEs + owns the table — new `GRANT CREATE TABLE ON SCHEMA` in `grant_app_sp.py` and the
+  `09` grant task. Closes the OLTP→lakehouse loop the roadmap promised (UC catalog
+  registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
+  then 600 fresh alerts reseeded.
+
 ### Changed — booth-polish round-up (same day, late)
 - **Reset demo resets the view too**: clears the patient search + jump breadcrumb and strips
   URL deep-link params (sticky filters made a completed reset look like a hang).

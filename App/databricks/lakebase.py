@@ -329,6 +329,16 @@ def raw_audit(limit: int = 12):
     return {'sql': RAW_AUDIT_SQL % 'N', 'rows': rows}
 
 
+def dump_all():
+    """Every alert ⋈ audit row (no limit) — the reset-time archive payload."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT a.patient_id, a.device_id, a.device_model, a.firmware, a.alert_type, "
+            "a.severity, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at "
+            "FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id) ORDER BY u.at")
+        return cur.fetchall()
+
+
 def reset_alerts():
     """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
