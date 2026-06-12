@@ -3,9 +3,9 @@ import { ArrowLeft, BellRing, ChevronDown, ChevronRight, Database } from 'lucide
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { fetchAlerts, alertAction, seedAlerts, resetAlerts } from '../api/triage';
-import { getAllDeviceModels } from '../api/databricksSQL';
+import { getAllDeviceModels, getLiveRiskWatchlist } from '../api/databricksSQL';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
 // resolve + an audit trail, backed by Lakebase (Postgres OLTP) — the app's only
@@ -50,10 +50,12 @@ function AlertRow({ alert, onAction, busy }) {
         <td className="p-2 text-right whitespace-nowrap">
           {alert.status === 'open' && (
             <button disabled={busy} onClick={() => onAction(alert.alert_id, 'ack')}
+              title={'Acknowledge — "seen, being worked": claims the alert (status → acked) and writes an audit row. Next: assign a technician (expand the row).'}
               className="text-[11px] font-mono px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 mr-1.5">Ack</button>
           )}
           {alert.status !== 'resolved' && (
             <button disabled={busy} onClick={() => onAction(alert.alert_id, 'resolve')}
+              title={'Resolve — the fix landed: e.g. firmware rolled back / device swapped / patient advised to fingerstick-verify. Closes the alert (status → resolved) + audit row — the trail is the recall\'s compliance record.'}
               className="text-[11px] font-mono px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Resolve</button>
           )}
         </td>
@@ -89,14 +91,35 @@ function AlertRow({ alert, onAction, busy }) {
   );
 }
 
+// Scenario vantages — re-frame the same queue as a point in the incident story.
+// 'last3h' swaps the queue for the live-risk watchlist (no incident labels —
+// detection from readings alone, the production-realistic view).
+const SCENARIOS = {
+  week: { label: '📅 Full week (retrospective)', fault: null,
+    prose: null },
+  day2: { label: '🚨 Day 2 — during the 4.0 rollout', fault: 'over-read',
+    prose: <>It's <span className="text-slate-300">Day 2, 14:00</span> — the fleet monitor just flagged <span className="text-rose-300">FW 4.0</span>: ~300 Alpha/Gamma devices reading <span className="text-rose-300">falsely HIGH</span> (over-read → false alarms). Work the queue.</> },
+  day5: { label: '🚨 Day 5 — during the 4.0.3 hotfix fault', fault: 'under-read',
+    prose: <>It's <span className="text-slate-300">Day 5, 10:00</span> — the hotfix <span className="text-sky-300">4.0.3</span> overcorrected: ~300 Beta/Delta devices reading <span className="text-sky-300">falsely LOW</span> (under-read → <span className="text-rose-300">masked real highs</span>). These are the dangerous ones.</> },
+  last3h: { label: '⏱ Last 3h — live risk view', fault: null,
+    prose: <>The <span className="text-slate-300">last 3 hours</span> of data, detected from the readings alone (<span className="font-mono">&lt;54 / &gt;250 mg/dL</span> — the High-Risk tile's bands). <span className="text-slate-300">No incident labels</span> — this is how a real fleet sees it; labels exist only because the demo simulates ground truth.</> },
+};
+
 export default function TriagePage() {
   const goBack = useGoBack();
   const configured = useLakebaseConfigured();
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState({ alerts: [], counts: {} });
   const [filter, setFilter] = useState('open');          // status — server-side
-  const [search, setSearch] = useState('');               // patient/device — client-side
-  const [faultFilter, setFaultFilter] = useState('all');  // over/under — client-side
-  const [modelFilter, setModelFilter] = useState('all');  // device model — client-side
+  // Deep-links carry their context: Population Risk passes ?model=, Firmware
+  // passes ?fw=, anything can pass ?fault= / ?q=. (Alerts carry no region, so a
+  // region-filtered roster lands unfiltered.)
+  const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [faultFilter, setFaultFilter] = useState(searchParams.get('fault') || 'all');
+  const [modelFilter, setModelFilter] = useState(searchParams.get('model') || 'all');
+  const [fwFilter, setFwFilter] = useState(searchParams.get('fw') || 'all');
+  const [scenario, setScenario] = useState('week');
+  const [watchlist, setWatchlist] = useState(null);       // last3h scenario rows
   const [sortBy, setSortBy] = useState('severity');       // severity | patient | updated
   const [allModels, setAllModels] = useState([]);         // registry SSOT — incl. clean controls
   const [loading, setLoading] = useState(true);
@@ -114,6 +137,25 @@ export default function TriagePage() {
   useEffect(() => { if (configured) load(filter); }, [configured, filter, load]);
   // Full model roster (incl. Epsilon/Zeta clean controls) — once, from the registry SSOT.
   useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels).catch(() => {}); }, [configured]);
+  // Scenario vantage: day presets force the matching fault filter; the last-3h
+  // live view lazily fetches the watchlist (readings-only — no incident labels).
+  useEffect(() => {
+    const s = SCENARIOS[scenario];
+    if (s?.fault) setFaultFilter(s.fault);
+    if (scenario === 'week') setFaultFilter('all');
+    if (scenario === 'last3h' && watchlist === null) {
+      getLiveRiskWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
+    }
+  }, [scenario]); // eslint-disable-line react-hooks/exhaustive-deps
+  // If the fault filter strands the selected model (e.g. Alpha under under-read),
+  // fall back to 'all' — the dropdown also greys those options out dynamically.
+  useEffect(() => {
+    if (modelFilter === 'all') return;
+    const avail = new Set((data.alerts || [])
+      .filter(a => faultFilter === 'all' || a.alert_type === faultFilter)
+      .map(a => a.device_model));
+    if (!avail.has(modelFilter)) setModelFilter('all');
+  }, [faultFilter, data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onAction = async (id, action, assignee = null) => {
     try { setBusy(true); await alertAction(id, action, assignee); await load(filter); }
@@ -142,6 +184,15 @@ export default function TriagePage() {
 
   // Client-side refinement over the loaded queue (status is already server-filtered).
   const affectedModels = new Set((data.alerts || []).map(a => a.device_model).filter(Boolean));
+  // Models with rows under the ACTIVE view — drives dynamic greying (e.g. Alpha is
+  // over-read-only, so it disables while ↓ under-read is selected). In the last-3h
+  // scenario availability comes from the watchlist instead: clean models legitimately
+  // appear there (physiological hypo/hyper, not device faults).
+  const availableForFault = scenario === 'last3h'
+    ? new Set((watchlist || []).map(w => w.deviceModel))
+    : new Set((data.alerts || [])
+        .filter(a => faultFilter === 'all' || a.alert_type === faultFilter)
+        .map(a => a.device_model));
   // Dropdown lists the FULL registry roster; clean (alert-free) models render disabled —
   // the control cohort visibly "has nothing to triage". Falls back to affected-only
   // until/unless the registry query resolves.
@@ -150,6 +201,7 @@ export default function TriagePage() {
   const filtered = (data.alerts || []).filter(a =>
     (faultFilter === 'all' || a.alert_type === faultFilter) &&
     (modelFilter === 'all' || a.device_model === modelFilter) &&
+    (fwFilter === 'all' || a.firmware === fwFilter) &&
     (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
   // Sort: severity = the server's triage order (open first, HIGH first). The other two
   // interleave the cohorts (an "all faults" view is otherwise a wall of HIGH/under-read).
@@ -235,7 +287,12 @@ export default function TriagePage() {
               </div>
 
               {/* refinement bar — client-side over the loaded queue */}
-              <div className="flex items-center gap-2 flex-wrap mb-4 text-[11px] font-mono">
+              <div className="flex items-center gap-2 flex-wrap mb-2 text-[11px] font-mono">
+                <select value={scenario} onChange={e => setScenario(e.target.value)}
+                  title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
+                  className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
+                  {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+                </select>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="search patient / device…"
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 placeholder:text-slate-600 w-52" />
                 <div className="inline-flex rounded-md border border-slate-700 overflow-hidden" role="group" aria-label="Fault filter">
@@ -247,9 +304,9 @@ export default function TriagePage() {
                 <select value={modelFilter} onChange={e => setModelFilter(e.target.value)}
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
                   <option value="all">all models</option>
-                  {modelOptions.map(m => affectedModels.has(m)
+                  {modelOptions.map(m => availableForFault.has(m)
                     ? <option key={m} value={m}>{m}</option>
-                    : <option key={m} value={m} disabled>{m} — clean, no alerts</option>)}
+                    : <option key={m} value={m} disabled>{m}{affectedModels.has(m) ? ' — none for this fault' : ' — clean, no alerts'}</option>)}
                 </select>
                 <select value={sortBy} onChange={e => setSortBy(e.target.value)} title="Severity = triage order (most critical first); the others interleave the cohorts"
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
@@ -257,12 +314,60 @@ export default function TriagePage() {
                   <option value="patient">sort: patient id</option>
                   <option value="updated">sort: recently updated</option>
                 </select>
-                <span className="text-slate-500 ml-auto">{filtered.length} matching{filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}</span>
+                {fwFilter !== 'all' && (
+                  <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
+                    className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
+                )}
+                <span className="text-slate-500 ml-auto">{scenario === 'last3h' ? `${(watchlist || []).length} patients in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}</span>
               </div>
+
+              {SCENARIOS[scenario].prose && (
+                <p className="text-xs text-slate-400 leading-relaxed font-mono mb-4 border-l-2 border-cyan-500/40 pl-3">{SCENARIOS[scenario].prose}</p>
+              )}
+              {/* why "all faults" fronts under-reads — the severity ranking is clinical */}
+              {scenario !== 'last3h' && sortBy === 'severity' && faultFilter === 'all' && (
+                <p className="text-[11px] text-slate-500 leading-relaxed font-mono mb-4">
+                  Severity sort fronts <span className="text-sky-300">↓ under-read</span> (<span className="text-rose-300">HIGH</span>): an under-reading device <span className="text-slate-300">masks real highs</span> — the clinically worse failure (delayed treatment). The <span className="text-rose-300">↑ over-read</span> cohort (<span className="text-amber-300">MEDIUM</span>, false alarms) follows below — switch sort to interleave.
+                </p>
+              )}
 
               {error && <p className="text-xs font-mono text-rose-300 mb-3">⚠ {error}</p>}
 
-              {loading ? (
+              {scenario === 'last3h' ? (
+                /* Live risk watchlist — readings-only detection (no incident labels),
+                   read-only: these aren't persisted alerts (creating alerts from live
+                   signals is the monitoring layer's job — the queue's phase-2). */
+                watchlist === null ? (
+                  <div className="flex items-center justify-center h-40 text-slate-500">Scanning the last 3 hours of readings…</div>
+                ) : (
+                  <table className="w-full text-left" style={{ borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+                        <th className="p-2">Patient</th>
+                        <th className="p-2">Model</th>
+                        <th className="p-2">FW</th>
+                        <th className="p-2 text-right">Very-low readings (&lt;54)</th>
+                        <th className="p-2 text-right">Very-high readings (&gt;250)</th>
+                        <th className="p-2 text-right">Min · Max mg/dL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {watchlist
+                        .filter(w => (modelFilter === 'all' || w.deviceModel === modelFilter) && (!q || w.patientId.toLowerCase().includes(q)))
+                        .map(w => (
+                          <tr key={w.patientId} className="border-t border-slate-800 hover:bg-slate-900/40">
+                            <td className="p-2 font-mono text-xs"><Link to={`/diabetes-coach?patient=${encodeURIComponent(w.patientId)}`} className="text-cyan-300 hover:text-cyan-200 hover:underline">{w.patientId}</Link></td>
+                            <td className="p-2 font-mono text-xs text-slate-400">{w.deviceModel}</td>
+                            <td className="p-2 font-mono text-xs text-slate-400">{w.firmware}</td>
+                            <td className="p-2 font-mono text-xs text-right text-sky-300">{w.veryLow || '—'}</td>
+                            <td className="p-2 font-mono text-xs text-right text-rose-300">{w.veryHigh || '—'}</td>
+                            <td className="p-2 font-mono text-xs text-right text-slate-400">{Math.round(w.minGlucose)} · {Math.round(w.maxGlucose)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                )
+              ) : loading ? (
                 <div className="flex items-center justify-center h-40 text-slate-500">Loading alert queue…</div>
               ) : total === 0 ? (
                 <div className="text-center py-10">

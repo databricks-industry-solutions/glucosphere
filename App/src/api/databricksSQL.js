@@ -81,6 +81,53 @@ export async function getAllDeviceModels() {
   }
 }
 
+// LIVE RISK WATCHLIST — patients with a Battelino level-2 danger-band reading
+// (<54 / >250 mg/dL) in the LAST 3 HOURS of data: the High-Risk-Alerts tile's
+// logic, in list form, for the Triage page's "last 3h" scenario. Deliberately
+// uses NO incident labels — detection keys off the readings alone, which is the
+// production-realistic path (labels exist only because the demo simulates truth).
+export async function getLiveRiskWatchlist() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT g.patient_id,
+           MAX(CAST(g.device_model AS STRING))     AS device_model,
+           MAX(CAST(g.firmware_version AS STRING)) AS firmware,
+           MIN(g.glucose)                          AS min_glucose,
+           MAX(g.glucose)                          AS max_glucose,
+           COUNT(CASE WHEN g.glucose < 54  THEN 1 END) AS very_low_readings,
+           COUNT(CASE WHEN g.glucose > 250 THEN 1 END) AS very_high_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    WHERE (g.glucose < 54 OR g.glucose > 250)
+      AND g.time >= (
+        SELECT MAX(time) - INTERVAL 3 HOUR
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
+    GROUP BY g.patient_id
+    ORDER BY GREATEST(COUNT(CASE WHEN g.glucose < 54 THEN 1 END),
+                      COUNT(CASE WHEN g.glucose > 250 THEN 1 END)) DESC
+    LIMIT 100
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        const g = i => v[i]?.string_value ?? v[i];
+        return {
+          patientId: g(0), deviceModel: g(1), firmware: g(2),
+          minGlucose: parseFloat(g(3)) || 0, maxGlucose: parseFloat(g(4)) || 0,
+          veryLow: parseInt(g(5), 10) || 0, veryHigh: parseInt(g(6), 10) || 0,
+        };
+      });
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to get live risk watchlist:', error);
+    return [];
+  }
+}
+
 export async function getDistinctDeviceCount() {
   const { catalog, schema } = await getConfig();
   const query = `SELECT COUNT(DISTINCT device_id) as device_count FROM ${catalog}.${schema}.silver_patient_registry`;
