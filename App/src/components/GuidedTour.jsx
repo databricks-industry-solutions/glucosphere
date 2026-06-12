@@ -143,7 +143,7 @@ export default function GuidedTour() {
     return (
       <div className="fixed inset-0 z-[110]">
         <div className="absolute inset-0 bg-black/40" onClick={close} />
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-40 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
           <div className="flex flex-col gap-2 mt-4">
