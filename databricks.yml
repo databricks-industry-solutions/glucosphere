@@ -323,13 +323,25 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
+          # Lakebase binding lives on the App OBJECT (bundle-managed), NOT in
+          # app.yaml — the app.yaml `resources:` section is not applied by app
+          # deploys (verified 2026-06-12: prod's app object carries 0 resources;
+          # its SP permissions come from the 09 grant job). This binding is what
+          # auto-creates the App SP's PG role + injects the PG* env vars.
+          resources:
+            - name: database
+              description: "Lakebase Autoscaling Postgres — alert-triage OLTP"
+              postgres:
+                branch: projects/${var.lakebase_project_id}/branches/production
+                database: projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres
+                permission: CAN_CONNECT_AND_CREATE
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
       # Lakebase Autoscaling project — the App's OLTP store for the alert-triage
       # MVP (alerts + alert_audit; see ref_notes/lakebase/2026-06-12 probe doc).
       # Auto-creates default branch `production` + endpoint `primary`; the App's
-      # `database` resource binding (rendered by render_app_yaml.py when
-      # lakebase_project_id is set) auto-creates the App SP's PG role.
+      # `database` postgres binding (declared on the apps resource ABOVE)
+      # auto-creates the App SP's PG role + injects the PG* env vars.
       # ⚠️ FOOTGUN: `bundle destroy -t gsphere_fw_v2` deletes this project
       # INCLUDING ITS DATA (unlike warehouse/job/app, a DB resource is stateful).
       # Acceptable here — alert rows are disposable demo state, reseedable.
@@ -748,8 +760,9 @@ resources:
   # Lakebase: OLTP alert state cache — SUPERSEDED 2026-06-12 (issue #3)
   # ---------------------------------------------------------------------------
   # Lakebase is now wired via the AUTOSCALING `postgres_projects` resource on the
-  # `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable; app
-  # binding rendered by render_app_yaml.py). The PROVISIONED `database_instances`
+  # `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable; the app's
+  # `postgres` binding is declared on that target's apps resource — app.yaml's
+  # `resources:` section is NOT applied by app deploys). The PROVISIONED `database_instances`
   # stub below is kept for reference only — do NOT re-enable it; Autoscaling is
   # the go-forward model (scale-to-zero; `databricks postgres` API). See
   # ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md.
