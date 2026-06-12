@@ -213,6 +213,32 @@ rollback") carry the operator between moves.
 - **Cohort exposure → fault classification**: each cohort's device-reported %hypo/%hyper bars sit above an aligned 3×3 confusion matrix (Under-read · Baseline-control · Over-read), normalizable by share-of-all (default) or per-true-band — separating what the device *reported* from what was *truly* happening during the fault window
 - **Affected-patient roster**: the worst-N firmware-recall-cohort patients ranked by clinical burden (filterable by region / device model), each deep-linking to the Diabetes Coach
 
+### Alert Triage (Lakebase — flag-gated)
+- **Live alert queue** (`/triage`): the affected cohort as actionable alerts — **acknowledge / assign /
+  resolve** (resolution-outcome menu incl. "not a device issue" and EMS escalation), free-text **notes**,
+  **fingerstick follow-up** requests, and **bulk actions** over the filtered set (e.g. one "firmware rolled
+  back" resolves a whole cohort) — every action appends an **audit row** (the recall's compliance trail)
+- **Scenario vantages**: full week / Day-2 rollout / Day-5 hotfix fault / **last-3h live-risk view**
+  (readings-only detection — no incident labels, the production-realistic path)
+- Backed by **Lakebase** (managed Postgres, Autoscaling): the dashboards read the lakehouse; the queue is
+  the app's **transactional write path**. Enabled per deploy target via the `lakebase_project_id` bundle
+  variable (see `DEPLOY.md`); targets without it render the pre-Lakebase UI unchanged
+
+**Operational notes (Lakebase):**
+- **Division of labor** — the **Asset Bundle provisions the infrastructure** (the `postgres_projects`
+  resource + the app's `postgres` resource binding, which auto-creates the app service principal's PG role
+  and injects `PGHOST`/`PGUSER`/`PGDATABASE`); the **app bootstraps its own schema at runtime**
+  (`App/databricks/lakebase.py`, idempotent on first DB touch). The schema can't move to deploy time:
+  its objects must be **owned by the app SP's role**, an identity only the app runs as.
+- **Tables live in the app-owned `triage` schema** (`triage.alerts`, `triage.alert_audit`) — not `public`
+  (PG 15+ denies CREATE there). The bootstrap GRANTs **read-only** visibility (`USAGE` + `SELECT`) to
+  other database roles so operators can browse/query from the workspace SQL editor; writes remain the
+  app's alone.
+- **Auth**: no password is stored or injected — the app mints short-lived OAuth tokens
+  (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
+- The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
+  (`psycopg`).
+
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)
 - Deeper per-device Clinical Analysis (fast FM + fleet-stats enrichment by default)

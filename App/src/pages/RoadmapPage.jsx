@@ -69,12 +69,23 @@ export default function RoadmapPage() {
               detection so the "① Detect" signal is real-time rather than a batch snapshot.
             </li>
             <li>
-              <span className="text-slate-400">Lakebase-backed live alerts &amp; triage</span> — acknowledge / assign /
-              notes state behind the "Send to triage queue" and "Flag for rollback" actions (today previews).
-            </li>
-            <li>
               <span className="text-slate-400">Real-time CGM streaming</span> — sub-minute dashboard updates as new
               readings arrive, in place of periodic refreshes.
+            </li>
+            <li>
+              <span className="text-slate-400">Monitoring-created alerts</span> — the detection layer writes the triage
+              queue itself (forecast / danger-band crossings → new alerts), replacing the demo's seed step; the queue's
+              "Last 3h" live-risk view is the read-only precursor.
+            </li>
+            <li>
+              <span className="text-slate-400">Triage analytics in the lakehouse</span> — register the Lakebase database
+              as a Unity Catalog catalog so the alert + audit state is queryable from the warehouse (MTTR, open-vs-resolved
+              burn-down, outcomes by firmware) — OLTP state flowing back into analytics.
+            </li>
+            <li>
+              <span className="text-slate-400">Incident playback</span> — replay an incident window as if live: alerts
+              appear progressively, dashboards animate through the timeline — the booth demo in motion rather than
+              retrospective.
             </li>
           </ul>
         </details>
