@@ -477,7 +477,7 @@ ORDER BY u.at DESC LIMIT 20;`;
           <>
             <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
               <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">→ ACT</span>
-              <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live alert queue — the recall, operationalized</h2>
+              <h2 className="text-lg font-semibold mt-6 mb-3 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Live alert queue — the recall, operationalized</h2>
               {/* Two-column on wide screens (booth monitors): lead prose left,
                   scenario/honesty callouts right — fills the card instead of
                   leaving a dead right half. Stacks on narrow viewports. */}
@@ -615,13 +615,17 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
                     className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
                 )}
-                <span className="text-slate-500 ml-auto">
-                  {scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
-                  {(q || faultFilter !== 'all' || modelFilter !== 'all' || fwFilter !== 'all') && (
+                {(() => { const active = q || faultFilter !== 'all' || modelFilter !== 'all' || fwFilter !== 'all';
+                  return (
                     <button onClick={() => { setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all'); setJumpCtx(null); }}
-                      title="Clear the search / fault / model / firmware filters (status tab + scenario stay)"
-                      className="ml-2 text-cyan-400 hover:text-cyan-300 underline decoration-dotted">✕ clear filters</button>
-                  )}
+                      disabled={!active}
+                      title={active ? 'Clear the search / fault / model / firmware filters (status tab + scenario stay)' : 'No filters active'}
+                      className={`ml-auto px-2.5 py-1 rounded-md border text-[11px] font-mono shrink-0 ${active ? 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10' : 'border-slate-800 text-slate-700 cursor-default'}`}>
+                      ✕ clear filters
+                    </button>
+                  ); })()}
+                <span className="text-slate-500">
+                  {scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
                 </span>
               </div>
 
