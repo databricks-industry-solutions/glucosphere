@@ -54,7 +54,7 @@ export default function DeviceSupportDashboard() {
   const [fwHeatLoading, setFwHeatLoading] = useState(true);
   // Heatmap metric scope: 'in-incident' = peak fault severity (triage — which firmware-day to
   // service); 'fleet-wide' = all-readings average (compliance — avg measurement error across
-  // the deployed firmware, where the ~3h fault dilutes). Mirrors the MAE-timeline's
+  // the deployed firmware, where the ~12h fault dilutes). Mirrors the MAE-timeline's
   // affected-vs-fleet-wide framing. Default = in-incident (the fault must be findable first).
   const [fwScope, setFwScope] = useState('in-incident');
   const [devices, setDevices] = useState([]);
@@ -556,7 +556,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       >In-incident <span className="opacity-70">(triage)</span></button>
                       <button
                         onClick={() => setFwScope('fleet-wide')}
-                        title="All-readings average for the firmware-day — the ~3h fault dilutes; severity is masked"
+                        title="All-readings average for the firmware-day — the ~12h fault dilutes; severity is masked"
                         className={`px-2.5 py-1 transition-colors border-l border-slate-700 ${fwScope === 'fleet-wide' ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
                       >Fleet-wide <span className="opacity-70">(compliance)</span></button>
                     </div>
@@ -565,7 +565,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 <p className="text-xs text-slate-500 font-mono mt-3">
                   {fwScope === 'in-incident'
                     ? <>mean |observed − true| mg/dL per firmware per day · ≈0 clean, ~40 faulted · <span className="text-rose-300">↑ over</span> / <span className="text-sky-300">↓ under</span>-read marks the faulted rollout</>
-                    : <>mean |observed − true| mg/dL averaged over <span className="text-slate-400">all</span> readings per firmware-day · the ~3 h fault dilutes into the day, masking severity — switch to <span className="text-slate-400">In-incident</span> to triage</>}
+                    : <>mean |observed − true| mg/dL averaged over <span className="text-slate-400">all</span> readings per firmware-day · the ~12h fault dilutes into the day, masking severity — switch to <span className="text-slate-400">In-incident</span> to triage</>}
                 </p>
               </div>
 

@@ -215,7 +215,7 @@ export function IncidentImpactChart() {
         <div className="mt-4 space-y-1.5">
           <LegendRow stroke="rgb(59 130 246)">MAE — fleet-wide</LegendRow>
           <LegendRow stroke="rgb(251 146 60)">MAE — affected patients</LegendRow>
-          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (3h)</LegendRow>
+          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (12h)</LegendRow>
           <LegendRow stroke="rgb(148 163 184)" dash="3 3">Baseline MAE ({summary?.baseline_mae_30m?.toFixed(1) || '5.8'})</LegendRow>
         </div>
       </div>
@@ -579,7 +579,7 @@ export function GlucoseTimelineChart() {
           <LegendRow stroke="rgb(239 68 68)">Positive bias (+40)</LegendRow>
           <LegendRow stroke="rgb(59 130 246)">Negative bias (−40)</LegendRow>
           <LegendRow stroke="rgb(148 163 184)" dash="3 3">Zero bias</LegendRow>
-          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (3h)</LegendRow>
+          <LegendRow type="rect" fill="rgb(248 113 113 / 0.2)" stroke="rgb(248 113 113 / 0.5)">Incident (12h)</LegendRow>
         </div>
       </div>
 
