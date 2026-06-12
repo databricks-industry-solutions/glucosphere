@@ -220,7 +220,16 @@ export default function TriagePage() {
   const [faultFilter, setFaultFilter] = useState(searchParams.get('fault') || (hasQueueParams ? 'all' : persisted.faultFilter) || 'all');
   const [modelFilter, setModelFilter] = useState(searchParams.get('model') || (hasQueueParams ? 'all' : persisted.modelFilter) || 'all');
   const [fwFilter, setFwFilter] = useState(searchParams.get('fw') || (hasQueueParams ? 'all' : persisted.fwFilter) || 'all');
-  const [scenario, setScenario] = useState(hasQueueParams && persisted.scenario === 'last3h' ? 'week' : (persisted.scenario || 'week'));
+  // Patient-scoped deep-links (?q= — Coach / device rows / watch ⚑) land on the
+  // LIVE last-3h view: they all originate from a "this patient NOW" context, and
+  // the watch row's ⚑ chip hands off to the queue when an alert exists (booth
+  // 2026-06-12: landing them on the retrospective queue read as a context loss).
+  // Cohort deep-links (?model= / ?fw= — Population Risk / Firmware bulk sends)
+  // still land on the queue, where bulk actions live.
+  const [scenario, setScenario] = useState(
+    searchParams.get('q') ? 'last3h'
+      : hasQueueParams && persisted.scenario === 'last3h' ? 'week'
+      : (persisted.scenario || 'week'));
   const [watchlist, setWatchlist] = useState(null);       // last3h scenario rows
   const [sortBy, setSortBy] = useState(persisted.sortBy || 'severity');  // severity | patient | updated
   // Persist on every view-state change (cheap; per-tab).
@@ -274,23 +283,23 @@ export default function TriagePage() {
   // fault/model params — once the queue loads, snap those pills to the matched
   // alert's attributes (one-time; only when the pills are still at 'all'), so the
   // filter row reads coherently with the row it shows (booth catch 2026-06-12).
-  const snappedRef = React.useRef(false);
-  useEffect(() => {
-    if (snappedRef.current || !data.alerts?.length) return;
-    const q0 = (searchParams.get('q') || '').trim().toLowerCase();
-    if (!q0 || searchParams.get('fault') || searchParams.get('model')) { snappedRef.current = true; return; }
-    const hits = data.alerts.filter(a => `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q0));
-    const types = new Set(hits.map(a => a.alert_type));
-    const models = new Set(hits.map(a => a.device_model));
-    if (hits.length && types.size === 1 && faultFilter === 'all') setFaultFilter([...types][0]);
-    if (hits.length && models.size === 1 && modelFilter === 'all') setModelFilter([...models][0]);
-    // SMART LANDING: a patient deep-link matching ZERO alerts (e.g. a clean-control
-    // device — its danger-band readings are physiology, not device fault) would dead-end
-    // on an empty queue. Land on the live last-3h view instead, search kept: the
-    // watchlist row + its Queue "—" tell the no-device-alert story (booth 2026-06-12).
-    if (!hits.length && data.alerts.length) setScenario('last3h');
-    snappedRef.current = true;
-  }, [data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (Retired 2026-06-12, kept for reference: the q-based pill-snap + zero-match
+  // smart-landing below became moot once ?q deep-links started landing on the
+  // live view directly — the watch row needs no pill snapping, and the queue is
+  // one ⚑ click away. Re-enable only if q-links ever return to queue landings.)
+  // const snappedRef = React.useRef(false);
+  // useEffect(() => {
+  //   if (snappedRef.current || !data.alerts?.length) return;
+  //   const q0 = (searchParams.get('q') || '').trim().toLowerCase();
+  //   if (!q0 || searchParams.get('fault') || searchParams.get('model')) { snappedRef.current = true; return; }
+  //   const hits = data.alerts.filter(a => `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q0));
+  //   const types = new Set(hits.map(a => a.alert_type));
+  //   const models = new Set(hits.map(a => a.device_model));
+  //   if (hits.length && types.size === 1 && faultFilter === 'all') setFaultFilter([...types][0]);
+  //   if (hits.length && models.size === 1 && modelFilter === 'all') setModelFilter([...models][0]);
+  //   if (!hits.length && data.alerts.length) setScenario('last3h');
+  //   snappedRef.current = true;
+  // }, [data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the fault filter strands the selected model (e.g. Alpha under under-read),
   // fall back to 'all' — the dropdown also greys those options out dynamically.
