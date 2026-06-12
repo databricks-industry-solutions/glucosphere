@@ -517,7 +517,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={onReset} disabled={busy || loading || isWatch}
-                    title="Wipe statuses + audit and reseed all alerts as open — lets the next booth visitor triage from scratch"
+                    title="Clears the Postgres tables too: TRUNCATE triage.alerts + triage.alert_audit, then reseeds 600 open alerts from the gold layer — your acks/notes are gone from the database (verify via 🛢). Lets the next booth visitor triage from scratch."
                     className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-colors disabled:opacity-40 ${resetArmed ? 'border-rose-500/60 text-rose-300 bg-rose-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
                     {resetArmed ? 'Confirm reset?' : '⟲ Reset demo'}
                   </button>
@@ -548,7 +548,8 @@ ORDER BY u.at DESC LIMIT 20;`;
                       )}
                     </div>
                   )}
-                  <button onClick={() => load(filter)} disabled={busy || loading} title="Reload the queue"
+                  <button onClick={() => load(filter)} disabled={busy || loading}
+                    title="Re-queries Postgres and redraws the queue — changes nothing in the database (use it to pick up actions made elsewhere, e.g. another visitor's tab)."
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
                   <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Status filter" title={isWatch ? NA_WATCH : undefined}>
                     {FILTERS.map(f => (
