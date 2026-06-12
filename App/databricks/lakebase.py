@@ -153,20 +153,26 @@ def list_alerts(status: str | None = None, limit: int = 1000):
     return {'alerts': alerts, 'counts': counts}
 
 
-_ACTIONS = {  # action → resulting status (assign keeps the alert acked/open as-is is too lax: assign implies acked)
+_ACTIONS = {  # action → resulting status; None = audit-only (no status change)
     'ack': 'acked',
-    'assign': 'acked',
+    'assign': 'acked',  # assign implies acked
     'resolve': 'resolved',
+    'note': None,       # free-text addendum to the audit trail
 }
 
 
 def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = None):
-    """Apply ack/assign/resolve + append the audit row. Returns the updated alert."""
+    """Apply ack/assign/resolve/note + append the audit row. Returns the updated alert."""
     if action not in _ACTIONS:
         raise ValueError(f"unknown action {action!r} (expected one of {sorted(_ACTIONS)})")
     new_status = _ACTIONS[action]
     with get_conn() as conn, conn.cursor() as cur:
-        if action == 'assign':
+        if action == 'note':
+            # audit-only: alert row untouched (just bump updated_at so sorts notice)
+            cur.execute(
+                "UPDATE triage.alerts SET updated_at=now() "
+                "WHERE alert_id=%s RETURNING " + ', '.join(_ALERT_COLS), (alert_id,))
+        elif action == 'assign':
             cur.execute(
                 "UPDATE triage.alerts SET status=%s, assigned_to=%s, updated_at=now() "
                 "WHERE alert_id=%s RETURNING " + ', '.join(_ALERT_COLS),
@@ -179,9 +185,10 @@ def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = No
         row = cur.fetchone()
         if row is None:
             return None
+        audit_action = 'note' if action == 'note' else action + ('ed' if not action.endswith('e') else 'd')
         cur.execute(
             "INSERT INTO triage.alert_audit (alert_id, action, actor, detail) VALUES (%s,%s,%s,%s)",
-            (alert_id, action + ('ed' if not action.endswith('e') else 'd'), actor, detail))
+            (alert_id, audit_action, actor, detail))
         conn.commit()
     alert = dict(zip(_ALERT_COLS, row))
     alert['created_at'] = str(alert['created_at'])

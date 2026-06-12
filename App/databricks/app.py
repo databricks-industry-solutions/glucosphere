@@ -760,15 +760,19 @@ def list_alerts():
 
 @app.route('/api/alerts/<int:alert_id>/<action>', methods=['POST'])
 def alert_action(alert_id, action):
-    """Ack / assign / resolve one alert; every action appends an audit row.
-    `assign` reads the assignee from JSON body {"assignee": "..."}."""
+    """Ack / assign / resolve / note one alert; every action appends an audit row.
+    `assign` reads {"assignee": "..."} from the body; `note` (an audit-only
+    addendum — no status change) reads {"note": "..."}."""
     guard = _lakebase_guard()
     if guard:
         return guard
-    if action not in ('ack', 'assign', 'resolve'):
+    if action not in ('ack', 'assign', 'resolve', 'note'):
         return jsonify({'error': f'unknown action {action!r}'}), 400
     try:
-        detail = (request.get_json(silent=True) or {}).get('assignee') if action == 'assign' else None
+        body = request.get_json(silent=True) or {}
+        detail = body.get('assignee') if action == 'assign' else body.get('note') if action == 'note' else None
+        if action == 'note' and not (detail or '').strip():
+            return jsonify({'error': 'note requires non-empty {"note": "..."}'}), 400
         alert = lakebase.act_on_alert(alert_id, action, actor=_actor(), detail=detail)
         if alert is None:
             return jsonify({'error': f'alert {alert_id} not found'}), 404

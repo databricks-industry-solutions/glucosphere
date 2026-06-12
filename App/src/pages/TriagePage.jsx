@@ -27,6 +27,7 @@ const FILTERS = ['open', 'acked', 'resolved', 'all'];
 function AlertRow({ alert, onAction, busy }) {
   const [expanded, setExpanded] = useState(false);
   const [assignee, setAssignee] = useState('');
+  const [note, setNote] = useState('');
   return (
     <>
       <tr className="border-t border-slate-800 hover:bg-slate-900/40">
@@ -75,14 +76,24 @@ function AlertRow({ alert, onAction, busy }) {
                 ))}
                 {!(alert.audit || []).length && <li className="text-slate-600">(no audit rows)</li>}
               </ol>
-              {alert.status !== 'resolved' && (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <input value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="assignee (e.g. tech-1)"
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-300 placeholder:text-slate-600 w-40" />
-                  <button disabled={busy || !assignee.trim()} onClick={() => { onAction(alert.alert_id, 'assign', assignee.trim()); setAssignee(''); }}
-                    className="text-[11px] font-mono px-2.5 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-40">Assign</button>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                {alert.status !== 'resolved' && (
+                  <div className="flex items-center gap-1.5">
+                    <input value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="assignee (e.g. tech-1)"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-300 placeholder:text-slate-600 w-52" />
+                    <button disabled={busy || !assignee.trim()} onClick={() => { onAction(alert.alert_id, 'assign', assignee.trim()); setAssignee(''); }}
+                      className="text-[11px] font-mono px-2.5 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-40">Assign</button>
+                  </div>
+                )}
+                {/* addendum — audit-only note (no status change); allowed even after resolve */}
+                <div className="flex items-center gap-1.5">
+                  <input value={note} onChange={e => setNote(e.target.value)} placeholder="addendum (e.g. called patient — voicemail)"
+                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-300 placeholder:text-slate-600 w-52" />
+                  <button disabled={busy || !note.trim()} onClick={() => { onAction(alert.alert_id, 'note', note.trim()); setNote(''); }}
+                    title="Append a free-text note to the audit trail — no status change"
+                    className="text-[11px] font-mono px-2.5 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700/40 disabled:opacity-40">+ Note</button>
                 </div>
-              )}
+              </div>
             </div>
           </td>
         </tr>

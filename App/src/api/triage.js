@@ -15,12 +15,16 @@ export async function fetchAlerts(status = 'all') {
   return asJson(await fetch(`/api/alerts?status=${encodeURIComponent(status)}`));
 }
 
-/** action: ack | assign | resolve. assignee only used for assign. Returns the updated alert. */
-export async function alertAction(alertId, action, assignee = null) {
+/** action: ack | assign | resolve | note. `detail` = assignee (assign) or the
+ * addendum text (note — audit-only, no status change). Returns the updated alert. */
+export async function alertAction(alertId, action, detail = null) {
+  const body = action === 'assign' && detail ? { assignee: detail }
+    : action === 'note' && detail ? { note: detail }
+    : {};
   return asJson(await fetch(`/api/alerts/${alertId}/${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(assignee ? { assignee } : {}),
+    body: JSON.stringify(body),
   }));
 }
 
