@@ -778,22 +778,17 @@ def alert_action(alert_id, action):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/alerts/seed', methods=['POST'])
-def seed_alerts():
-    """Seed the queue from the gold layer's affected cohort (idempotent — the
-    UNIQUE key makes re-runs no-ops). Queries the warehouse via the Statement
-    Execution API (same machinery as /api/sql/query), then bulk-inserts into
-    Postgres. Severity mirrors the demo narrative: under-read masks real highs
-    (HIGH), over-read causes false alarms (MEDIUM)."""
-    guard = _lakebase_guard()
-    if guard:
-        return guard
-    try:
-        host, token = get_auth()
-        warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
-        if not (token and warehouse_id):
-            return jsonify({'error': 'warehouse auth not available'}), 500
-        seed_sql = f"""
+def _seed_from_gold():
+    """Shared by /api/alerts/seed and /api/alerts/reset: query the affected
+    cohort from gold via the Statement Execution API, bulk-insert as open
+    alerts. Idempotent (UNIQUE key). Severity mirrors the demo narrative:
+    under-read masks real highs (HIGH), over-read causes false alarms (MEDIUM).
+    Returns (inserted, cohort_rows); raises RuntimeError on warehouse failure."""
+    host, token = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not (token and warehouse_id):
+        raise RuntimeError('warehouse auth not available')
+    seed_sql = f"""
             SELECT p.patient_id,
                    MAX(g.device_id)                                   AS device_id,
                    MAX(CAST(g.device_model AS STRING))                AS device_model,
@@ -807,22 +802,49 @@ def seed_alerts():
             WHERE p.incident_direction IN ('positive', 'negative')
             GROUP BY p.patient_id, p.incident_direction
         """
-        resp = requests.post(
-            f"{host}/api/2.0/sql/statements",
-            headers={'Authorization': f'Bearer {token}'},
-            json={'statement': seed_sql, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
-            timeout=120,
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        state = body.get('status', {}).get('state')
-        if state != 'SUCCEEDED':
-            return jsonify({'error': f'seed query state={state}', 'detail': body.get('status')}), 500
-        rows = body.get('result', {}).get('data_array', []) or []
-        inserted = lakebase.seed_alerts(rows, actor=_actor())
-        return jsonify({'seeded': inserted, 'cohort_rows': len(rows)})
+    resp = requests.post(
+        f"{host}/api/2.0/sql/statements",
+        headers={'Authorization': f'Bearer {token}'},
+        json={'statement': seed_sql, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    state = body.get('status', {}).get('state')
+    if state != 'SUCCEEDED':
+        raise RuntimeError(f'seed query state={state}')
+    rows = body.get('result', {}).get('data_array', []) or []
+    inserted = lakebase.seed_alerts(rows, actor=_actor())
+    return inserted, len(rows)
+
+
+@app.route('/api/alerts/seed', methods=['POST'])
+def seed_alerts():
+    """Seed the queue from the gold layer's affected cohort (idempotent)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        inserted, cohort = _seed_from_gold()
+        return jsonify({'seeded': inserted, 'cohort_rows': cohort})
     except Exception as e:
         print(f"[TRIAGE] seed failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/reset', methods=['POST'])
+def reset_alerts():
+    """Booth demo reset: wipe queue + audit, then reseed fresh open alerts —
+    so each visitor can triage from a clean slate. Demo state is disposable."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        lakebase.reset_alerts()
+        inserted, cohort = _seed_from_gold()
+        return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort})
+    except Exception as e:
+        print(f"[TRIAGE] reset failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health')

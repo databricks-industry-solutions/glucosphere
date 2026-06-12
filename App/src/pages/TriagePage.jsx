@@ -3,7 +3,8 @@ import { ArrowLeft, BellRing, ChevronDown, ChevronRight, Database } from 'lucide
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
-import { fetchAlerts, alertAction, seedAlerts } from '../api/triage';
+import { Link } from 'react-router-dom';
+import { fetchAlerts, alertAction, seedAlerts, resetAlerts } from '../api/triage';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
 // resolve + an audit trail, backed by Lakebase (Postgres OLTP) — the app's only
@@ -34,7 +35,11 @@ function AlertRow({ alert, onAction, busy }) {
           </button>
         </td>
         <td className="p-2"><span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${SEV[alert.severity] || SEV.MEDIUM}`}>{alert.severity}</span></td>
-        <td className="p-2 font-mono text-xs text-cyan-300">{alert.patient_id}<span className="text-slate-600"> · </span><span className="text-slate-400">{alert.device_model}</span></td>
+        <td className="p-2 font-mono text-xs">
+          {/* deep-link to the patient's Coach view — same pattern as the Population Risk roster */}
+          <Link to={`/diabetes-coach?patient=${encodeURIComponent(alert.patient_id)}`} className="text-cyan-300 hover:text-cyan-200 hover:underline">{alert.patient_id}</Link>
+          <span className="text-slate-600"> · </span><span className="text-slate-400">{alert.device_model}</span>
+        </td>
         <td className="p-2 font-mono text-xs">{alert.alert_type === 'under-read'
           ? <span className="text-sky-300">↓ under-read</span>
           : <span className="text-rose-300">↑ over-read</span>}</td>
@@ -117,6 +122,16 @@ export default function TriagePage() {
     finally { setBusy(false); }
   };
 
+  // Booth demo reset — two-step confirm (arm → confirm) instead of a native dialog.
+  const [resetArmed, setResetArmed] = useState(false);
+  const onReset = async () => {
+    if (!resetArmed) { setResetArmed(true); setTimeout(() => setResetArmed(false), 4000); return; }
+    setResetArmed(false);
+    try { setBusy(true); setError(''); await resetAlerts(); await load(filter); }
+    catch (e) { setError(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+
   const counts = data.counts || {};
   const total = Object.values(counts).reduce((s, n) => s + Number(n || 0), 0);
 
@@ -165,6 +180,15 @@ export default function TriagePage() {
                 each action writes an <span className="text-slate-300">audit row</span> (expand a row to see its trail).
                 Backed by <span className="text-cyan-300">Lakebase</span> (managed Postgres): the dashboards read the lakehouse; the queue is the app's <span className="text-slate-200">transactional write path</span>.
               </p>
+              {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
+              <p className="text-xs text-slate-500 leading-relaxed mt-2 font-mono">
+                Scenario: firmware <span className="text-rose-300">4.0</span> shipped an <span className="text-rose-300">↑ over-read</span> fault (Day 2, Alpha/Gamma · false highs, <span className="text-amber-300">MEDIUM</span>),
+                its hotfix <span className="text-sky-300">4.0.3</span> overcorrected into an <span className="text-sky-300">↓ under-read</span> (Day 5, Beta/Delta · masked real highs, <span className="text-rose-300">HIGH</span>) — ~600 devices total.
+                Severity ranks the queue: masked highs first.
+              </p>
+              <Link to="/population-risk" className="inline-block mt-2 text-xs font-mono text-cyan-400 hover:text-cyan-300">
+                ← See the clinical blast radius these alerts came from (Population Risk)
+              </Link>
             </section>
 
             <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
@@ -178,6 +202,11 @@ export default function TriagePage() {
                   <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button onClick={onReset} disabled={busy || loading}
+                    title="Wipe statuses + audit and reseed all alerts as open — lets the next booth visitor triage from scratch"
+                    className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-colors disabled:opacity-40 ${resetArmed ? 'border-rose-500/60 text-rose-300 bg-rose-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
+                    {resetArmed ? 'Confirm reset?' : '⟲ Reset demo'}
+                  </button>
                   <button onClick={() => load(filter)} disabled={busy || loading} title="Reload the queue"
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
                   <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">

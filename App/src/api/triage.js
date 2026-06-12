@@ -28,3 +28,8 @@ export async function alertAction(alertId, action, assignee = null) {
 export async function seedAlerts() {
   return asJson(await fetch('/api/alerts/seed', { method: 'POST' }));
 }
+
+/** Booth demo reset: wipe queue + audit, reseed fresh open alerts (disposable demo state). */
+export async function resetAlerts() {
+  return asJson(await fetch('/api/alerts/reset', { method: 'POST' }));
+}

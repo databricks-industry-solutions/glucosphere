@@ -19,6 +19,53 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-12]
+
+**Lakebase Alert Triage** — the roadmap's "Live Alert & Triage" card goes live: a Lakebase-backed
+(managed Postgres, **Autoscaling**) alert queue gives the app its first **transactional write
+path**. Feature-flagged per deploy target: targets without a Lakebase project render pixel-identical
+to before (wip labels intact).
+
+### Added — `/triage` Alert Triage page (Lakebase OLTP)
+- **New `/triage` route** (`App/src/pages/TriagePage.jsx`): the affected cohort lands as a live
+  alert queue — **acknowledge / assign / resolve**, each action appending an **audit row**
+  (expandable per-alert trail). Status filter (server-side) + client-side refinement: patient/device
+  search, fault-type pills (↑ over / ↓ under-read), device-model select; severity-ranked
+  (HIGH = under-read / masked real highs, per the masked-severity narrative).
+- **Scenario framing + cross-links**: an intro line ties the queue to the incident story
+  (FW 4.0 over-read → 4.0.3 hotfix under-read, ~600 devices); page links to Population Risk
+  (the blast radius the alerts came from); each alert's patient deep-links to the Diabetes Coach.
+- **Booth controls**: `⚡ Seed from the affected cohort` (idempotent — UNIQUE key), `↻ Refresh`,
+  and a two-step-confirm `⟲ Reset demo` (truncate + reseed → 600 fresh open alerts, so each
+  booth visitor triages from scratch).
+- **Flag-gated link flips** when `lakebase_configured` is true: Population Risk "Send to triage
+  queue" and Firmware Lifecycle "Flag for rollback" become real links (wip suffix dropped);
+  the Roadmap card flips PREVIEW → LIVE.
+
+### Added — Flask backend + Lakebase helper
+- **`App/databricks/lakebase.py`**: app-owned `triage` PG schema (`alerts` + `alert_audit` —
+  PG 15+ denies CREATE in `public`; the binding's `CAN_CONNECT_AND_CREATE` lets the app create
+  its own schema, no manual grants). Password = short-lived OAuth token minted via
+  `POST /api/2.0/postgres/credentials` (raw REST matching the app's style; cached ~50 min,
+  reusing `get_auth()`'s M2M token). `psycopg` added to requirements (lazily imported).
+- **Routes** (all 503 on non-Lakebase targets): `GET /api/alerts` (+counts+audit),
+  `POST /api/alerts/<id>/{ack,assign,resolve}`, `POST /api/alerts/seed`,
+  `POST /api/alerts/reset`; `/api/config` gains `lakebase_configured`.
+
+### Added — DABs-managed Lakebase (Autoscaling)
+- **`postgres_projects.glucosphere_oltp`** on the `gsphere_fw_v2` target (PG 17, 0.5–1 CU,
+  10-min suspend → scale-to-zero), gated by the new **`lakebase_project_id`** bundle variable
+  (default `""` = Lakebase off). The app's **`postgres` resource binding** is declared on the
+  bundle's App resource — *discovered in the process:* app.yaml's `resources:` section is **not
+  applied** by app deploys (the binding on the App object is what auto-creates the App SP's PG
+  role + injects `PG*` env vars). `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env
+  (marker-delimited, idempotent, omitted when unset). ⚠️ documented footgun: `bundle destroy`
+  on a Lakebase-enabled target deletes the project **including its data** (disposable demo state
+  here). DEPLOY.md variables table updated.
+- Validated end-to-end on the `gsphere_fw_v2` sandbox: project + role auto-created, 600 alerts
+  seeded, ack/assign/resolve + audit verified live. Connection-probe write-up:
+  `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
+
 ## [2026-06-11]
 
 Device-error realism overhaul: the calibration fault is now a **12-hour, device-model-gated, two-pulse** event (was a 3-hour flat-σ fleet-wide bump), so the demo shows two distinct buggy periods with a genuinely flat control cohort and gradual device recovery — while the firmware × day heatmap stays complete. App prose reconciled to the new duration.

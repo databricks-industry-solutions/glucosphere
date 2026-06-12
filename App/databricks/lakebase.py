@@ -189,6 +189,15 @@ def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = No
     return alert
 
 
+def reset_alerts():
+    """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
+    Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
+    demo state by design — see the bundle-destroy footgun note in databricks.yml."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute("TRUNCATE triage.alert_audit, triage.alerts RESTART IDENTITY")
+        conn.commit()
+
+
 def seed_alerts(rows, actor: str = 'seed'):
     """Idempotent bulk-insert of the affected cohort as open alerts.
     `rows` = iterable of (patient_id, device_id, device_model, firmware,
