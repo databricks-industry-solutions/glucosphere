@@ -27,14 +27,14 @@ The App's natural-language query experience is powered by **Agent Bricks** — *
 
 Three baseline source modes selectable at deploy time via `baseline_source`: **`from_source`** (real HUPA-UCM CGM, default), **`synthetic`** (in-cluster generator, for CI / restricted-egress), **`from_table`** (CTAS from an existing UC table). Real-mode pairs real CGM signal dynamics with synthetic patient identities — pseudo-patients with real clinical waveforms.
 
-Mode-by-mode model performance (clean ~5 mg/dL MAE → +631% incident-period degradation), column-level provenance, and synthetic-vs-real distribution comparison all live in [`Data_DataGen_ModelForecast/README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
+Mode-by-mode model performance (clean ~5.8 mg/dL MAE anchor → ~5× incident-period degradation), column-level provenance, and synthetic-vs-real distribution comparison all live in [`Data_DataGen_ModelForecast/README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
 
 ## Repository structure
 
 ```text
 /
 ├── databricks.yml                    # Bundle config (targets, resources)
-├── databricks.yml.example            # Template for external deployers
+├── databricks.yml.example            # Reference mirror of databricks.yml (no edits needed to deploy)
 ├── .env.bundle.example               # Template → cp to .env.bundle.<target> (one per deploy target)
 ├── DEPLOY.md                         # Step-by-step deploy guide
 ├── REPO_LAYOUT.md                    # Full navigation guide (what file does what)
@@ -60,7 +60,7 @@ Full file-by-file inventory + "I want to…" task index in [`REPO_LAYOUT.md`](RE
 
 ## Getting started
 
-Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers should add a target stanza per [`databricks.yml.example`](databricks.yml.example) and create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example).
+Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers don't need to edit `databricks.yml` (workspace selection is profile-driven) — just create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example); [`databricks.yml.example`](databricks.yml.example) is a reference mirror.
 
 Canonical deploy sequence (full 10-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
 

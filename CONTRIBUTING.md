@@ -27,7 +27,7 @@ If you are contributing on behalf of an organization, you confirm that you have 
 
 ## Adapting for your own workspace
 
-The committed `databricks.yml` includes target stanzas pointed at maintainer workspaces (Databricks-internal `fevm-*` hosts). External deployers should add their own target stanza before deploying — see [`databricks.yml.example`](databricks.yml.example) for the pattern. Also copy [`.env.bundle.example`](.env.bundle.example) → `.env.bundle.<target>` (one per deploy target) and fill in your catalog / schema / `~/.databrickscfg` profile. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
+The committed `databricks.yml` has **no hardcoded workspace hosts** — workspace selection is profile-driven (`DATABRICKS_CONFIG_PROFILE` in the gitignored `.env.bundle.<target>`), so external deployers don't need to edit it or add a target stanza ([`databricks.yml.example`](databricks.yml.example) is a reference mirror of it). Copy [`.env.bundle.example`](.env.bundle.example) → `.env.bundle.<target>` (one per deploy target) and fill in your catalog / schema / `~/.databrickscfg` profile. See [`DEPLOY.md`](DEPLOY.md) for the full deploy sequence.
 
 ## Where to contribute
 
