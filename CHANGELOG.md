@@ -19,6 +19,20 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-11]
+
+Device-error realism overhaul: the calibration fault is now a **12-hour, device-model-gated, two-pulse** event (was a 3-hour flat-σ fleet-wide bump), so the demo shows two distinct buggy periods with a genuinely flat control cohort and gradual device recovery — while the firmware × day heatmap stays complete. App prose reconciled to the new duration.
+
+### Changed — device-noise σ model (`utils/additional_patient_info/_firmware_spec.py`)
+- **Device-model-gated, two-pulse σ** replaces the old per-firmware `FIRMWARE_ERROR_SIGMA_RAMP` ramp. Clean control models (Epsilon/Zeta) hold a flat `SIGMA_CLEAN = 3.0` at all times; faulty models (Alpha/Gamma over-read, Beta/Delta under-read) rise to `SIGMA_PEAK = 10.0` into each incident (linear `SIGMA_ONSET_HOURS = 4.0` rise so σ is at peak by fault onset), hold across the window, then decay exponentially (`SIGMA_RECOVERY_TAU_HOURS = 12.0`) back toward clean — two separated pulses, not one continuous elevated baseline.
+- New `firmware_sigma_case_sql(cfg, time_col, model_sql, clean_models)` is the σ single-source-of-truth, `%run` by the telemetry generator + `05` + the sanity gate. **Firmware version stays fleet-wide** (`firmware_version_case_sql` unchanged) — only σ is model-gated — so the heatmap remains fully populated (clean models on the buggy firmware no longer blank out, the regression that bit the earlier by-model attempt).
+- **Incident duration 3h → 12h** (`configs/baseline_config.yaml`: `incident_duration_min` / `second_incident_duration_min` = `720`). Window 1 (Day 2 14:00, +40 over-read, Alpha/Gamma) and Window 2 (Day 5 10:00, −40 under-read, Beta/Delta) each now span 12h.
+
+### Changed — sanity gate + app prose follow the model
+- **`data_sanity_checks.py`** device-error gradient check rewritten **by device model** (faulty models on the buggy firmwares vs the clean control models, incidents included, `+2.0` mg/dL margin) — a by-firmware test would now false-fail, since faulty models recover between incidents and clean models on the same firmware stay flat. Verified on the live DAIS run: faulty models ~5.8 vs clean ~2.4 whole-week MAE.
+- **App: 11 sites moved incident-duration "3h" → "12h"** (`IncidentCharts.jsx` legends, `CohortFaultPanel.jsx`, `PopulationRiskPage.jsx`, `DeviceSupportDashboard.jsx`, `tour/steps.js`, `databricksSQL.js` comments). The separate **3-hour High-Risk-Alerts *recent-readings* window** (`<54 / >250 · 3h`) is intentionally left unchanged — it's an orthogonal alert-evaluation lookback, not the fault duration. Fleet-wide dilution narrative re-validated against live data (in-incident ~40 → fleet-wide ~5–10 mg/dL, a 4–7× wash dominated by the clean-model cohort mix); the heatmap comment's magnitude updated `~8-12` → `~5-10 mg/dL`.
+- Data-fidelity / MAE-breakdown assets (`Data_DataGen_ModelForecast/assets/*.png`) regenerated from the two-pulse run.
+
 ## [2026-06-06]
 
 Guided-tour interaction polish (Resume placement, pause gating, per-page assistant default) and a graceful assistant-timeout message — refining the Interactive tour introduced on 2026-06-05.

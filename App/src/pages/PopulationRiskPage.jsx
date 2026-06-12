@@ -154,7 +154,7 @@ export default function PopulationRiskPage() {
           <span className="text-xs font-mono px-2.5 py-1 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30">③ ASSESS</span>
           <h2 className="text-lg font-semibold mt-3 mb-2 text-slate-200" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Hypo / hyper exposure by cohort</h2>
           <p className="text-sm text-slate-400 leading-relaxed">
-            The clinical question: <span className="text-slate-200">who got pushed into danger</span>. Share of each cohort's device-reported readings <span className="text-slate-300">during its ~3h fault window</span> in the
+            The clinical question: <span className="text-slate-200">who got pushed into danger</span>. Share of each cohort's device-reported readings <span className="text-slate-300">during its ~12h fault window</span> in the
             <span className="text-blue-300"> hypoglycemic (&lt;70 mg/dL)</span> and <span className="text-rose-300">hyperglycemic (&gt;180 mg/dL)</span> ranges.
             The over-reading cohort is driven into apparent <span className="text-rose-300">highs</span>, the under-reading cohort into apparent
             <span className="text-blue-300"> lows</span> — both vs the unaffected <span className="text-slate-200">baseline</span> (all out-of-incident readings). That gap is the blast radius.

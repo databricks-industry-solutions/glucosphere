@@ -106,7 +106,7 @@ export default function CohortFaultPanel({ data = [], confusion = { positive: {}
   return (
     <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-6">
       <h2 className="text-lg font-semibold text-slate-200 mb-1" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
-        Hypo / hyper exposure → fault classification, by cohort <span className="text-sm font-normal text-slate-500">— in-incident (~3h fault window)</span>
+        Hypo / hyper exposure → fault classification, by cohort <span className="text-sm font-normal text-slate-500">— in-incident (~12h fault window)</span>
       </h2>
       <p className="text-xs font-mono text-slate-500 mb-1">
         Each cohort's <span className="text-slate-300">device-reported</span> %hypo/%hyper (top) sits above its <span className="text-slate-300">confusion matrix</span> (below): the bars are the matrix's device-column totals; the matrix splits each by what was <span className="text-slate-300">truly</span> happening.

@@ -360,7 +360,7 @@ export async function getFirmwareLifecycle() {
   // `mae`      = the in-incident-or-baseline hybrid (the CASE above) — the TRIAGE signal;
   //              faulted firmware-days surface their ~40 mg/dL fault, clean days sit at baseline.
   // `maeFleet` = the unconditioned all-readings mean for the firmware-day — the COMPLIANCE /
-  //              fleet-wide signal; the ~3h fault dilutes into the whole day (~8-12 mg/dL on
+  //              fleet-wide signal; the ~12h fault dilutes into the whole day (~5-10 mg/dL on
   //              fault days, masking severity). This is the ELSE-branch expression, exposed as
   //              its own column so the Device Support heatmap can offer a triage⇄fleet-wide
   //              scope toggle. Other consumers (Coach/Firmware pages) keep reading `mae`.
@@ -558,7 +558,7 @@ export async function getAffectedTotal() {
 }
 
 // VIEW ③ companion — DEVICE-FAULT classification confusion matrix, per bias direction.
-// Within each device's ~3 h incident window (time in [incident_start_time, incident_end_time)),
+// Within each device's ~12h incident window (time in [incident_start_time, incident_end_time)),
 // classify the TRUE glucose and the DEVICE-SHOWN (observed) glucose into Low (<70) / In-range /
 // High (>180), and return the RAW READING COUNT in each (truth, device) cell. Normalization
 // (row-wise: "of truly-X readings, what % did the device show as Y") is done in the UI from
@@ -569,7 +569,7 @@ export async function getAffectedTotal() {
 // over the full week these errors wash to ~1.3 pp (which is why this is its own window-scoped
 // view, not a roster column). Reads existing columns — no pipeline change. Returns
 // { positive: {'truth|device': count, ...}, negative: {...}, baseline: {...} }:
-//   positive/negative = each cohort's IN-INCIDENT readings (the ~3h fault window) → the fault.
+//   positive/negative = each cohort's IN-INCIDENT readings (the ~12h fault window) → the fault.
 //   baseline          = ALL out-of-incident readings (device ≈ truth, ~95% diagonal) → the control,
 //                       the unaffected reference the two fault matrices are compared against.
 export async function getFaultConfusionMatrix() {
