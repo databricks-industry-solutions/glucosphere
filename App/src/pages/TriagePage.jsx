@@ -316,9 +316,10 @@ export default function TriagePage() {
   // ALSO sit in the alert queue with an open device alert — separates physiological
   // risk from device-fault fallout at a glance (replaces a dead "n/a" label).
   const watchIds = new Set(watchFiltered.map(w => w.patientId));
-  const watchAlertOverlap = new Set((data.alerts || [])
+  const alertPatients = new Set((data.alerts || [])
     .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
-    .map(a => a.patient_id)).size;
+    .map(a => a.patient_id));
+  const watchAlertOverlap = alertPatients.size;
   // refined = every filter EXCEPT the status tab → the header counts break this
   // set down by status, so they update live as filters narrow the queue.
   const refined = (data.alerts || []).filter(a =>
@@ -531,6 +532,7 @@ export default function TriagePage() {
                         <th className="p-2 text-right">Very-low readings (&lt;54)</th>
                         <th className="p-2 text-right">Very-high readings (&gt;250)</th>
                         <th className="p-2 text-right">Min · Max mg/dL</th>
+                        <th className="p-2 text-right">Queue</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -543,6 +545,13 @@ export default function TriagePage() {
                             <td className="p-2 font-mono text-xs text-right text-sky-300">{w.veryLow || '—'}</td>
                             <td className="p-2 font-mono text-xs text-right text-rose-300">{w.veryHigh || '—'}</td>
                             <td className="p-2 font-mono text-xs text-right text-slate-400">{Math.round(w.minGlucose)} · {Math.round(w.maxGlucose)}</td>
+                            <td className="p-2 font-mono text-xs text-right">
+                              {alertPatients.has(w.patientId) ? (
+                                <button onClick={() => { setScenario('week'); setFilter('open'); setSearch(w.patientId); }}
+                                  title="This patient also has an open device alert — open it in the queue (full-week view, searched to this patient)."
+                                  className="text-rose-300 hover:text-rose-200 hover:underline">⚑ open alert</button>
+                              ) : <span className="text-slate-600" title="No open device alert — the danger-band readings look physiological, not device-fault fallout.">—</span>}
+                            </td>
                           </tr>
                         ))}
                     </tbody>
