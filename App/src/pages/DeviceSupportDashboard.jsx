@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
-import BrandMark from '../components/BrandMark';
+import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader, Users } from 'lucide-react';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle, getPatientIncidentSnapshot, getPatientRecent3h } from '../api/databricksSQL';
@@ -549,7 +548,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         {/* Population Overview */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-1">
-            <BrandMark className="w-5 h-5 text-amber-400" />
+            <Users className="w-5 h-5 text-cyan-400" />
             <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Population Overview
             </h2>
