@@ -192,6 +192,10 @@ export default function TriagePage() {
 
   const counts = data.counts || {};
   const total = Object.values(counts).reduce((s, n) => s + Number(n || 0), 0);
+  // Live-readings view: rows are readings, not alerts — no fault direction, no
+  // queue status, no severity. Queue-only controls grey out (search+model still apply).
+  const isWatch = scenario === 'last3h';
+  const NA_WATCH = 'n/a in the live readings view — these rows are readings (no fault/status/severity dimensions)';
 
   // Client-side refinement over the loaded queue (status is already server-filtered).
   const affectedModels = new Set((data.alerts || []).map(a => a.device_model).filter(Boolean));
@@ -281,16 +285,16 @@ export default function TriagePage() {
                   <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={onReset} disabled={busy || loading}
+                  <button onClick={onReset} disabled={busy || loading || isWatch}
                     title="Wipe statuses + audit and reseed all alerts as open — lets the next booth visitor triage from scratch"
                     className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-colors disabled:opacity-40 ${resetArmed ? 'border-rose-500/60 text-rose-300 bg-rose-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
                     {resetArmed ? 'Confirm reset?' : '⟲ Reset demo'}
                   </button>
                   <button onClick={() => load(filter)} disabled={busy || loading} title="Reload the queue"
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
-                  <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">
+                  <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Status filter" title={isWatch ? NA_WATCH : undefined}>
                     {FILTERS.map(f => (
-                      <button key={f} onClick={() => setFilter(f)}
+                      <button key={f} onClick={() => setFilter(f)} disabled={isWatch}
                         className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f}</button>
                     ))}
                   </div>
@@ -306,9 +310,9 @@ export default function TriagePage() {
                 </select>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="search patient / device…"
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 placeholder:text-slate-600 w-52" />
-                <div className="inline-flex rounded-md border border-slate-700 overflow-hidden" role="group" aria-label="Fault filter">
+                <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Fault filter" title={isWatch ? NA_WATCH : undefined}>
                   {[['all', 'all faults'], ['over-read', '↑ over-read'], ['under-read', '↓ under-read']].map(([v, l], i) => (
-                    <button key={v} onClick={() => setFaultFilter(v)}
+                    <button key={v} onClick={() => setFaultFilter(v)} disabled={isWatch}
                       className={`px-2.5 py-1 transition-colors ${i ? 'border-l border-slate-700' : ''} ${faultFilter === v ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{l}</button>
                   ))}
                 </div>
@@ -319,8 +323,9 @@ export default function TriagePage() {
                     ? <option key={m} value={m}>{m}</option>
                     : <option key={m} value={m} disabled>{m}{affectedModels.has(m) ? ' — none for this fault' : ' — clean, no alerts'}</option>)}
                 </select>
-                <select value={sortBy} onChange={e => setSortBy(e.target.value)} title="Severity = triage order (most critical first); the others interleave the cohorts"
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300">
+                <select value={sortBy} onChange={e => setSortBy(e.target.value)} disabled={isWatch}
+                  title={isWatch ? NA_WATCH + ' — the watchlist ranks by danger-band reading count' : 'Severity = triage order (most critical first); the others interleave the cohorts'}
+                  className={`bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 ${isWatch ? 'opacity-40' : ''}`}>
                   <option value="severity">sort: severity</option>
                   <option value="patient">sort: patient id</option>
                   <option value="updated">sort: recently updated</option>
