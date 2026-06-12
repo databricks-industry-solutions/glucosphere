@@ -6,6 +6,7 @@ import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchAlerts, alertAction, seedAlerts, resetAlerts, bulkAlerts } from '../api/triage';
 import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot } from '../api/databricksSQL';
+import { getConfig } from '../api/config';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
 // resolve + an audit trail, backed by Lakebase (Postgres OLTP) — the app's only
@@ -275,6 +276,23 @@ export default function TriagePage() {
 
   // Booth demo reset — two-step confirm (arm → confirm) instead of a native dialog.
   const [resetArmed, setResetArmed] = useState(false);
+
+  // "Inspect the backing tables" — one-click verification that the queue is REAL
+  // Postgres state: deep-link to the workspace's Lakebase editor + a sample query
+  // (copy-paste) joining alerts to their audit trail. Workspace host from /api/config
+  // (same mechanism as the About page's deep-link tiles).
+  const [workspaceHost, setWorkspaceHost] = useState('');
+  useEffect(() => { getConfig().then((c) => setWorkspaceHost(c.workspace_host || '')).catch(() => {}); }, []);
+  const SAMPLE_SQL = `-- your triage actions, as rows (newest first)
+SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at
+FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)
+ORDER BY u.at DESC LIMIT 20;`;
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const copySampleSql = () => {
+    navigator.clipboard?.writeText(SAMPLE_SQL).then(() => {
+      setSqlCopied(true); setTimeout(() => setSqlCopied(false), 2000);
+    }).catch(() => {});
+  };
   const onReset = async () => {
     if (!resetArmed) { setResetArmed(true); setTimeout(() => setResetArmed(false), 4000); return; }
     setResetArmed(false);
@@ -379,6 +397,18 @@ export default function TriagePage() {
               {/* honesty note: "Live Alert" is the workflow's name, not a latency claim */}
               <p className="text-[11px] font-mono text-slate-500 leading-relaxed mt-2">
                 Honest note: alerts here are <span className="text-slate-400">batch-derived</span> from the current dataset — not yet streaming. With live ingestion (see <Link to="/full-loop" className="text-cyan-400 hover:text-cyan-300">what's next</Link>: real-time CGM streaming + monitoring-created alerts) the same queue raises them in real time.
+                {workspaceHost && (
+                  <>
+                    {' '}For testing, verify it's real Postgres state: <a href={`${workspaceHost}/lakebase`} target="_blank" rel="noreferrer"
+                      title="Opens the workspace's Lakebase editor — pick the glucosphere OLTP project → databricks_postgres → schema `triage`, paste the sample query, and see your own actions as rows."
+                      className="text-cyan-400 hover:text-cyan-300">🛢 inspect the backing tables</a>
+                    {' · '}
+                    <button onClick={copySampleSql} className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted"
+                      title={SAMPLE_SQL}>
+                      {sqlCopied ? '✓ copied' : 'copy sample query'}
+                    </button>
+                  </>
+                )}
               </p>
               {/* Scenario framing — so a self-serve visitor knows WHAT they're triaging */}
               <p className="text-xs text-slate-500 leading-relaxed mt-2 font-mono">

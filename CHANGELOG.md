@@ -122,6 +122,10 @@ to before (wip labels intact).
   physiological risk from device-fault fallout at a glance; a per-row **Queue column**
   identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
   "—" = looks physiological).
+- **Triage "inspect the backing tables"** (booth verification): the honest-note line gains a
+  🛢 deep-link into the workspace's Lakebase editor + a copyable sample query (alerts ⋈
+  audit-trail, newest first) — one click from the queue to seeing your own actions as
+  Postgres rows. Readable by any viewer thanks to the bootstrap's read grants.
 - **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
   trailing 3-hour window (amber, distinct from the rose incident band) when it contains
   very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250
