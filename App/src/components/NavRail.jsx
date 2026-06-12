@@ -14,7 +14,7 @@ const ROLES = [
 ];
 const MORE = [
   { to: '/metrics-explained', icon: BookOpen, label: 'Metrics Explained', sub: 'How metrics compute' },
-  { to: '/roadmap', icon: Telescope, label: 'Roadmap', sub: 'Where this goes' },
+  { to: '/roadmap', icon: Telescope, label: 'Detect · Diagnose · Assess', sub: 'How it comes together' },
   { to: '/about', icon: Info, label: 'About', sub: 'Naming · data · repo' },
 ];
 

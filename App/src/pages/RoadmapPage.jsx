@@ -23,8 +23,8 @@ export default function RoadmapPage() {
           <div className="flex items-center gap-3">
             <BrandMark className="w-7 h-7 text-cyan-400" />
             <div>
-              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Roadmap</h1>
-              <p className="text-xs text-slate-500 font-mono">Where the control tower goes next — detect · diagnose · assess</p>
+              <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Detect · Diagnose · Assess{lakebaseConfigured ? ' → Act' : ''}</h1>
+              <p className="text-xs text-slate-500 font-mono">How it comes together — the control-tower arc, plus what's next</p>
             </div>
           </div>
         </div>

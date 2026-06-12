@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink,
-  Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare, HardDrive,
+  Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare, HardDrive, Telescope,
 } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
@@ -22,6 +22,7 @@ const ROLE_CARDS = [
   { icon: Wrench, title: 'Device Support', sub: 'Biomedical Engineering', route: '/device-support' },
   { icon: HeartHandshake, title: 'Diabetes Coach', sub: 'Diabetes Coaching', route: '/diabetes-coach' },
   { icon: BookOpen, title: 'Metrics Explained', sub: 'How every metric is computed', route: '/metrics-explained' },
+  { icon: Telescope, title: 'Detect · Diagnose · Assess', sub: 'How it comes together', route: '/roadmap' },
 ];
 
 // "Under the hood" platform stack, grouped as a Data → ML/AI → Agentic pipeline flow.
