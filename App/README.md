@@ -225,15 +225,20 @@ rollback") carry the operator between moves.
   variable (see `DEPLOY.md`); targets without it render the pre-Lakebase UI unchanged
 
 **Operational notes (Lakebase):**
-- **Division of labor** — the **Asset Bundle provisions the infrastructure** (the `postgres_projects`
-  resource + the app's `postgres` resource binding, which auto-creates the app service principal's PG role
-  and injects `PGHOST`/`PGUSER`/`PGDATABASE`); the **app bootstraps its own schema at runtime**
+- **Division of labor** — the **Lakebase project is created once, outside the bundle** (one CLI command;
+  see `DEPLOY.md` — keeping a stateful DB out of `bundle destroy`'s blast radius avoids both data loss
+  and the soft-delete id-tombstone that blocks a same-id redeploy); the **Asset Bundle wires the app to
+  it by name** (the app's `postgres` resource binding, which auto-creates the app service principal's PG
+  role and injects `PGHOST`/`PGUSER`/`PGDATABASE`); the **app bootstraps its own schema at runtime**
   (`App/databricks/lakebase.py`, idempotent on first DB touch). The schema can't move to deploy time:
   its objects must be **owned by the app SP's role**, an identity only the app runs as.
 - **Tables live in the app-owned `triage` schema** (`triage.alerts`, `triage.alert_audit`) — not `public`
-  (PG 15+ denies CREATE there). The bootstrap GRANTs **read-only** visibility (`USAGE` + `SELECT`) to
-  other database roles so operators can browse/query from the workspace SQL editor; writes remain the
-  app's alone.
+  (PG 15+ denies CREATE there). The bootstrap GRANTs **read/write** (`SELECT/INSERT/UPDATE/DELETE/
+  TRUNCATE` + sequence usage) to other database roles — `PUBLIC` here reaches only the roles provisioned
+  on this Lakebase project (the operator + app SPs). Deliberately wider than read-only: every app
+  recreate **rotates the app SP**, and the rotated SP doesn't own objects its predecessor created —
+  read-only grants left a rebuilt app with `permission denied for schema triage`. Demo-grade posture
+  (alert rows are disposable demo state).
 - **Auth**: no password is stored or injected — the app mints short-lived OAuth tokens
   (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
 - The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
@@ -242,7 +247,8 @@ rollback") carry the operator between moves.
   state isn't refreshed against the workspace). Lakebase deletion is soft — restore with
   `POST /api/2.0/postgres/projects/<project-id>/undelete` (settings, roles, and storage survive), then
   restart the app. Failure signature while the project is gone: queue actions return
-  `404 …/postgres/credentials`.
+  `404 …/postgres/credentials`. `scripts/smoke_test.py` check 9 catches both this and any
+  app↔schema permission break (it probes `/api/alerts` end-to-end).
 
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)

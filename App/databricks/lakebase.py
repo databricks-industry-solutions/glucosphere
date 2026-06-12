@@ -110,20 +110,45 @@ CREATE TABLE IF NOT EXISTS triage.alert_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON triage.alerts(status);
 CREATE INDEX IF NOT EXISTS idx_audit_alert ON triage.alert_audit(alert_id);
--- Read-only visibility for human operators (workspace UI SQL editor / any DB
--- role): the tables are owned by the app SP's role, and Postgres grants nothing
--- to others by default — without these, the schema looks empty from the UI.
--- Writes remain the app's alone (no INSERT/UPDATE granted).
-GRANT USAGE ON SCHEMA triage TO PUBLIC;
-GRANT SELECT ON ALL TABLES IN SCHEMA triage TO PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA triage GRANT SELECT ON TABLES TO PUBLIC;
+"""
+
+_GRANTS_SQL = """
+-- Read/WRITE for every role on this database (PUBLIC here = only the roles
+-- provisioned on this Lakebase project: the operator + app SPs). Two reasons:
+--   1. Operator visibility — tables are owned by the app SP's role and PG
+--      grants nothing to others by default; without these the schema looks
+--      empty from the workspace SQL editor.
+--   2. App-SP ROTATION — every app recreate (e.g. bundle destroy → redeploy)
+--      issues a NEW service principal whose role does not own the existing
+--      triage objects; with read-only grants the rebuilt app got
+--      "permission denied for schema triage" (observed 2026-06-12). Full
+--      table/sequence grants + CREATE let a rotated SP keep operating.
+-- (Was read-only `GRANT SELECT` until 2026-06-12.) Demo-grade posture —
+-- alert rows are disposable demo state; see App/README "Operational notes".
+GRANT USAGE, CREATE ON SCHEMA triage TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA triage TO PUBLIC;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA triage TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA triage
+  GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON TABLES TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA triage
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO PUBLIC;
 """
 
 
 def _ensure_schema(conn):
+    import psycopg  # deferred (see get_conn)
     with conn.cursor() as cur:
         cur.execute(_SCHEMA_SQL)
     conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_GRANTS_SQL)
+        conn.commit()
+    except psycopg.errors.InsufficientPrivilege:
+        # Rotated (non-owner) app SP: GRANT requires the grant option, which
+        # only the schema owner holds. The owner's PUBLIC grants above are
+        # already in place from the original bootstrap — safe to continue.
+        conn.rollback()
 
 
 # ── Queue operations (called by app.py routes) ─────────────────────────────────

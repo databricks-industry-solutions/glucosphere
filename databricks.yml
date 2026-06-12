@@ -36,11 +36,13 @@ variables:
   lakebase_project_id:
     description: |
       Lakebase Autoscaling project id for the App's OLTP alert-triage store
-      (becomes `projects/<id>`; lowercase/digits/hyphens). Empty (default) =
-      Lakebase NOT configured for the target: no postgres_projects resource is
-      attached and render_app_yaml.py omits the app's `database` resource
-      binding + LAKEBASE_ENDPOINT env, so the App runs read-only as before
-      (the triage panel hides behind the runtime `lakebase_configured` flag).
+      (becomes `projects/<id>`; lowercase/digits/hyphens). The project itself is
+      created OUTSIDE the bundle (one-time CLI step — see DEPLOY.md and the
+      gsphere_fw_v2 target comments for why); this variable wires the App's
+      `database` postgres binding + LAKEBASE_ENDPOINT env to it by name.
+      Empty (default) = Lakebase NOT configured for the target: render_app_yaml.py
+      omits LAKEBASE_ENDPOINT, so the App runs read-only as before (the triage
+      panel hides behind the runtime `lakebase_configured` flag).
       Set per target (see gsphere_fw_v2) to enable.
     default: ""
   dev_initials:
@@ -189,8 +191,8 @@ targets:
   #
   # `apps` and database resource types do not accept brackets in
   # their names; per-target `name:` overrides below keep them from colliding
-  # with the live `glucosphere-app` resource. (Lakebase is wired via the
-  # Autoscaling `postgres_projects` resource on gsphere_fw_v2 — gated by the
+  # with the live `glucosphere-app` resource. (Lakebase is an externally-created
+  # Autoscaling project referenced by name on gsphere_fw_v2 — gated by the
   # `lakebase_project_id` variable; other targets leave it empty = no Lakebase.)
   #
   # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
@@ -236,9 +238,9 @@ targets:
           name: ${var.app_name}
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
-      # Lakebase (issue #3) — implemented via the AUTOSCALING `postgres_projects`
-      # pattern on gsphere_fw_v2; to enable here, set `lakebase_project_id` and
-      # copy that target's postgres_projects block. (Provisioned stub superseded:)
+      # Lakebase (issue #3) — see gsphere_fw_v2's pattern: create the project
+      # externally (DEPLOY.md), set `lakebase_project_id`, and copy that
+      # target's apps `database` binding. (Provisioned stub superseded:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}
@@ -272,7 +274,7 @@ targets:
           name: ${var.app_name}
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
-      # Lakebase (issue #3) — see gsphere_fw_v2's postgres_projects pattern. (Superseded stub:)
+      # Lakebase (issue #3) — see gsphere_fw_v2's external-project pattern. (Superseded stub:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-table-e2e-${var.dev_initials}
@@ -299,7 +301,7 @@ targets:
           name: ${var.app_name}
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
-      # Lakebase (issue #3) — see gsphere_fw_v2's postgres_projects pattern. (Superseded stub:)
+      # Lakebase (issue #3) — see gsphere_fw_v2's external-project pattern. (Superseded stub:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
@@ -339,23 +341,34 @@ targets:
         glucosphere_warehouse: *glucosphere_warehouse
       # Lakebase Autoscaling project — the App's OLTP store for the alert-triage
       # MVP (alerts + alert_audit; see ref_notes/lakebase/2026-06-12 probe doc).
-      # Auto-creates default branch `production` + endpoint `primary`; the App's
-      # `database` postgres binding (declared on the apps resource ABOVE)
-      # auto-creates the App SP's PG role + injects the PG* env vars.
-      # ⚠️ FOOTGUN: `bundle destroy -t gsphere_fw_v2` deletes this project
-      # INCLUDING ITS DATA (unlike warehouse/job/app, a DB resource is stateful).
-      # Acceptable here — alert rows are disposable demo state, reseedable.
-      # For a data-bearing target, set `lifecycle: { prevent_destroy: true }`
-      # or keep the DB outside the bundle.
-      postgres_projects:
-        glucosphere_oltp:
-          project_id: ${var.lakebase_project_id}
-          display_name: ${var.lakebase_project_id}
-          pg_version: 17
-          default_endpoint_settings:   # right-sized for an intermittent demo
-            autoscaling_limit_min_cu: 0.5
-            autoscaling_limit_max_cu: 1
-            suspend_timeout_duration: 600s   # idle 10 min → suspend (scale-to-zero)
+      # The project is created OUTSIDE the bundle (one-time, see DEPLOY.md):
+      #   databricks postgres create-project --json '{"project": {"project_id":
+      #     "<lakebase_project_id>", "spec": {"pg_version": 17,
+      #     "default_endpoint_settings": {"autoscaling_limit_min_cu": 0.5,
+      #     "autoscaling_limit_max_cu": 1, "suspend_timeout_duration": "600s"}}}}'
+      # The App's `database` postgres binding (declared on the apps resource
+      # ABOVE) references the project's branch BY NAME — it does not need the
+      # project to be bundle-managed — and auto-creates the App SP's PG role +
+      # injects the PG* env vars on deploy.
+      #
+      # WHY external (was a bundle-managed `postgres_projects` resource until
+      # 2026-06-12): `bundle destroy` deletes the project INCLUDING DATA and
+      # leaves the id soft-delete-tombstoned (~7 days) — a same-id redeploy then
+      # fails "project with such id already exists". Recovery required
+      # `POST /api/2.0/postgres/projects/<id>/undelete` + `bundle deployment
+      # bind` + manual tfstate surgery (the provider never reads back `spec`,
+      # so a bound project always re-plans as `recreate`). Keeping the project
+      # external removes the whole failure class: destroy leaves data intact,
+      # redeploys just re-bind the App by name. (Superseded resource block:)
+      # postgres_projects:
+      #   glucosphere_oltp:
+      #     project_id: ${var.lakebase_project_id}
+      #     display_name: ${var.lakebase_project_id}
+      #     pg_version: 17
+      #     default_endpoint_settings:   # right-sized for an intermittent demo
+      #       autoscaling_limit_min_cu: 0.5
+      #       autoscaling_limit_max_cu: 1
+      #       suspend_timeout_duration: 600s   # idle 10 min → suspend (scale-to-zero)
 
 resources:
 
@@ -759,10 +772,11 @@ resources:
   # ---------------------------------------------------------------------------
   # Lakebase: OLTP alert state cache — SUPERSEDED 2026-06-12 (issue #3)
   # ---------------------------------------------------------------------------
-  # Lakebase is now wired via the AUTOSCALING `postgres_projects` resource on the
-  # `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable; the app's
-  # `postgres` binding is declared on that target's apps resource — app.yaml's
-  # `resources:` section is NOT applied by app deploys). The PROVISIONED `database_instances`
+  # Lakebase is now an EXTERNALLY-CREATED Autoscaling project referenced by name
+  # from the `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable;
+  # the app's `postgres` binding is declared on that target's apps resource —
+  # app.yaml's `resources:` section is NOT applied by app deploys; see that
+  # target's comments for why the project is not bundle-managed). The PROVISIONED `database_instances`
   # stub below is kept for reference only — do NOT re-enable it; Autoscaling is
   # the go-forward model (scale-to-zero; `databricks postgres` API). See
   # ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md.

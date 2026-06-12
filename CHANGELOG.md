@@ -52,16 +52,17 @@ to before (wip labels intact).
   `POST /api/alerts/<id>/{ack,assign,resolve}`, `POST /api/alerts/seed`,
   `POST /api/alerts/reset`; `/api/config` gains `lakebase_configured`.
 
-### Added — DABs-managed Lakebase (Autoscaling)
-- **`postgres_projects.glucosphere_oltp`** on the `gsphere_fw_v2` target (PG 17, 0.5–1 CU,
-  10-min suspend → scale-to-zero), gated by the new **`lakebase_project_id`** bundle variable
-  (default `""` = Lakebase off). The app's **`postgres` resource binding** is declared on the
-  bundle's App resource — *discovered in the process:* app.yaml's `resources:` section is **not
-  applied** by app deploys (the binding on the App object is what auto-creates the App SP's PG
-  role + injects `PG*` env vars). `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env
-  (marker-delimited, idempotent, omitted when unset). ⚠️ documented footgun: `bundle destroy`
-  on a Lakebase-enabled target deletes the project **including its data** (disposable demo state
-  here). DEPLOY.md variables table updated.
+### Added — Lakebase provisioning (Autoscaling) + app binding
+- **Externally-created Lakebase Autoscaling project** (PG 17, 0.5–1 CU, 10-min suspend →
+  scale-to-zero; one-time `databricks postgres create-project` — DEPLOY.md "Lakebase one-time
+  setup"), wired to the `gsphere_fw_v2` target via the new **`lakebase_project_id`** bundle
+  variable (default `""` = Lakebase off). The app's **`postgres` resource binding** is declared
+  on the bundle's App resource and references the project's branch **by name** — *discovered in
+  the process:* app.yaml's `resources:` section is **not applied** by app deploys (the binding
+  on the App object is what auto-creates the App SP's PG role + injects `PG*` env vars).
+  `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (marker-delimited, idempotent,
+  omitted when unset). DEPLOY.md variables table updated. *(Started the day as a bundle-managed
+  `postgres_projects` resource; moved external the same day — see "Lakebase hardening" below.)*
 - Validated end-to-end on the `gsphere_fw_v2` sandbox: project + role auto-created, 600 alerts
   seeded, ack/assign/resolve + audit verified live. Connection-probe write-up:
   `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
@@ -83,18 +84,21 @@ to before (wip labels intact).
   (full registry roster — clean controls disabled; availability reacts to the fault filter), sort
   (severity default — "masked highs first", honestly framed as recall-harm-informed), ↻ Refresh.
 - **Patient context on expand** (worst in-incident device-vs-true moment + Coach link) so the
-  triager sees the discovery *before* picking a resolution. Read-only **PUBLIC SELECT grants** on
-  the `triage` schema so operators can browse it from the workspace SQL editor.
+  triager sees the discovery *before* picking a resolution. **PUBLIC grants** on the `triage`
+  schema so operators can browse it from the workspace SQL editor *(read-only at first; widened
+  to read/write the same day for app-SP rotation — see "Lakebase hardening" below)*.
 
 ### Added — cross-page loop + verification
 - **Deep-links carry context**: Population Risk → `?model=`, Firmware → `?fw=` (clearable chip),
   per-row **⚑ triage** buttons on the roster + OOR table; device-focus view gains a layered
   **🕰 fault-window / ⏱ last-3h / 📍 now** context card + a return-edge button back to the alert.
-- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding (skipped on non-Lakebase
-  targets). Doubles as the **drift detector**: an externally-deleted project fails it while
-  `bundle deploy` stays silent (no state refresh). DEPLOY.md gains the teardown footgun note +
-  the **undelete recovery runbook** (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion
-  is soft; settings/roles/storage survive).
+- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding **+ a functional
+  `/api/alerts` probe** through the app URL (skipped on non-Lakebase targets; the functional leg
+  added same-day — see "Lakebase hardening" below). Doubles as the **drift detector**: an
+  externally-deleted project fails it while `bundle deploy` stays silent (no state refresh).
+  DEPLOY.md gains the **undelete recovery runbook**
+  (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion is soft; settings/roles/storage
+  survive).
 - **Tour**: Triage stop in all three variants (`requiresLakebase` — steps + chooser counts gate
   on the flag); the **Quick tour now ends on `/roadmap`** ("Explore from here").
 
@@ -107,6 +111,38 @@ to before (wip labels intact).
   tooltips note alerts are batch-derived today; with streaming ingestion (see the what's-next
   backlog) the same queue raises them in real time. Backlog refreshed: monitoring-created alerts,
   triage analytics via UC-catalog registration, incident playback.
+
+### Changed — Lakebase hardening (same day: from-scratch rebuild findings)
+
+A full `bundle destroy` → redeploy test of the Lakebase-enabled sandbox surfaced two failure
+classes; both are now fixed at the source:
+
+- **The Lakebase project moved OUT of the bundle** (`databricks.yml`: the `postgres_projects`
+  resource block is retired in favor of a one-time `databricks postgres create-project` —
+  DEPLOY.md "Lakebase one-time setup"; the app's `postgres` binding references the branch by
+  name and is unchanged). Why: `bundle destroy` deleted the project **including data** and left
+  the id **soft-delete-tombstoned (~7 days)** — the same-id redeploy then failed
+  `project with such id already exists`, and the recovery path (`undelete` +
+  `bundle deployment bind`) hit a provider bug (the API never returns `spec`, so a bound project
+  perpetually re-plans as `recreate`, re-destroying it) that only manual terraform-state surgery
+  broke. External creation removes the whole class: destroy leaves data intact, redeploys re-bind
+  by name.
+- **App-SP rotation proofing** (`App/databricks/lakebase.py`): every app recreate issues a
+  **new service principal**, and the rotated SP doesn't own the `triage` objects its predecessor
+  created — the rebuilt app failed every queue call with `permission denied for schema triage`
+  while smoke's project+binding checks passed. The schema bootstrap now grants
+  **read/write to all roles on the database** (tables + sequences + matching default
+  privileges; `PUBLIC` reaches only roles provisioned on the project) and tolerates the GRANT
+  statements failing for a non-owner SP. Demo-grade posture, documented in `App/README.md`.
+- **`smoke_test.py` check 9 gains the functional leg**: after project + binding, it calls the
+  app's `GET /api/alerts` with the operator's OAuth token and asserts HTTP 200 — proving
+  credential mint + PG connect + schema usability end-to-end (exactly the layer the rotation
+  failure hid in).
+- **DEPLOY.md runbooks**: Lakebase one-time setup (create-project command validated live);
+  teardown notes the project survives destroy (+ explicit `delete-project` for full removal);
+  recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the
+  old app SP's role makes the control plane reassign its objects to the project owner, who can
+  then re-grant or `DROP SCHEMA triage CASCADE` (alerts are reseedable demo state).
 
 ## [2026-06-11]
 
