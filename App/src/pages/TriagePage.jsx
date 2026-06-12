@@ -4,7 +4,7 @@ import BrandMark from '../components/BrandMark';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link, useSearchParams } from 'react-router-dom';
-import { fetchAlerts, alertAction, seedAlerts, resetAlerts } from '../api/triage';
+import { fetchAlerts, alertAction, seedAlerts, resetAlerts, bulkAlerts } from '../api/triage';
 import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot } from '../api/databricksSQL';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
@@ -248,6 +248,18 @@ export default function TriagePage() {
     finally { setBusy(false); }
   };
 
+  // Bulk actions over the FILTERED set — the fleet move (e.g. filter FW 4.0 →
+  // one "Firmware rolled back" resolves the whole cohort; audit row per alert).
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkOtherText, setBulkOtherText] = useState('');
+  const [showBulkOther, setShowBulkOther] = useState(false);
+  const onBulk = async (action, resolution = null) => {
+    setBulkOpen(false); setShowBulkOther(false);
+    try { setBusy(true); setError(''); await bulkAlerts(filtered.map(a => a.alert_id), action, resolution); await load(filter); }
+    catch (e) { setError(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+
   // Booth demo reset — two-step confirm (arm → confirm) instead of a native dialog.
   const [resetArmed, setResetArmed] = useState(false);
   const onReset = async () => {
@@ -417,6 +429,41 @@ export default function TriagePage() {
                   an <span className="text-sky-300">↓ under-read</span> hides real highs — hyperglycemia goes untreated (DKA risk). The queue ranks under-read <span className="text-rose-300">HIGH</span> because it mirrors the <span className="text-slate-300">2025 under-read recall</span>, the failure mode tied to documented deaths
                   (the 2024 over-read recall reported injuries, no deaths) — a recall-informed triage heuristic, not a clinical absolute. Switch sort to interleave the cohorts.
                 </p>
+              )}
+
+              {/* Bulk actions over the FILTERED set — the fleet move */}
+              {!isWatch && filtered.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap mb-4 text-[11px] font-mono">
+                  <span className="text-slate-500">Bulk on the <span className="text-slate-300">{filtered.length}</span> matching:</span>
+                  <button disabled={busy} onClick={() => onBulk('ack')}
+                    title="Acknowledge every matching open alert (one audit row per alert)"
+                    className="px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40">Ack all</button>
+                  <span className="relative inline-block">
+                    <button disabled={busy} onClick={() => setBulkOpen(o => !o)}
+                      title="Resolve every matching unresolved alert with one outcome — e.g. filter to FW 4.0, pick 'Firmware rolled back', and the whole cohort closes (audit row per alert)"
+                      className="px-2.5 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Resolve all ▾</button>
+                    {bulkOpen && (
+                      <div className="absolute left-0 top-full mt-1 z-20 min-w-[260px] bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden text-left">
+                        {RESOLUTIONS.map(r => (
+                          <button key={r} disabled={busy} onClick={() => onBulk('resolve', r)}
+                            className="block w-full text-left px-3 py-2 text-[11px] font-mono text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-300 disabled:opacity-40">{r}</button>
+                        ))}
+                        {!showBulkOther ? (
+                          <button disabled={busy} onClick={() => setShowBulkOther(true)}
+                            className="block w-full text-left px-3 py-2 text-[11px] font-mono text-slate-400 hover:bg-emerald-500/10 hover:text-emerald-300 border-t border-slate-800 disabled:opacity-40">✏️ Other…</button>
+                        ) : (
+                          <div className="flex items-center gap-1.5 p-2 border-t border-slate-800">
+                            <input autoFocus value={bulkOtherText} onChange={e => setBulkOtherText(e.target.value)} placeholder="describe the resolution…"
+                              className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-300 placeholder:text-slate-600 flex-1" />
+                            <button disabled={busy || !bulkOtherText.trim()}
+                              onClick={() => { onBulk('resolve', `✏️ ${bulkOtherText.trim()}`); setBulkOtherText(''); }}
+                              className="text-[11px] font-mono px-2 py-1 rounded border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">OK</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </span>
+                </div>
               )}
 
               {error && <p className="text-xs font-mono text-rose-300 mb-3">⚠ {error}</p>}

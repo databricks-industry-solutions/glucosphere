@@ -35,6 +35,16 @@ export async function seedAlerts() {
   return asJson(await fetch('/api/alerts/seed', { method: 'POST' }));
 }
 
+/** Bulk ack/resolve over alert ids — the fleet move (rollback resolves a cohort).
+ * `resolution` only used for resolve. Returns {requested, transitioned}. */
+export async function bulkAlerts(ids, action, resolution = null) {
+  return asJson(await fetch('/api/alerts/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(resolution ? { ids, action, resolution } : { ids, action }),
+  }));
+}
+
 /** Booth demo reset: wipe queue + audit, reseed fresh open alerts (disposable demo state). */
 export async function resetAlerts() {
   return asJson(await fetch('/api/alerts/reset', { method: 'POST' }));

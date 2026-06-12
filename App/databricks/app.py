@@ -826,6 +826,28 @@ def _seed_from_gold():
     return inserted, len(rows)
 
 
+@app.route('/api/alerts/bulk', methods=['POST'])
+def bulk_alerts():
+    """Bulk ack/resolve: {"ids": [...], "action": "ack"|"resolve",
+    "resolution": "..."} — the fleet move (e.g. one firmware rollback resolves
+    the whole filtered cohort). One audit row per alert."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    body = request.get_json(silent=True) or {}
+    ids = body.get('ids') or []
+    action = body.get('action', '')
+    if action not in ('ack', 'resolve') or not isinstance(ids, list) or not ids:
+        return jsonify({'error': 'expects {"ids": [..], "action": "ack"|"resolve"}'}), 400
+    try:
+        n = lakebase.bulk_act([int(i) for i in ids], action, actor=_actor(),
+                              detail=body.get('resolution'))
+        return jsonify({'action': action, 'requested': len(ids), 'transitioned': n})
+    except Exception as e:
+        print(f"[TRIAGE] bulk {action} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/alerts/seed', methods=['POST'])
 def seed_alerts():
     """Seed the queue from the gold layer's affected cohort (idempotent)."""

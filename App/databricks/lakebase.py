@@ -196,6 +196,31 @@ def act_on_alert(alert_id: int, action: str, actor: str, detail: str | None = No
     return alert
 
 
+def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
+    """Bulk ack/resolve over a set of alert ids — the fleet move (one firmware
+    rollback resolves a whole cohort). ack touches only open alerts; resolve
+    touches anything unresolved. One audit row PER ALERT (the compliance trail
+    stays per-device). Returns the number actually transitioned."""
+    if action not in ('ack', 'resolve'):
+        raise ValueError(f"bulk supports ack|resolve, got {action!r}")
+    new_status = _ACTIONS[action]
+    cond = "status = 'open'" if action == 'ack' else "status <> 'resolved'"
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE triage.alerts SET status=%s, updated_at=now() "
+            f"WHERE alert_id = ANY(%s) AND {cond} RETURNING alert_id",
+            (new_status, list(ids)))
+        done = [r[0] for r in cur.fetchall()]
+        if done:
+            audit_action = action + ('ed' if not action.endswith('e') else 'd')
+            cur.execute(
+                "INSERT INTO triage.alert_audit (alert_id, action, actor, detail) "
+                "SELECT unnest(%s::bigint[]), %s, %s, %s",
+                (done, audit_action, actor, detail))
+        conn.commit()
+    return len(done)
+
+
 def reset_alerts():
     """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
