@@ -43,7 +43,7 @@ variables:
       Empty (default) = Lakebase NOT configured for the target: render_app_yaml.py
       omits LAKEBASE_ENDPOINT, so the App runs read-only as before (the triage
       panel hides behind the runtime `lakebase_configured` flag).
-      Set per target (see gsphere_fw_v2) to enable.
+      Set per target (see gsphere / gsphere_fw_v2) to enable.
     default: ""
   dev_initials:
     description: |
@@ -140,7 +140,29 @@ targets:
   # ───────────────────────────────────────────────────────────────────────
   gsphere:
     mode: development
+    variables:
+      # Lakebase project id for the App's alert-triage OLTP store — convention-
+      # derived (no workspace-specific value, so SSOT-safe to commit). The project
+      # itself is created ONCE outside the bundle (DEPLOY.md "Lakebase one-time
+      # setup") and is REQUIRED before deploying this target: the app's postgres
+      # binding below references its `production` branch by name.
+      lakebase_project_id: ${var.app_basename}-oltp-${bundle.target}
     resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
+          # Lakebase binding lives on the App OBJECT (bundle-managed), NOT in
+          # app.yaml — app.yaml's `resources:` section is not applied by app
+          # deploys (verified 2026-06-12). The binding auto-creates the App SP's
+          # PG role + injects the PG* env vars. Defined ONCE here with a YAML
+          # anchor; gsphere_fw_v2 reuses it via *glucosphere_lakebase_binding.
+          resources: &glucosphere_lakebase_binding
+            - name: database
+              description: "Lakebase Autoscaling Postgres — alert-triage OLTP"
+              postgres:
+                branch: projects/${var.lakebase_project_id}/branches/production
+                database: projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres
+                permission: CAN_CONNECT_AND_CREATE
       # Create-own targets get their own bundle-managed warehouse. Defined ONCE here
       # with a YAML anchor; the harness targets below reuse this exact spec via
       # `*glucosphere_warehouse` (DRY). `dais` omits this block and reuses an existing
@@ -325,18 +347,10 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
-          # Lakebase binding lives on the App OBJECT (bundle-managed), NOT in
-          # app.yaml — the app.yaml `resources:` section is not applied by app
-          # deploys (verified 2026-06-12: prod's app object carries 0 resources;
-          # its SP permissions come from the 09 grant job). This binding is what
-          # auto-creates the App SP's PG role + injects the PG* env vars.
-          resources:
-            - name: database
-              description: "Lakebase Autoscaling Postgres — alert-triage OLTP"
-              postgres:
-                branch: projects/${var.lakebase_project_id}/branches/production
-                database: projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres
-                permission: CAN_CONNECT_AND_CREATE
+          # Same Lakebase binding as gsphere (the &glucosphere_lakebase_binding
+          # anchor); ${var.lakebase_project_id} resolves per-target, so this
+          # points at the fw_v2 sandbox project.
+          resources: *glucosphere_lakebase_binding
       sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
         glucosphere_warehouse: *glucosphere_warehouse
       # Lakebase Autoscaling project — the App's OLTP store for the alert-triage

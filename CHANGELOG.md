@@ -55,11 +55,15 @@ to before (wip labels intact).
 ### Added — Lakebase provisioning (Autoscaling) + app binding
 - **Externally-created Lakebase Autoscaling project** (PG 17, 0.5–1 CU, 10-min suspend →
   scale-to-zero; one-time `databricks postgres create-project` — DEPLOY.md "Lakebase one-time
-  setup"), wired to the `gsphere_fw_v2` target via the new **`lakebase_project_id`** bundle
-  variable (default `""` = Lakebase off). The app's **`postgres` resource binding** is declared
-  on the bundle's App resource and references the project's branch **by name** — *discovered in
-  the process:* app.yaml's `resources:` section is **not applied** by app deploys (the binding
-  on the App object is what auto-creates the App SP's PG role + injects `PG*` env vars).
+  setup"), wired to the **`gsphere` (prod) + `gsphere_fw_v2`** targets via the new
+  **`lakebase_project_id`** bundle variable (default `""` = Lakebase off; convention-derived
+  ids `glucosphere-oltp-gsphere` / `…-fw-v2-<initials>`). The app's **`postgres` resource
+  binding** is declared on the bundle's App resource (YAML-anchored
+  `&glucosphere_lakebase_binding`, defined on gsphere, reused by fw_v2) and references the
+  project's branch **by name** — *discovered in the process:* app.yaml's `resources:` section
+  is **not applied** by app deploys (the binding on the App object is what auto-creates the
+  App SP's PG role + injects `PG*` env vars). Note this makes Lakebase part of the `gsphere`
+  deploy contract: the one-time create-project step is required before deploying that target.
   `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (marker-delimited, idempotent,
   omitted when unset). DEPLOY.md variables table updated. *(Started the day as a bundle-managed
   `postgres_projects` resource; moved external the same day — see "Lakebase hardening" below.)*
