@@ -299,7 +299,15 @@ export default function TriagePage() {
   // (copy-paste) joining alerts to their audit trail. Workspace host from /api/config
   // (same mechanism as the About page's deep-link tiles).
   const [workspaceHost, setWorkspaceHost] = useState('');
-  useEffect(() => { getConfig().then((c) => setWorkspaceHost(c.workspace_host || '')).catch(() => {}); }, []);
+  const [editorUrl, setEditorUrl] = useState('');
+  useEffect(() => {
+    getConfig().then((c) => {
+      setWorkspaceHost(c.workspace_host || '');
+      // Exact SQL-editor deep link (project+branch uids resolved server-side);
+      // falls back to the generic /lakebase landing when unresolvable.
+      setEditorUrl(c.lakebase_editor_url || (c.workspace_host ? `${c.workspace_host}/lakebase` : ''));
+    }).catch(() => {});
+  }, []);
   const SAMPLE_SQL = `-- your triage actions, as rows (newest first)
 SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at
 FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)
@@ -475,11 +483,11 @@ ORDER BY u.at DESC LIMIT 20;`;
                             className="w-full text-left text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800 mb-1.5">
                             {sqlCopied ? '✓ query copied' : '1 · Copy the query'}
                           </button>
-                          <a href={`${workspaceHost}/lakebase`} target="_blank" rel="noreferrer"
+                          <a href={editorUrl} target="_blank" rel="noreferrer"
                             className="block text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-slate-700 text-slate-200 hover:bg-slate-800">
                             2 · Open the Lakebase SQL editor ↗
                           </a>
-                          <p className="text-[10px] text-slate-500 mt-2 leading-snug">In the editor: pick the glucosphere OLTP project → <span className="font-mono">databricks_postgres</span> → paste → run.</p>
+                          <p className="text-[10px] text-slate-500 mt-2 leading-snug">Lands directly in this project's SQL editor — paste → Run.</p>
                           <button onClick={() => { setRawOpen(v => !v); setVerifyOpen(false); }}
                             className="w-full text-left text-[11px] font-mono px-2.5 py-1.5 rounded-md border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 mt-2">
                             {rawOpen ? 'Hide the in-page peek' : 'or · Peek right here ↓'}

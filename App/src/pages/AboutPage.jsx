@@ -80,7 +80,8 @@ function linksFromConfig(cfg) {
     // deep-link straight to the forecast endpoint (the list page has no URL filter);
     // fall back to the full endpoints listing if the name wasn't discovered.
     serving: cfg?.forecast_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
-    lakebase: wh ? `${wh}/lakebase` : '',
+    // Exact SQL-editor deep link when the backend resolved it; generic landing otherwise.
+    lakebase: (cfg && cfg.lakebase_editor_url) || (wh ? `${wh}/lakebase` : ''),
     genie: wh && cfg?.genie_space_id ? `${wh}/genie/rooms/${cfg.genie_space_id}` : '',
     ka: cfg?.ka_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
     mas: cfg?.mas_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),

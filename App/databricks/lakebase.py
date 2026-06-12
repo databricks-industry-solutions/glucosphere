@@ -280,6 +280,34 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
     return len(done)
 
 
+_editor_url_cache = {'url': None}  # None = not resolved yet; '' = resolved-failed
+
+
+def editor_url() -> str:
+    """Deep link to the workspace's Lakebase SQL editor for THIS project/branch:
+    {host}/lakebase/projects/{project_uid}/branches/{branch_uid}/sql-editor?database=…
+    The UI route needs the project UID + Neon-style branch uid (br-…), neither of
+    which the app's env carries — resolved once via the postgres API and cached."""
+    if _editor_url_cache['url'] is not None:
+        return _editor_url_cache['url']
+    url = ''
+    try:
+        # LAKEBASE_ENDPOINT = projects/<id>/branches/<branch>/endpoints/<ep>
+        parts = LAKEBASE_ENDPOINT.split('/')
+        project_path, branch_path = '/'.join(parts[:2]), '/'.join(parts[:4])
+        host, ws_token = _get_auth()
+        hdrs = {'Authorization': f'Bearer {ws_token}'}
+        proj = requests.get(f"{host}/api/2.0/postgres/{project_path}", headers=hdrs, timeout=20).json()
+        br = requests.get(f"{host}/api/2.0/postgres/{branch_path}", headers=hdrs, timeout=20).json()
+        if proj.get('uid') and br.get('uid'):
+            url = (f"{host}/lakebase/projects/{proj['uid']}/branches/{br['uid']}"
+                   f"/sql-editor?database={os.environ.get('PGDATABASE', 'databricks_postgres')}")
+    except Exception as e:
+        print(f"[TRIAGE] editor_url resolve failed: {e}")
+    _editor_url_cache['url'] = url
+    return url
+
+
 # The exact SQL the "Verify in Postgres" panel shows + runs — kept as ONE constant
 # so the UI displays precisely what executes (honesty: no hidden massaging).
 RAW_AUDIT_SQL = (

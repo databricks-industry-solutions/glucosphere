@@ -134,7 +134,10 @@ to before (wip labels intact).
   buried; promoted to a button the same day.) The dropdown also offers **"Peek right
   here ↓"** — an in-page panel (`GET /api/alerts/raw`) rendering the exact SQL + its live
   result right under the queue, refetching on every queue action: click Ack above, watch
-  the row land below.
+  the row land below. "Open the Lakebase SQL editor" deep-links **directly into this
+  project's SQL editor** (the backend resolves the project + branch uids via the postgres
+  API, cached; exposed as `lakebase_editor_url` in `/api/config` — the About tile uses it
+  too; falls back to the generic `/lakebase` landing when unresolvable).
 - **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
   trailing 3-hour window (amber, distinct from the rose incident band) when it contains
   very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250

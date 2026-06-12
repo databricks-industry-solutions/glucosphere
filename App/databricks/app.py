@@ -729,6 +729,10 @@ def get_config():
         # false → React hides /triage + keeps the "wip" labels, so non-Lakebase
         # targets look exactly as before.
         'lakebase_configured': lakebase.is_configured(),
+        # Deep link straight into the workspace's Lakebase SQL editor for this
+        # project/branch ('' when not Lakebase-configured or not resolvable) —
+        # used by the Triage "Verify in Postgres" dropdown + the About tile.
+        'lakebase_editor_url': lakebase.editor_url() if lakebase.is_configured() else '',
     })
 
 
