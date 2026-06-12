@@ -3,7 +3,7 @@
 # Autoscaling Postgres (projects/test) — via (A) the declarative app->postgres
 # resource binding's injected env vars, and/or (B) an SDK-minted OAuth credential.
 # Reports everything as JSON at "/" and prints the same to app logs at startup.
-# DELETE after the probe (teardown: app + nothing else — the DB is May's manual project).
+# DELETE after the probe (teardown: the app only — the test DB is managed separately).
 import json
 import os
 import traceback
