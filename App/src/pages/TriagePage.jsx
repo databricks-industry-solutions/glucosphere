@@ -37,8 +37,8 @@ const RESOLUTIONS = [
   '🚑 EMS dispatched (911) — patient escalated',
 ];
 
-function AlertRow({ alert, onAction, busy }) {
-  const [expanded, setExpanded] = useState(false);
+function AlertRow({ alert, onAction, busy, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(!!defaultExpanded);
   const [assignee, setAssignee] = useState('');
   const [note, setNote] = useState('');
   const [resolveOpen, setResolveOpen] = useState(false);
@@ -224,7 +224,11 @@ export default function TriagePage() {
   // })();
   const persisted = {};
   const hasQueueParams = ['q', 'fault', 'model', 'fw'].some((k) => searchParams.get(k));
-  const [filter, setFilter] = useState(persisted.filter || 'open');  // status tab — client-side (we fetch all statuses once)
+  // ?alert=1 marks ALERT-intent links ("work this device's alert") — declared
+  // BEFORE first use (the filter init below reads it; a later declaration was a
+  // TDZ crash, 2026-06-12).
+  const alertIntent = !!searchParams.get('alert');
+  const [filter, setFilter] = useState(alertIntent ? 'all' : (persisted.filter || 'open'));  // status tab — client-side (we fetch all statuses once)
   // Deep-links carry their context: Population Risk passes ?model=, Firmware
   // passes ?fw=, anything can pass ?fault= / ?q=. (Alerts carry no region, so a
   // region-filtered roster lands unfiltered.)
@@ -238,8 +242,13 @@ export default function TriagePage() {
   // 2026-06-12: landing them on the retrospective queue read as a context loss).
   // Cohort deep-links (?model= / ?fw= — Population Risk / Firmware bulk sends)
   // still land on the queue, where bulk actions live.
+  // Alert-intent links land straight on the queue with the row auto-expanded
+  // (status notes visible in ONE click from the source page; it took three —
+  // booth frustration 2026-06-12). Plain ?q= stays a patient-NOW link → live view.
+  const [autoExpandPid, setAutoExpandPid] = useState(
+    alertIntent ? (searchParams.get('q') || '').trim().toUpperCase() : '');
   const [scenario, setScenario] = useState(
-    searchParams.get('q') ? 'last3h'
+    searchParams.get('q') && !alertIntent ? 'last3h'
       : hasQueueParams && persisted.scenario === 'last3h' ? 'week'
       : (persisted.scenario || 'week'));
   const [watchlist, setWatchlist] = useState(null);       // last3h scenario rows
@@ -805,11 +814,20 @@ ORDER BY u.at DESC LIMIT 20;`;
                             <td className="p-2 font-mono text-xs text-right text-rose-300">{w.veryHigh || '—'}</td>
                             <td className="p-2 font-mono text-xs text-right text-slate-400">{Math.round(w.minGlucose)} · {Math.round(w.maxGlucose)}</td>
                             <td className="p-2 font-mono text-xs text-right">
-                              {alertPatients.has(w.patientId) ? (
-                                <button onClick={() => { setJumpCtx({ patient: w.patientId, search, modelFilter }); setScenario('week'); setFilter('open'); setSearch(w.patientId); }}
-                                  title="This patient also has an open device alert — open it in the queue (full-week view, searched to this patient)."
-                                  className="text-rose-300 hover:text-rose-200 hover:underline">⚑ open alert</button>
-                              ) : <span className="text-slate-600" title="No open device alert — the danger-band readings look physiological, not device-fault fallout.">—</span>}
+                              {(() => {
+                                const al = (data.alerts || []).find(a => a.patient_id === w.patientId && a.status !== 'resolved');
+                                if (!al) return <span className="text-slate-600" title="No open device alert — the danger-band readings look physiological, not device-fault fallout.">—</span>;
+                                return (<span className="inline-flex items-center gap-1.5">
+                                  {al.status === 'open' && (
+                                    <button disabled={busy} onClick={() => onAction(al.alert_id, 'ack')}
+                                      title="Acknowledge right here — no view switch (writes the audit row)"
+                                      className="px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40">Ack</button>
+                                  )}
+                                  <button onClick={() => { setJumpCtx({ patient: w.patientId, search, modelFilter }); setAutoExpandPid(w.patientId); setScenario('week'); setFilter('all'); setSearch(w.patientId); }}
+                                    title="Open this patient's alert in the queue — lands EXPANDED (full trail + assign/resolve), with Back-to-live one click away."
+                                    className="text-rose-300 hover:text-rose-200 hover:underline">⚑ {al.status === 'acked' ? 'acked alert' : 'open alert'}</button>
+                                </span>);
+                              })()}
                             </td>
                           </tr>
                         ))}
@@ -850,7 +868,8 @@ ORDER BY u.at DESC LIMIT 20;`;
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.map(a => <AlertRow key={a.alert_id} alert={a} onAction={onAction} busy={busy} />)}
+                    {visible.map(a => <AlertRow key={a.alert_id} alert={a} onAction={onAction} busy={busy}
+                      defaultExpanded={!!autoExpandPid && a.patient_id === autoExpandPid} />)}
                   </tbody>
                 </table>
               )}

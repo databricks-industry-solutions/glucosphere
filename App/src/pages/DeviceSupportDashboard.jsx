@@ -830,7 +830,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   Analysis), then circle back to the alert to record the resolution */}
               {lakebaseConfigured && focusRow?.patient_id && (
                 <button
-                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}`)}
+                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}&alert=1`)}
                   className="mt-1 text-[11px] font-mono px-2 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10"
                   title="Opens Triage's live view focused on this patient — the ⚑ chip there takes you to their alert for resolution"
                 >⚑ work this device's alert in Triage →</button>
@@ -915,7 +915,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         {/* → this patient's alert in the triage queue (flag-gated) */}
                         {lakebaseConfigured && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}`); }}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}&alert=1`); }}
                             className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
                             title={`Find ${device.patient} in the Alert Triage queue`}
                           >⚑ triage</button>
