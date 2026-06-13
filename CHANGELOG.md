@@ -173,6 +173,18 @@ to before (wip labels intact).
   registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
   then 600 fresh alerts reseeded.
 
+### Fixed — single-patient alert focus (the all-day "retrospective week" confusion)
+- Jumping to one patient's alert (from the live watchlist ⚑, a device-page "work this
+  alert" deep-link, or a manual `PSEUDO_*` search) no longer shows the meaningless
+  "Full week (retrospective)" window selector — which contradicted the "from the live view"
+  banner. A single-patient focus now shows a plain **⚑ Alert detail — <patient>** chip
+  instead, keyed on the patient in the URL so it HOLDS through navigating out to Coach /
+  Device-Support and back (the earlier `jumpCtx`-only version reset to the week dropdown on
+  the round-trip). The window selector returns when you clear back to the full queue.
+- Bridge stat counts open OR acked as an "active device alert" (no more "0 have an open
+  alert" beside a visible ⚑ acked chip); the watchlist below-cutoff fetch only lists a
+  searched patient as "in the danger bands" when they actually have <54/>250 readings.
+
 ### Fixed — PR review pass (code-reviewer · silent-failure-hunter · comment-analyzer)
 - **Device Pattern Alerts ranked by the wrong metric** (honesty): it ordered cohorts by
   out-of-range *rate*, which reads ~36–40% on EVERY model×firmware — clean controls included

@@ -415,6 +415,13 @@ ORDER BY u.at DESC LIMIT 20;`;
   // until/unless the registry query resolves.
   const modelOptions = allModels.length ? allModels : [...affectedModels].sort();
   const q = search.trim().toLowerCase();
+  // Single-patient focus: a PSEUDO_* search is active in a queue scenario. Drives
+  // the Alert-detail chip (vs the window dropdown) — keyed on the SEARCH, not on
+  // how you arrived, so it holds whether you came via the watchlist ⚑ (in-page) or
+  // a device-page "work this alert" deep-link (?q=…&alert=1, fresh load), and
+  // survives navigating out to Coach/Device and back (the patient is in the URL).
+  const focusPid = /^pseudo_\d+$/.test(q) ? q.toUpperCase() : null;
+  const singlePatientFocus = !!focusPid && scenario !== 'last3h';
   // Watch view rows under the active model/search filters — one definition feeds
   // BOTH the table and the "N patients in the danger bands" label, so the label
   // reacts to filters (it would otherwise sit frozen at the full fetch count).
@@ -433,7 +440,10 @@ ORDER BY u.at DESC LIMIT 20;`;
     let stale = false;
     getPatientRecent3h(pid).then(r => {
       if (stale) return;
-      if (!r || !r.readings) { setExtraWatchRow(null); return; }
+      // Only surface them if they ACTUALLY have a danger-band reading — a searched
+      // patient whose last-3h is in range (e.g. a fixed device) is NOT "in the danger
+      // bands"; showing them there contradicts the dashes in their own row.
+      if (!r || (!r.veryLow && !r.veryHigh)) { setExtraWatchRow(null); return; }
       const al = (data.alerts || []).find(a => a.patient_id === pid);
       setExtraWatchRow({
         patientId: pid, deviceModel: al?.device_model || '—', firmware: al?.firmware || '—',
@@ -449,7 +459,7 @@ ORDER BY u.at DESC LIMIT 20;`;
   // risk from device-fault fallout at a glance (replaces a dead "n/a" label).
   const watchIds = new Set(watchRows.map(w => w.patientId));
   const alertPatients = new Set((data.alerts || [])
-    .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
+    .filter(a => a.status !== 'resolved' && watchIds.has(a.patient_id))  // open OR acked = still an active case
     .map(a => a.patient_id));
   const watchAlertOverlap = alertPatients.size;
   // refined = every filter EXCEPT the status tab; `filtered` adds the tab.
@@ -557,10 +567,10 @@ ORDER BY u.at DESC LIMIT 20;`;
                       <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
                       <span className="text-slate-600">·</span>
                       <span className="text-slate-400"
-                        title="Overlap between the danger-band patients listed below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
+                        title="Overlap between the danger-band patients listed below and active (open or acked) device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
                         {watchAlertOverlap === watchRows.length && watchRows.length === 1
-                          ? <>the patient below <span className="text-rose-300 font-semibold">has an open device alert</span> (⚑)</>
-                          : <><span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of the {watchRows.length} patients below {watchAlertOverlap === 1 ? 'has' : 'have'} an open device alert (⚑)</>}
+                          ? <>the patient below <span className="text-rose-300 font-semibold">has an active device alert</span> (⚑)</>
+                          : <><span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of the {watchRows.length} patients below {watchAlertOverlap === 1 ? 'has' : 'have'} an active device alert (⚑)</>}
                       </span>
                     </>
                   ) : (<>
@@ -619,11 +629,21 @@ ORDER BY u.at DESC LIMIT 20;`;
 
               {/* refinement bar — client-side over the loaded queue */}
               <div className="flex items-center gap-2 flex-wrap mb-2 text-[11px] font-mono">
-                <select value={scenario} onChange={e => { setScenario(e.target.value); setJumpCtx(null); }}
-                  title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
-                  className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
-                  {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
-                </select>
+                {/* When focused on a single jumped alert, the time-window selector is
+                    meaningless (one alert isn't "a week" or "last 3h") and its
+                    "Full week (retrospective)" label contradicts the "from the live
+                    view" banner — so show a plain Alert-detail chip instead. */}
+                {singlePatientFocus ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 bg-amber-500/5">
+                    ⚑ Alert detail — {focusPid}
+                  </span>
+                ) : (
+                  <select value={scenario} onChange={e => { setScenario(e.target.value); setJumpCtx(null); }}
+                    title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
+                    className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
+                    {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+                  </select>
+                )}
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="search patient / device…"
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 placeholder:text-slate-600 w-52" />
                 <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Fault filter" title={isWatch ? NA_WATCH : undefined}>
@@ -673,8 +693,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                 <div className="flex items-center gap-3 text-xs font-mono mb-4 border border-amber-500/30 bg-amber-500/5 rounded-lg px-3 py-2">
                   <span className="text-amber-300">⚑</span>
                   <span className="text-slate-300">
-                    Jumped from the <span className="text-amber-300">live last-3h view</span> to{' '}
-                    <span className="text-cyan-300">{jumpCtx.patient}</span>'s device alert — the queue lives in the retrospective views.
+                    Showing <span className="text-cyan-300">{jumpCtx.patient}</span>'s device alert (from the live view) — acknowledge / assign / resolve it below.
                   </span>
                   <button onClick={() => { setScenario('last3h'); setSearch(jumpCtx.search); setModelFilter(jumpCtx.modelFilter); setJumpCtx(null); }}
                     className="ml-auto shrink-0 px-2.5 py-1 rounded-md border border-amber-500/40 text-amber-300 hover:bg-amber-500/10">
