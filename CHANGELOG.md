@@ -19,6 +19,20 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-13]
+
+### Changed — guided-tour card placement + assistant-step legibility (booth polish)
+- **Assistant steps**: the coachmark card now docks *beside* the assistant slide-over (just
+  left of its `sm:w-[440px]` edge) instead of being stranded on the far-left — and the panel,
+  the thing being toured, is **no longer dimmed**. The backdrop masks only the area left of the
+  panel and the spotlight keeps just its cyan tab outline (no darkening box-shadow), so the
+  assistant reads clearly while the step describes it (`App/src/components/GuidedTour.jsx`).
+- **Oversized-target steps** (e.g. Population Risk's full-width cohort panel): the card tucks
+  into the **top-right** corner instead of top-left, so the page title (top-left, by the nav
+  rail) stays visible.
+
+---
+
 ## [2026-06-12]
 
 **Lakebase Alert Triage** — the roadmap's "Live Alert & Triage" card goes live: a Lakebase-backed

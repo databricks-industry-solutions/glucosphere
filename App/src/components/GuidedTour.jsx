@@ -129,11 +129,17 @@ export default function GuidedTour() {
     if (!rect || !cardRef.current) { setCardStyle(null); return; }
     const card = cardRef.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
-    // Assistant steps: the slide-over panel owns the RIGHT side — dock the card
-    // hard LEFT so the panel (the thing being toured) stays fully visible
-    // (the generic placement covered the panel).
+    // Assistant steps: the slide-over panel owns the RIGHT side. The step is ABOUT
+    // the assistant, so dock the card right BESIDE the panel (just left of its edge)
+    // rather than stranding it on the far-left of the screen. Narrow viewports run
+    // the panel full-width (sm:w-[440px] → w-full below the sm breakpoint), leaving
+    // no room beside it → fall back to hard-left there.
     if (step?.openAssistant) {
-      setCardStyle({ position: 'fixed', top: Math.max(M, Math.min(rect.top, vh - card.height - M)), left: M, pointerEvents: 'auto' });
+      const PANEL = 440; // assistant slide-over width — keep in sync with GlobalAssistant's sm:w-[440px]
+      const top = Math.max(M, Math.min(rect.top, vh - card.height - M));
+      const beside = vw - PANEL - GAP - card.width;
+      const left = (vw >= 640 && beside >= M) ? beside : M;
+      setCardStyle({ position: 'fixed', top, left, pointerEvents: 'auto' });
       return;
     }
     const clampX = (x) => Math.max(M, Math.min(x, vw - card.width - M));
@@ -147,11 +153,10 @@ export default function GuidedTour() {
     else if (rect.left - GAP - card.width >= M)           pos = { top: clampY(cy), left: rect.left - GAP - card.width }; // left
     else {
       // Oversized target (a full-width, taller-than-viewport panel): no room on any
-      // side, so tuck the card into whichever viewport CORNER has more free space —
-      // covering as little of the highlight as possible instead of sitting dead-center.
-      const left = (vw - rect.right) >= rect.left ? vw - card.width - M : M;
-      const top = (vh - rect.bottom) >= rect.top ? vh - card.height - M : M;
-      pos = { top: clampY(top), left: clampX(left) };
+      // side. Tuck the card into the TOP-RIGHT corner so the page title (top-left,
+      // beside the nav rail) stays visible and the card clears the left nav.
+      // (Assistant steps, which own the right side, are handled above.)
+      pos = { top: M, left: vw - card.width - M };
     }
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
@@ -229,11 +234,18 @@ export default function GuidedTour() {
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
       {/* Backdrop deliberately does NOT close the tour: a stray click outside the card used
           to silently end it mid-walkthrough with no way back to the current step.
-          Skip (and Done) are the explicit exits. */}
-      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} />
+          Skip (and Done) are the explicit exits.
+          On assistant steps the slide-over panel IS the subject being toured, so dim only
+          the area LEFT of it (sm:w-[440px]) — a full-screen mask would darken the very
+          thing we're pointing at. Other steps dim the full screen. */}
+      <div className="absolute inset-y-0 left-0 bg-black/40"
+        style={{ right: step?.openAssistant ? 440 : 0, pointerEvents: 'auto' }} />
       {rect && (
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
-          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2,6,23,0.55)' }} />
+          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12,
+            // On assistant steps keep just the cyan outline on the tab — no darkening
+            // box-shadow, so the panel body stays fully visible.
+            boxShadow: step?.openAssistant ? 'none' : '0 0 0 9999px rgba(2,6,23,0.55)' }} />
       )}
       <div ref={cardRef}
         className="fixed w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl transition-all"
