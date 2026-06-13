@@ -729,6 +729,10 @@ def get_config():
         # false → React hides /triage + keeps the "wip" labels, so non-Lakebase
         # targets look exactly as before.
         'lakebase_configured': lakebase.is_configured(),
+        # Deep link straight into the workspace's Lakebase SQL editor for this
+        # project/branch ('' when not Lakebase-configured or not resolvable) —
+        # used by the Triage "Verify in Postgres" dropdown + the About tile.
+        'lakebase_editor_url': lakebase.editor_url() if lakebase.is_configured() else '',
     })
 
 
@@ -743,6 +747,20 @@ def _lakebase_guard():
 def _actor() -> str:
     """Audit actor: the signed-in user when the Apps proxy forwards it, else 'operator'."""
     return request.headers.get('X-Forwarded-Email') or request.headers.get('X-Forwarded-Preferred-Username') or 'operator'
+
+
+@app.route('/api/alerts/raw')
+def raw_alert_rows():
+    """The alerts ⋈ audit join, newest first — the in-app "Verify in Postgres"
+    peek panel (shows the exact SQL + its live result without leaving the page)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        return jsonify(lakebase.raw_audit(limit=int(request.args.get('limit', 12))))
+    except Exception as e:
+        print(f"[TRIAGE] raw_audit failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/alerts')
@@ -864,17 +882,95 @@ def seed_alerts():
         return jsonify({'error': str(e)}), 500
 
 
+ARCHIVE_TABLE = f"{CATALOG_NAME}.{SCHEMA_NAME}.triage_session_archive"
+
+
+def _archive_session_to_delta():
+    """Snapshot the FULL triage state (alerts ⋈ audit) to a Delta table before a
+    reset truncates it — every booth session's work stays queryable in UC.
+    Returns (archived_rows, reset_id). Raises on failure — the caller ABORTS the
+    reset then (preservation is the point; losing the session silently isn't ok).
+    The app SP needs CREATE TABLE on the schema (grant_app_sp.py / 09 grant
+    task); the SP then owns the table, so inserts need no further grants."""
+    rows = lakebase.dump_all()
+    if not rows:
+        return 0, None
+    import uuid as _uuid
+    reset_id = str(_uuid.uuid4())[:8]
+    host, token = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not (token and warehouse_id):
+        raise RuntimeError('warehouse auth not available for archiving')
+
+    def run_sql(stmt):
+        r = requests.post(
+            f"{host}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {token}'},
+            json={'statement': stmt, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
+            timeout=120,
+        )
+        r.raise_for_status()
+        st = r.json().get('status', {})
+        if st.get('state') != 'SUCCEEDED':
+            raise RuntimeError(f"archive SQL failed: {st.get('error', {}).get('message', st.get('state'))}")
+
+    run_sql(f"""
+        CREATE TABLE IF NOT EXISTS {ARCHIVE_TABLE} (
+          reset_id STRING, archived_at TIMESTAMP,
+          patient_id STRING, device_id STRING, device_model STRING, firmware STRING,
+          alert_type STRING, severity STRING, status STRING, assigned_to STRING,
+          action STRING, actor STRING, detail STRING, action_at TIMESTAMP)
+        COMMENT 'Triage sessions archived from Lakebase at each demo reset (one row per audit entry)'""")
+
+    def esc(v):
+        # SQL-literal hardening (security review 2026-06-12): detail/assigned_to/
+        # actor are user-supplied free text. Doubling ONLY quotes leaves the
+        # backslash escape path open (Spark SQL's default parser treats \ as an
+        # escape — a value ending in \ would swallow the closing quote), so
+        # backslashes are doubled FIRST, then quotes; NULs stripped. Per-row
+        # parameter binding would be the textbook fix, but at 14 columns x 400
+        # rows per chunk it exceeds the Statement Execution API's per-request
+        # parameter budget — batched VALUES with full literal escaping is the
+        # workable middle. reset_id is uuid-derived; the table name comes from
+        # operator-controlled env, not user input.
+        if v is None:
+            return 'NULL'
+        t = str(v).replace('\x00', '').replace('\\', '\\\\').replace("'", "''")
+        return "'" + t + "'"
+    CHUNK = 400
+    for i in range(0, len(rows), CHUNK):
+        values = ",".join(
+            f"('{reset_id}', current_timestamp(), {esc(r[0])}, {esc(r[1])}, {esc(r[2])}, {esc(r[3])}, "
+            f"{esc(r[4])}, {esc(r[5])}, {esc(r[6])}, {esc(r[7])}, {esc(r[8])}, {esc(r[9])}, {esc(r[10])}, "
+            f"CAST({esc(str(r[11]))} AS TIMESTAMP))"
+            for r in rows[i:i + CHUNK])
+        run_sql(f"INSERT INTO {ARCHIVE_TABLE} VALUES {values}")
+    # Rolling retention: booth sessions are small, but keep the archive bounded —
+    # 30 days is plenty to demo "your session is in UC". Full cleanup is the
+    # operator's one-liner: DROP TABLE <catalog>.<schema>.triage_session_archive
+    run_sql(f"DELETE FROM {ARCHIVE_TABLE} WHERE archived_at < current_timestamp() - INTERVAL 30 DAYS")
+    return len(rows), reset_id
+
+
 @app.route('/api/alerts/reset', methods=['POST'])
 def reset_alerts():
-    """Booth demo reset: wipe queue + audit, then reseed fresh open alerts —
-    so each visitor can triage from a clean slate. Demo state is disposable."""
+    """Booth demo reset: ARCHIVE the session to Delta (UC-queryable), then wipe
+    queue + audit and reseed fresh open alerts. Archive failure aborts the reset
+    — Postgres state is disposable only once its story is preserved."""
     guard = _lakebase_guard()
     if guard:
         return guard
     try:
+        archived, reset_id = _archive_session_to_delta()
+    except Exception as e:
+        print(f"[TRIAGE] archive-before-reset failed: {e}")
+        return jsonify({'error': f'reset aborted — could not archive the session to {ARCHIVE_TABLE}: {e}. '
+                                 f'Grant the app SP CREATE TABLE on the schema (scripts/grant_app_sp.py) and retry.'}), 500
+    try:
         lakebase.reset_alerts()
         inserted, cohort = _seed_from_gold()
-        return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort})
+        return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort,
+                        'archived': archived, 'reset_id': reset_id, 'archive_table': ARCHIVE_TABLE})
     except Exception as e:
         print(f"[TRIAGE] reset failed: {e}")
         return jsonify({'error': str(e)}), 500
@@ -958,7 +1054,13 @@ def serve_spa(path):
     # Otherwise serve index.html for SPA routing
     index_path = os.path.join(DIST_DIR, 'index.html')
     print(f"[DEBUG] Serving index.html for path: {path}")
-    return send_from_directory(DIST_DIR, 'index.html')
+    resp = send_from_directory(DIST_DIR, 'index.html')
+    # The SPA shell must never be cached: stale index.html pins users to old
+    # content-hashed bundles across deploys (booth kept seeing previous builds
+    # until a hard refresh — 2026-06-12). The hashed assets themselves stay
+    # long-cacheable; only this entry document is volatile.
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
-import BrandMark from '../components/BrandMark';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader, Users } from 'lucide-react';
 import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle, getPatientIncidentSnapshot, getPatientRecent3h } from '../api/databricksSQL';
@@ -518,9 +517,10 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               </svg>
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <Wrench className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <Wrench className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Device Support Dashboard
@@ -544,11 +544,17 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         </div>
       </header>
 
-      <main className="max-w-[88rem] mx-auto px-6 py-8">
+      {/* pb-32: breathing room below the last section — the focused-device row was
+          pinned to the viewport bottom under the Ask FAB (booth catch 2026-06-12) */}
+      <main className="max-w-[88rem] mx-auto px-6 pt-8 pb-32">
         {/* Population Overview */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-1">
-            <BrandMark className="w-5 h-5 text-amber-400" />
+            <span className="relative w-6 h-5 shrink-0" aria-hidden="true">
+              {/* "two spanners" — the device-fleet sibling of Coach's two-person Users icon */}
+              <Wrench className="w-4 h-4 text-cyan-400 absolute left-0 top-0" />
+              <Wrench className="w-4 h-4 text-cyan-400/70 absolute left-2 top-1" />
+            </span>
             <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Population Overview
             </h2>
@@ -824,9 +830,9 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                   Analysis), then circle back to the alert to record the resolution */}
               {lakebaseConfigured && focusRow?.patient_id && (
                 <button
-                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}`)}
+                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}&alert=1`)}
                   className="mt-1 text-[11px] font-mono px-2 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10"
-                  title="Back to this patient's alert in the triage queue — pick the resolution your investigation points to"
+                  title="Opens Triage's live view focused on this patient — the ⚑ chip there takes you to their alert for resolution"
                 >⚑ work this device's alert in Triage →</button>
               )}
             </div>
@@ -909,7 +915,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         {/* → this patient's alert in the triage queue (flag-gated) */}
                         {lakebaseConfigured && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}`); }}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}&alert=1`); }}
                             className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
                             title={`Find ${device.patient} in the Alert Triage queue`}
                           >⚑ triage</button>
@@ -962,27 +968,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <tr className="border-b border-slate-800 bg-slate-900">
                         <td colSpan="9" className="px-4 py-4">
                           <div className="grid grid-cols-2 gap-6">
-                            {/* Reading Details */}
+                            {/* Reading Details — ONE band → ONE color, used by the value,
+                                the Range Status text, and the action banner below (a mixed
+                                amber value + white status + rose banner read as three
+                                different severities for the same reading — booth catch). */}
+                            {(() => { const v = device.glucose_value;
+                              const band = (v < 54 || v > 250) ? 'critical' : (v < 70 || v > 180) ? 'warn' : 'ok';
+                              const bandText = band === 'critical' ? 'text-rose-400' : band === 'warn' ? 'text-amber-400' : 'text-emerald-400';
+                              return (
                             <div>
                               <h4 className="text-sm font-medium text-slate-300 mb-3">Reading Details</h4>
                               <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
-                                  <span className={`font-mono font-bold ${
-                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
-                                      : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
-                                      : 'text-emerald-400'
-                                  }`}>
-                                    {Math.round(device.glucose_value)} mg/dL
+                                  <span className={`font-mono font-bold ${bandText}`}>
+                                    {Math.round(v)} mg/dL
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Range Status:</span>
-                                  <span className="text-slate-300">
-                                    {device.glucose_value < 54 ? 'Very Low (<54)' :
-                                     device.glucose_value < 70 ? 'Low (54–69)' :
-                                     device.glucose_value > 250 ? 'Very High (>250)' :
-                                     device.glucose_value > 180 ? 'High (181–250)' :
+                                  <span className={bandText}>
+                                    {v < 54 ? 'Very Low (<54)' :
+                                     v < 70 ? 'Low (54–69)' :
+                                     v > 250 ? 'Very High (>250)' :
+                                     v > 180 ? 'High (181–250)' :
                                      'In range (70–180)'}
                                   </span>
                                 </div>
@@ -996,9 +1005,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               </div>
                               
-                              {(device.glucose_value < 70 || device.glucose_value > 180) ? (
+                              {band === 'critical' ? (
                                 <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
-                                  ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
+                                  ⚠️ <strong>Action Required:</strong> This reading is in a danger band (&lt;54 / &gt;250). Consider patient notification and clinical review.
+                                </div>
+                              ) : band === 'warn' ? (
+                                <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-300">
+                                  ⚠️ <strong>Monitor:</strong> This reading is outside the 70–180 target band. Keep watching; escalate if it trends toward the danger bands.
                                 </div>
                               ) : (
                                 <div className="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded text-xs text-emerald-300">
@@ -1006,6 +1019,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               )}
                             </div>
+                              ); })()}
                             
                             {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}
                             <div>

@@ -52,16 +52,21 @@ to before (wip labels intact).
   `POST /api/alerts/<id>/{ack,assign,resolve}`, `POST /api/alerts/seed`,
   `POST /api/alerts/reset`; `/api/config` gains `lakebase_configured`.
 
-### Added — DABs-managed Lakebase (Autoscaling)
-- **`postgres_projects.glucosphere_oltp`** on the `gsphere_fw_v2` target (PG 17, 0.5–1 CU,
-  10-min suspend → scale-to-zero), gated by the new **`lakebase_project_id`** bundle variable
-  (default `""` = Lakebase off). The app's **`postgres` resource binding** is declared on the
-  bundle's App resource — *discovered in the process:* app.yaml's `resources:` section is **not
-  applied** by app deploys (the binding on the App object is what auto-creates the App SP's PG
-  role + injects `PG*` env vars). `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env
-  (marker-delimited, idempotent, omitted when unset). ⚠️ documented footgun: `bundle destroy`
-  on a Lakebase-enabled target deletes the project **including its data** (disposable demo state
-  here). DEPLOY.md variables table updated.
+### Added — Lakebase provisioning (Autoscaling) + app binding
+- **Externally-created Lakebase Autoscaling project** (PG 17, 0.5–1 CU, 10-min suspend →
+  scale-to-zero; one-time `databricks postgres create-project` — DEPLOY.md "Lakebase one-time
+  setup"), wired to the **`gsphere` (prod) + `gsphere_fw_v2`** targets via the new
+  **`lakebase_project_id`** bundle variable (default `""` = Lakebase off; convention-derived
+  ids `glucosphere-oltp-gsphere` / `…-fw-v2-<initials>`). The app's **`postgres` resource
+  binding** is declared on the bundle's App resource (YAML-anchored
+  `&glucosphere_lakebase_binding`, defined on gsphere, reused by fw_v2) and references the
+  project's branch **by name** — *discovered in the process:* app.yaml's `resources:` section
+  is **not applied** by app deploys (the binding on the App object is what auto-creates the
+  App SP's PG role + injects `PG*` env vars). Note this makes Lakebase part of the `gsphere`
+  deploy contract: the one-time create-project step is required before deploying that target.
+  `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (marker-delimited, idempotent,
+  omitted when unset). DEPLOY.md variables table updated. *(Started the day as a bundle-managed
+  `postgres_projects` resource; moved external the same day — see "Lakebase hardening" below.)*
 - Validated end-to-end on the `gsphere_fw_v2` sandbox: project + role auto-created, 600 alerts
   seeded, ack/assign/resolve + audit verified live. Connection-probe write-up:
   `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
@@ -83,30 +88,190 @@ to before (wip labels intact).
   (full registry roster — clean controls disabled; availability reacts to the fault filter), sort
   (severity default — "masked highs first", honestly framed as recall-harm-informed), ↻ Refresh.
 - **Patient context on expand** (worst in-incident device-vs-true moment + Coach link) so the
-  triager sees the discovery *before* picking a resolution. Read-only **PUBLIC SELECT grants** on
-  the `triage` schema so operators can browse it from the workspace SQL editor.
+  triager sees the discovery *before* picking a resolution. **PUBLIC grants** on the `triage`
+  schema so operators can browse it from the workspace SQL editor *(read-only at first; widened
+  to read/write the same day for app-SP rotation — see "Lakebase hardening" below)*.
 
 ### Added — cross-page loop + verification
 - **Deep-links carry context**: Population Risk → `?model=`, Firmware → `?fw=` (clearable chip),
   per-row **⚑ triage** buttons on the roster + OOR table; device-focus view gains a layered
   **🕰 fault-window / ⏱ last-3h / 📍 now** context card + a return-edge button back to the alert.
-- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding (skipped on non-Lakebase
-  targets). Doubles as the **drift detector**: an externally-deleted project fails it while
-  `bundle deploy` stays silent (no state refresh). DEPLOY.md gains the teardown footgun note +
-  the **undelete recovery runbook** (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion
-  is soft; settings/roles/storage survive).
+- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding **+ a functional
+  `/api/alerts` probe** through the app URL (skipped on non-Lakebase targets; the functional leg
+  added same-day — see "Lakebase hardening" below). Doubles as the **drift detector**: an
+  externally-deleted project fails it while `bundle deploy` stays silent (no state refresh).
+  DEPLOY.md gains the **undelete recovery runbook**
+  (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion is soft; settings/roles/storage
+  survive).
 - **Tour**: Triage stop in all three variants (`requiresLakebase` — steps + chooser counts gate
-  on the flag); the **Quick tour now ends on `/roadmap`** ("Explore from here").
+  on the flag); **all three tour variants now end on the Full Loop page** (the Quick tour's
+  "Explore from here" close; Full + Interactive gained a matching "The full loop" closing step
+  the same day).
+- **Triage counts react to filters** (booth feedback): the header `open · acked · resolved`
+  counts were whole-DB totals and sat frozen while filters narrowed the queue. The page now
+  fetches all statuses once and derives both the status tabs AND the counts client-side from
+  the filtered set; "queue is empty + Seed" shows only when the DB is truly empty, and a
+  filters-match-nothing state offers **Clear filters** instead.
+- **Watch-view contradictions** (booth feedback): in the last-3h live readings view, the
+  queue-counts header ("0 open · …" against 100 rows) now reads "queue counts n/a in the
+  live readings view" (same NA treatment as the other queue-only controls), and the
+  "N patients in the danger bands" label derives from the same filtered set as the table —
+  it reacts to the model/search filters instead of sitting at the full fetch count. The NA
+  text was then upgraded to a **bridge stat**: "N of these M patients also have open device
+  alerts in the queue" (danger-band ∩ open-alerts overlap, computed client-side) — separating
+  physiological risk from device-fault fallout at a glance; a per-row **Queue column**
+  identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
+  "—" = looks physiological).
+- **Triage navigation model (final — after a per-tab-persistence detour the same day)**:
+  context travels via URL params, never hidden state. Bare `/triage` = fresh defaults (week
+  queue, Open tab). Patient-NOW links (`?q=`, e.g. from Coach) land on the **live last-3h
+  view** searched to the patient. **Alert-intent links** (`?q=…&alert=1` — device-focus
+  "work this device's alert", OOR-row ⚑ chips, the live view's ⚑) land on the **queue with
+  the row auto-expanded** (trail + assign/resolve one click from the source — it took
+  three). Cohort sends (`?model=`/`?fw=`) land on the queue for bulk actions. Scenario
+  presets apply on change only.
+- **Watchlist→queue jump breadcrumb** (booth catch): clicking "⚑ open alert" in the live
+  view flips the scenario to the retrospective queue (the queue only exists there), but
+  the flip was silent and read as "my filters got reset". The jump now leaves an amber
+  banner — "Jumped from the live last-3h view to <patient>'s device alert…" — with a
+  one-click **⏱ Back to live view** that restores the scenario + its filters; manual
+  scenario changes dismiss it.
+- **Triage "🛢 Verify in Postgres" button** (booth verification): a toolbar button beside
+  Reset/Refresh opens a 2-step dropdown — "1 · Copy the query" (alerts ⋈ audit-trail,
+  newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
+  seeing your own ack/assign/note actions as Postgres rows. Readable by any viewer thanks
+  to the bootstrap's read grants. All three tour variants' Triage stops teach the
+  verification loop (the Interactive try-it leads with Ack → Peek → row appears). (First shipped as an inline honest-note link — too
+  buried; promoted to a button the same day.) The dropdown also offers **"Peek right
+  here ↓"** — an in-page panel (`GET /api/alerts/raw`) rendering the exact SQL + its live
+  result right under the queue, refetching on every queue action: click Ack above, watch
+  the row land below. "Open the Lakebase SQL editor" deep-links **directly into this
+  project's SQL editor** (the backend resolves the project + branch uids via the postgres
+  API, cached; exposed as `lakebase_editor_url` in `/api/config` — the About tile uses it
+  too; falls back to the generic `/lakebase` landing when unresolvable).
+- **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
+  trailing 3-hour window (amber, distinct from the rose incident band) when it contains
+  very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250
+  · 3h lookback as the High-Risk tile and the Triage live view). The legend chip
+  "⚠ Now (last 3h) → forecast" clicks through to the near-term forecast card (scroll +
+  flash) — what just happened → where it's heading.
+- **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
+  the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
+  are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any
+  step — the fast-forward after a wrong turn); the pause button gains a hint that the amber
+  **▶ Resume tour** pill stays on screen during explore.
+
+### Added — archive-on-reset: triage sessions land in UC (Delta)
+- **⟲ Reset demo now archives before it truncates**: the full alerts ⋈ audit state snapshots
+  to **`<catalog>.<schema>.triage_session_archive`** (Delta; one row per audit entry, tagged
+  `reset_id` + `archived_at`) via the Statement Execution API — every booth session's triage
+  work stays queryable from the lakehouse after the wipe. Archive failure **aborts the
+  reset** (preservation first). The success note in the UI deep-links to the UC table.
+  Rolling 30-day retention keeps it bounded (full cleanup = `DROP TABLE …`). The app SP
+  CREATEs + owns the table — new `GRANT CREATE TABLE ON SCHEMA` in `grant_app_sp.py` and the
+  `09` grant task. Closes the OLTP→lakehouse loop the roadmap promised (UC catalog
+  registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
+  then 600 fresh alerts reseeded.
+
+### Changed — booth-polish round 2 (same day, later still)
+- **Composable row inputs**: fill assignee and/or addendum, one **Apply** — each filled
+  field still writes its own audit row (per-event compliance trail preserved).
+- **Live-view Queue cell**: inline **Ack** (no view switch); ⚑ shows the alert's status
+  (open/acked) and lands on the expanded queue row.
+- **Header semantics finalized**: bell counts = whole queue, always ("queue: N open · …");
+  the watch view appends "N of the M patients below has/have an open device alert (⚑)"
+  (referents explicit, number agreement); "N matching" + **✕ clear filters** live inline
+  with the filters; status tabs are always clickable (from the live view they switch to the
+  queue on that status); Reset works from any view.
+- **Reset notice** offers a copyable `reset_id`-scoped Delta query alongside the UC link;
+  the archive table is **drop-safe** (recreated on the next reset, `UNDROP` within
+  retention). Watchlist: a searched patient below the top-100 cutoff gets a direct-fetch
+  row instead of an empty "stuck" view.
+- **SPA shell `Cache-Control: no-cache`** — stale `index.html` kept pinning booth browsers
+  to previous bundles across deploys (hashed assets stay cacheable). Plus a TDZ crash
+  hotfix from this same polish run (declaration-order bug — caught live, fixed within
+  minutes).
+
+### Changed — booth-polish round-up (same day, late)
+- **Reset demo resets the view too**: clears the patient search + jump breadcrumb and strips
+  URL deep-link params (sticky filters made a completed reset look like a hang).
+- **One band, one color**: Device-Support reading details derive a single band (critical /
+  warn / ok) driving the value, Range-Status text, AND the action banner — which gains an
+  honest amber "Monitor" middle tier (rose reserved for <54/>250).
+- **Unified page headers**: every page header icon is a cyan **outlined** square (filled
+  gradients retired) holding the page's own nav icon (Telescope = Full Loop, Info = About,
+  BookOpen = Metrics, HeartHandshake = Coach, Wrench = Device Support; BrandMark elsewhere),
+  and every header icon links home. Device-Support's Population-Overview section icon matches
+  Coach's (cyan Users).
+- **Tour**: chooser dialog centered in the viewport; **Done now ends ON The Full Loop page**
+  (no bounce home — "Done leaves you right here"); the Interactive triage stop split into
+  "work the queue" + a dedicated **"🛢 Proof: it's real Postgres"** step spotlighting the
+  Verify button (new `verify-postgres` tour anchor; counts self-update).
 
 ### Changed — IA / naming honesty
 - **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
   shows the full arc, gaining `→ Act` on Lakebase deploys; About gains a 4th quick-access card,
-  grid now 4-up). Route stays `/roadmap`. Named for the story — the loop literally closes now
+  grid now 4-up). Route renamed `/roadmap` → **`/full-loop`** (same day; the old path
+  client-side-redirects via a `<Navigate replace>` alias so existing bookmarks keep working).
+  Named for the story — the loop literally closes now
   that triage writes back.
 - **"Live Alert" framed as the workflow, not a latency claim**: the Triage intro + send-to-triage
   tooltips note alerts are batch-derived today; with streaming ingestion (see the what's-next
   backlog) the same queue raises them in real time. Backlog refreshed: monitoring-created alerts,
   triage analytics via UC-catalog registration, incident playback.
+
+### Changed — Lakebase hardening (same day: from-scratch rebuild findings)
+
+A full `bundle destroy` → redeploy test of the Lakebase-enabled sandbox surfaced two failure
+classes; both are now fixed at the source:
+
+- **The Lakebase project moved OUT of the bundle** (`databricks.yml`: the `postgres_projects`
+  resource block is retired in favor of a one-time `databricks postgres create-project` —
+  DEPLOY.md "Lakebase one-time setup"; the app's `postgres` binding references the branch by
+  name and is unchanged). Why: `bundle destroy` deleted the project **including data** and left
+  the id **soft-delete-tombstoned (~7 days)** — the same-id redeploy then failed
+  `project with such id already exists`, and the recovery path (`undelete` +
+  `bundle deployment bind`) hit a provider bug (the API never returns `spec`, so a bound project
+  perpetually re-plans as `recreate`, re-destroying it) that only manual terraform-state surgery
+  broke. External creation removes the whole class: destroy leaves data intact, redeploys re-bind
+  by name.
+- **App-SP rotation proofing** (`App/databricks/lakebase.py`): every app recreate issues a
+  **new service principal**, and the rotated SP doesn't own the `triage` objects its predecessor
+  created — the rebuilt app failed every queue call with `permission denied for schema triage`
+  while smoke's project+binding checks passed. Three ownership edges fixed: (1) the schema
+  bootstrap now grants **read/write to all roles on the database** (tables + sequences +
+  matching default privileges; `PUBLIC` reaches only roles provisioned on the project) and
+  tolerates the GRANT statements failing for a non-owner SP; (2) the bootstrap **probes
+  usability first** and only runs DDL on genuine first boot — `CREATE INDEX IF NOT EXISTS`
+  checks table *ownership* before the IF-NOT-EXISTS short-circuit, so re-running DDL as a
+  rotated SP failed `must be owner of table alerts`; (3) demo reset drops `RESTART IDENTITY`
+  (restarting a sequence requires sequence *ownership*) — plain `TRUNCATE` runs on the granted
+  privilege, ids just keep climbing. Verified live: a 3rd-rotation SP read, acked, and
+  reset/reseeded 600 alerts with zero manual PG steps. Demo-grade posture, documented in
+  `App/README.md`.
+- **`smoke_test.py` check 9 gains the functional leg**: after project + binding, it calls the
+  app's `GET /api/alerts` with the operator's OAuth token and asserts HTTP 200 — proving
+  credential mint + PG connect + schema usability end-to-end (exactly the layer the rotation
+  failure hid in).
+- **New-adopter docs pass**: the at-a-glance flow gains a "Step 2½ — Lakebase one-time
+  create-project" node (required for `gsphere`/`gsphere_fw_v2`; all other targets deploy
+  Lakebase-free and the app hides triage automatically — stated explicitly); Troubleshooting
+  gains the three Lakebase failure signatures (branch-does-not-exist at App create / schema
+  permission denied / 404 credentials); grants-preflight + `grant_app_sp.py` note Lakebase
+  needs NO grants; `.env.bundle.example` + root README + CONTRIBUTING smoke-count updated;
+  `AGENTS.md` gains §10 (Lakebase gotchas for agents); both READMEs now document the
+  **self-guided tour** (variants, pause/resume, scrubber, flag-gated stops). Dependency +
+  license tables moved to dedicated per-area **`DEPENDENCIES.md`** files (App +
+  Data_DataGen) — the App backend table gains the missing **`psycopg` (LGPL-3.0)** row,
+  the `@types/*` dev-deps, and a **Lakebase** platform-services row; root README links
+  both inventories for license/legal audits; CONTRIBUTING convention updated. DEPLOY.md's
+  Architecture-Overview mermaid gains the Lakebase node (the App's only write path);
+  REPO_LAYOUT.md's stale "database_instances commented out" claims corrected.
+- **DEPLOY.md runbooks**: Lakebase one-time setup (create-project command validated live);
+  teardown notes the project survives destroy (+ explicit `delete-project` for full removal);
+  recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the
+  old app SP's role makes the control plane reassign its objects to the project owner, who can
+  then re-grant or `DROP SCHEMA triage CASCADE` (alerts are reseedable demo state).
 
 ## [2026-06-11]
 

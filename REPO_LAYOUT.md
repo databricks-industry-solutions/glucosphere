@@ -10,8 +10,8 @@ Glucosphere is a Databricks Asset Bundle (DAB)–deployed CGM intelligence demo.
 
 - a **SDP (Spark Declarative Pipeline)** for bronze → silver → gold CGM tables
 - a **multi-stage workflow job** (`glucosphere_full_setup`) that runs ingest → forecast modeling → incident inference → endpoint deploy → agent setup → grant chain
-- a **Databricks App** (Flask backend + React frontend)
-- a **Lakebase OLTP** instance, **SQL warehouse**, and **ML serving endpoints**
+- a **Databricks App** (Flask backend + React frontend) — on Lakebase-enabled targets, carrying the `postgres` binding to an **externally-created Lakebase Autoscaling Postgres** project (alert-triage OLTP; one-time create — see DEPLOY.md)
+- a **SQL warehouse** and **ML serving endpoints**
 - optional **MAS / KA / Genie** agent endpoints + AI/BI dashboards
 
 The entire deployable surface is described by a single file: [`databricks.yml`](databricks.yml).
@@ -28,7 +28,7 @@ The entire deployable surface is described by a single file: [`databricks.yml`](
 | [`.env.bundle.example`](.env.bundle.example) | template you `cp` to a per-target `.env.bundle.<target>` (operator-owned, one per deploy target) and fill in 3 tokens |
 | [`databricks.yml`](databricks.yml) | the bundle definition — `targets`, `variables`, `resources` (all of them) |
 | [`scripts/render_app_yaml.py`](scripts/render_app_yaml.py) | rewrites `App/databricks/app.yaml` per target (discovers bundle-managed warehouse by name) |
-| [`scripts/smoke_test.py`](scripts/smoke_test.py) | pre-PR automated smoke test — 8 checks covering App state + URL + warehouse + gold table data + KA/MAS endpoints + Genie space + firmware-variety + MetricsExplained UC-asset PNG |
+| [`scripts/smoke_test.py`](scripts/smoke_test.py) | pre-PR automated smoke test — 8 checks (App state + URL + warehouse + gold table data + KA/MAS endpoints + Genie space + firmware-variety + MetricsExplained UC-asset PNG) + a 9th on Lakebase-enabled targets (project + App binding + functional `/api/alerts` probe) |
 
 Quick deploy sequence (after `source .env.bundle.<target>`):
 
@@ -37,9 +37,9 @@ databricks bundle deploy -t <target>                       # pass 1 — creates 
 uv run python scripts/render_app_yaml.py --target <target> # writes WAREHOUSE_ID into app.yaml
 databricks bundle deploy -t <target>                       # pass 2 — picks up rendered app.yaml
 databricks bundle run glucosphere_full_setup -t <target>   # ~45 min pipeline (creates KA/MAS/Genie)
-# (re-render app.yaml with --mas-endpoint/--ka-endpoint/--genie-space-id from job logs + redeploy — first-deploy-only)
+# (re-render app.yaml + redeploy — REQUIRED before EVERY deploy; the ids are flags-or-env, captured once)
 databricks bundle run glucosphere_app -t <target>          # deploy App source + start compute
-uv run python scripts/smoke_test.py --target <target> --profile <profile>  # 8-check automated gate
+uv run python scripts/smoke_test.py --target <target> --profile <profile>  # automated gate (8 + 1 Lakebase check)
 ```
 
 See [`DEPLOY.md`](DEPLOY.md) for the canonical step-by-step.
@@ -172,7 +172,7 @@ Standalone job (not part of `glucosphere_full_setup`): `glucosphere_distribution
 ### App resources
 
 - All of `App/` (React + Flask backend + config + committed Vite build output)
-- `databricks.yml` → `resources.apps.glucosphere_app` + `sql_warehouses.glucosphere_warehouse` (the `database_instances.glucosphere_oltp` Lakebase block is currently commented out — re-enabled when the Lakebase path lands per issue #3)
+- `databricks.yml` → `resources.apps.glucosphere_app` (carries the Lakebase `postgres` binding on Lakebase-enabled targets — the project itself is external; issue #3 landed 2026-06-12 as the alert-triage queue) + `sql_warehouses.glucosphere_warehouse`
 
 ### Configuration & assets
 

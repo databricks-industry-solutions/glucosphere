@@ -18,6 +18,7 @@ flowchart TD
 
     S1[Step 1 — databricks auth login]:::cmd
     S2[Step 2 — cp .env.bundle.example .env.bundle.&lt;target&gt;<br/><i>fill in catalog / schema / profile</i>]:::cmd
+    S2L[Step 2½ — Lakebase one-time create-project<br/><i>REQUIRED for gsphere / gsphere_fw_v2;<br/>other targets skip — no Lakebase</i>]:::cmd
     S3[Step 3 — optional MAS pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S4[Step 4 — optional Genie pre-create<br/><i>else Step 7 job creates it</i>]:::opt
     S5[Step 5 — npm install + npm run build<br/><i>skip if App/databricks/static/ is fresh</i>]:::cmd
@@ -28,9 +29,9 @@ flowchart TD
     E[Step 8 — scripts/render_app_yaml.py<br/><i>--mas-endpoint --ka-endpoint --genie-space-id from job logs</i>]:::cmd
     F[Step 8 — bundle deploy final<br/><i>publishes app.yaml with all live IDs</i>]:::cmd
     G[Step 9 — bundle run glucosphere_app<br/><i>starts compute + downloads App source</i>]:::cmd
-    H[Step 10 — scripts/smoke_test.py<br/><i>8-check automated gate; non-zero exit on any failure</i>]:::gate
+    H[Step 10 — scripts/smoke_test.py<br/><i>automated gate: 8 checks + a 9th on Lakebase targets;<br/>non-zero exit on any failure</i>]:::gate
 
-    S1 --> S2 --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
+    S1 --> S2 --> S2L --> S5 --> A --> B --> C --> D --> E --> F --> G --> H
     S2 -.-> S3
     S2 -.-> S4
     S3 -.-> S5
@@ -88,6 +89,7 @@ flowchart TD
     KA[/KA endpoint<br/><i>RAG over WHO_NCD_NCS_99.2.pdf<br/>copied to UC Volume pipeline_data/who_docs/</i>/]:::endpoint
     MAS[/MAS endpoint<br/><i>routes clinical → KA,<br/>structured → Genie</i>/]:::endpoint
     APP{{Databricks App}}:::app
+    LB[("Lakebase Autoscaling Postgres<br/><i>triage.alerts + triage.alert_audit<br/>(Lakebase-enabled targets; external project,<br/>App binds by name — see Lakebase one-time setup)</i>")]:::data
     NB09[09_grant_app_permissions.py<br/><i>App SP grants on UC + endpoints + warehouse + Genie + KA</i>]:::nb
 
     V -- synthetic --> NB01
@@ -104,6 +106,7 @@ flowchart TD
     GENIE -- /api/genie/query --> APP
     MAS -- /api/agent/query --> APP
     KA -.routed-by.-> MAS
+    APP -- "alert triage reads/writes<br/>(/api/alerts*)" --> LB
     NB09 -.SP grants.-> APP
 ```
 
@@ -163,7 +166,7 @@ Top-level bundle variables (defined in `databricks.yml`):
 | `harness_suffix` | `.env.bundle.<target>` (`BUNDLE_VAR_harness_suffix`) or `--var` at deploy | `""` (live) | Suffix appended to workspace-global resource **names** — the Genie space / Knowledge Assistant / Multi-Agent Supervisor (`08_genie_ka_mas.py`) **and** the two forecast serving endpoints. `08` looks these up by name and **reuses** them if found, so empty → reuse the shared live agents, non-empty → create **new, separate** ones. Does **not** change the schema/data (that's `schema`). See [Creating new / separate agent resources](#creating-new--separate-agent-resources-genie--ka--mas). |
 | `existing_warehouse_id` | `.env.bundle.<target>` (optional, `BUNDLE_VAR_existing_warehouse_id`) | `""` | **Reuse** an existing SQL warehouse instead of creating one — for workspaces where the deploy identity lacks SQL-warehouse-create entitlement (e.g. a shared booth). Empty → the target creates its own `glucosphere-warehouse-<target>`. When set, pass the same id to the renderer (`render_app_yaml.py --warehouse-id <id>`) and the target omits the `sql_warehouses` resource. |
 | `mas_endpoint` / `ka_endpoint` / `genie_space_id` | `.env.bundle.<target>` (optional, `BUNDLE_VAR_*`) | `""` | App-assistant agent coords. Normally passed to `render_app_yaml.py` as `--mas-endpoint` / `--ka-endpoint` / `--genie-space-id`; set them here instead for a target that renders from its env file alone (e.g. a reuse/booth target) so render auto-fills `app.yaml` **without** flags. Empty → render leaves `app.yaml`'s value unchanged. The names are Agent-Bricks hex (`databricks serving-endpoints list`); update if the agents are recreated. |
-| `lakebase_project_id` | target `variables:` block (or `BUNDLE_VAR_lakebase_project_id`) | `""` | Lakebase **Autoscaling** project id for the App's OLTP alert-triage store (becomes `projects/<id>`; lowercase/digits/hyphens). When set, the target declares a `postgres_projects` resource **and** the App's `database` postgres binding (both in `databricks.yml`; the binding auto-creates the App SP's PG role + injects `PG*` env vars — note app.yaml's `resources:` section is *not* applied by app deploys), and `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (`--lakebase-project-id` flag also works). Empty → no Lakebase resource, render strips/omits the binding, and the App's triage panel stays hidden (runtime `lakebase_configured` flag). ⚠️ `bundle destroy` on a Lakebase-enabled target **deletes the project incl. its data** (disposable demo state here; footgun note in `databricks.yml`). Currently enabled on `gsphere_fw_v2`. |
+| `lakebase_project_id` | target `variables:` block (or `BUNDLE_VAR_lakebase_project_id`) | `""` | Lakebase **Autoscaling** project id for the App's OLTP alert-triage store (becomes `projects/<id>`; lowercase/digits/hyphens). The project itself is **created once, outside the bundle** (see [Lakebase one-time setup](#lakebase-one-time-setup-lakebase-enabled-targets) — keeping a stateful DB out of `bundle destroy`'s blast radius avoids data loss + the soft-delete id-tombstone that blocks a same-id redeploy). When set, the target declares the App's `database` postgres binding (in `databricks.yml`, referencing the project's branch **by name**; the binding auto-creates the App SP's PG role + injects `PG*` env vars — note app.yaml's `resources:` section is *not* applied by app deploys), and `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (`--lakebase-project-id` flag also works). Empty → no binding, render omits `LAKEBASE_ENDPOINT`, and the App's triage panel stays hidden (runtime `lakebase_configured` flag). Currently enabled on `gsphere` + `gsphere_fw_v2`. |
 
 `warehouse_id` is **not** a bundle variable. Each create-own target declares
 its own `sql_warehouses.glucosphere_warehouse` resource (defined once via the
@@ -190,6 +193,60 @@ the app SP `CAN_USE` on that id directly.
 > `DATABRICKS_CONFIG_PROFILE` in your `.env.bundle.<target>`. Set up a profile
 > via `databricks configure --profile <name>` for your workspace, point that
 > target's file at it, and run `source .env.bundle.<target> && bundle deploy -t <target>`.
+
+### Lakebase one-time setup (Lakebase-enabled targets)
+
+Targets that set `lakebase_project_id` (currently **`gsphere` + `gsphere_fw_v2`**) expect the
+Autoscaling Postgres project to **already exist** — create it once, before the
+first `bundle deploy`, or that deploy fails at the App with
+`Failed to add resource database. Postgres branch projects/<id>/branches/production does not exist`:
+
+```bash
+databricks postgres create-project <lakebase_project_id> --profile <profile> --json '{
+  "spec": {
+    "display_name": "<lakebase_project_id>",
+    "pg_version": 17,
+    "default_endpoint_settings": {
+      "autoscaling_limit_min_cu": 0.5,
+      "autoscaling_limit_max_cu": 1,
+      "suspend_timeout_duration": "600s"
+    }
+  }
+}'
+```
+
+This auto-creates the default branch `production` + endpoint `primary`; the
+App's `database` postgres binding (declared on the target's `apps` resource in
+`databricks.yml`) references that branch **by name** and auto-creates the App
+SP's PG role at deploy time. The app bootstraps its own `triage` schema on
+first DB touch — no manual SQL.
+
+**Why the project is not a bundle resource** (it was, until 2026-06-12):
+`bundle destroy` deletes a bundle-managed project **including its data**, and
+the deletion is soft — the id stays tombstoned (~7 days), so a same-id
+redeploy fails with `project with such id already exists`. Recovering required
+`undelete` + `bundle deployment bind` + manual terraform-state surgery (the
+provider never reads back `spec`, so a bound project always re-plans as
+`recreate`). External creation removes the whole failure class: destroy leaves
+the project (and alert data) intact, and a redeploy just re-binds the App by
+name. The committed connection-probe reference (incl. the gotchas list):
+[`lakebase_probe/README.md`](lakebase_probe/README.md).
+
+**Deploying WITHOUT Lakebase**: every other target (`gsphere_synth_e2e` /
+`gsphere_from_table_e2e` / `gsphere_from_source_e2e` / `dais`) has no
+`lakebase_project_id` and deploys with **zero Lakebase setup** — the App detects
+the absence at runtime (`lakebase_configured` flag) and renders the
+pre-Lakebase UI (the `/triage` queue and its entry-links stay hidden). To strip
+Lakebase from `gsphere` itself, comment out that target's `lakebase_project_id`
+variable and its `apps.glucosphere_app` resources block (the
+`&glucosphere_lakebase_binding` anchor) in `databricks.yml` — and move the
+anchor definition to `gsphere_fw_v2`, which references it.
+
+**What Lakebase costs/needs**: the one CLI command above (any workspace where
+your identity can create Lakebase Autoscaling projects), ~0.5–1 CU that
+scales to zero after 10 idle minutes, and nothing else — no manual grants
+(the App's binding auto-creates its PG role; the app bootstraps and owns its
+`triage` schema at first touch).
 
 ---
 
@@ -332,6 +389,12 @@ uv run python scripts/render_app_yaml.py \
 databricks bundle deploy -t <target> --profile <profile>
 ```
 
+> **Lakebase needs nothing here.** Unlike the KA/MAS/Genie ids (job outputs you must
+> capture), `LAKEBASE_ENDPOINT` auto-fills on **every** render from the target's
+> `lakebase_project_id` bundle variable — no flag, no log-capture (a `--lakebase-project-id`
+> override exists but is never needed in the standard flow). Targets without the variable
+> get no `LAKEBASE_ENDPOINT` and the app hides the triage feature.
+
 On subsequent runs against the same workspace, `08_genie_ka_mas.py` reuses the existing KA/MAS/Genie by name, so **the IDs themselves don't change**. Whether you must re-run this render step on a later deploy depends on how you treat `app.yaml`:
 
 - **If you commit the rendered `app.yaml`** — the IDs persist in it, so later deploys ship them as-is and Step 8 is only needed on the first deploy.
@@ -397,7 +460,7 @@ You specify only `--app` (the deployed app's name) and `--profile`; the script *
 
 ### Automated subset (recommended pre-PR gate)
 
-Run the 8-check smoke test:
+Run the automated smoke test (8 checks, + a 9th on Lakebase-enabled targets):
 
 ```bash
 uv run python scripts/smoke_test.py --target <target> --profile <profile>
@@ -578,6 +641,7 @@ databricks bundle run    -t <target> glucosphere_full_setup --var "baseline_sour
 - `CAN_USE` on the SQL warehouse (handled by the `sql-warehouse` resource block in `app.yaml`)
 - `CAN_QUERY` on the MAS and KA serving endpoints (handled by the `mas-endpoint` / `ka-endpoint` resource blocks)
 - `CAN_RUN` on the Genie space (not yet declared as a resource block in `app.yaml`; handled by `09_grant_app_permissions.py` during the setup job)
+- **Lakebase needs NO grant here** — the App's `postgres` binding (databricks.yml) auto-creates the SP's PG role at deploy, and the app bootstraps + owns its `triage` schema at runtime (`App/databricks/lakebase.py`)
 
 The `glucosphere_full_setup` job's `grant_app_permissions` task wires most of these automatically once the app and the endpoints exist on the target workspace.
 
@@ -604,7 +668,7 @@ uv run python scripts/grant_viewers.py --principal <group> \
 
 # Concrete example — grant a group on the live `gsphere` (prod) target:
 uv run python scripts/grant_viewers.py --principal <group> \
-    --target gsphere --catalog mmt_aws_usw2 --schema glucosphere \
+    --target <target> --catalog <your-catalog> --schema <your-schema> \
     --profile <profile> --apply
 ```
 
@@ -647,9 +711,13 @@ uv run python scripts/teardown_target.py --profile <profile> --suffix _<harness_
 uv run python scripts/teardown_target.py --profile <profile> \
     --names Glucosphere_KA,Glucosphere_Supervisor,Glucosphere_Intelligence,Glucosphere_Forecast_15min,Glucosphere_Forecast_30min
 
-# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app — and, on
-#    Lakebase-enabled targets, the postgres project INCLUDING ITS ALERT/AUDIT DATA;
-#    disposable demo state here, but see the footgun note in databricks.yml):
+# 2. Bundle-managed resources (jobs, DLT pipeline, SQL warehouse, app).
+#    The Lakebase project is NOT bundle-managed (created externally — see
+#    "Lakebase one-time setup") and SURVIVES destroy with its alert/audit data;
+#    to remove it too:
+#      databricks postgres delete-project projects/<lakebase_project_id> --profile <profile>
+#    (deletion is soft — the id stays tombstoned ~7 days; a same-id recreate
+#    needs POST /api/2.0/postgres/projects/<id>/undelete instead)
 source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-approve
 
 # 3. Unity Catalog schema + its tables/volumes/models (NOT removed by the above; needs a warehouse):
@@ -659,9 +727,9 @@ source .env.bundle.<target> && databricks bundle destroy -t <target> --auto-appr
 `bundle destroy` alone does **not** delete the Agent-Bricks tiles/endpoints, the Genie
 space, or any UC tables / volumes / registered models — run steps 1 + 3 too for a clean slate.
 
-**Lakebase drift recovery** (don't CLI/UI-delete a bundle-managed postgres project — `bundle deploy`
-won't recreate it, since deployment state isn't refreshed against the workspace). Deletion is soft;
-to restore (settings, roles, and storage survive):
+**Lakebase recovery** (the project is external — `bundle deploy` neither creates nor restores it).
+If the project gets deleted (CLI/UI/teardown), deletion is soft; to restore (settings, roles,
+and storage survive):
 
 ```bash
 databricks api post /api/2.0/postgres/projects/<project-id>/undelete --profile <profile>
@@ -670,6 +738,14 @@ databricks bundle run glucosphere_app -t <target>    # restart the app to reconn
 
 Failure signature while the project is gone: the app's queue actions log
 `404 …/api/2.0/postgres/credentials`, and `scripts/smoke_test.py` check 9 fails.
+
+**App-SP rotation note**: recreating the **App** (e.g. `bundle destroy` → redeploy) issues a new
+app service principal. The app's schema bootstrap grants read/write to all roles on the database
+(`App/databricks/lakebase.py`), so a rotated SP keeps working against the existing `triage` schema.
+If a rotated SP is still denied (schema created by a pre-2026-06-12 build with read-only grants),
+the owner-side fix is: `databricks postgres delete-role <…/roles/dbrx-apps-{old-sp-uuid}>` —
+the control plane reassigns the orphaned objects to the project owner — then either re-grant or
+`DROP SCHEMA triage CASCADE` (alerts are reseedable demo state) and restart the app.
 
 ---
 
@@ -682,6 +758,9 @@ Failure signature while the project is gone: the app's queue actions log
 | `DATABRICKS_TOKEN not set` | Ensure the App is deployed (token is auto-injected by runtime) |
 | `CATALOG_NOT_FOUND` during job task | Pre-flight catalog/schema/volume creation was skipped — create them before `bundle run` (see [Pre-flight section below](#pre-flight-catalog--schema--volume-creation)) |
 | `deploy_model_endpoints` task fails | Ensure model serving is enabled on the workspace |
+| `Failed to add resource database. Postgres branch … does not exist` (App create) | The target's Lakebase project doesn't exist yet — run the one-time `databricks postgres create-project` (see [Lakebase one-time setup](#lakebase-one-time-setup-lakebase-enabled-targets)) |
+| Triage queue: `permission denied for schema triage` | App-SP rotation against a schema bootstrapped by a pre-2026-06-12 build — see the App-SP rotation note in [Teardown → Lakebase recovery](#teardown) (`postgres delete-role` on the old SP's role, then re-grant or `DROP SCHEMA triage CASCADE`) |
+| Triage actions return `404 …/api/2.0/postgres/credentials` | The Lakebase project was deleted (soft) — `databricks api post /api/2.0/postgres/projects/<id>/undelete`, then restart the app; smoke check 9 is the detector |
 | `create_genie_ka_mas` task fails | Check Agent Bricks / Genie are available on this workspace tier; KA endpoint must reach `ONLINE` status before MAS is created (10 min timeout) |
 | App shows "Not Found" | Frontend build wasn't run (`npm run build` in `App/`) before deploy |
 | App shows no data (SQL 500 errors) | Gold table doesn't exist — check `run_dlt_pipeline` task in the Step 7 setup job completed; or app SP missing grants — re-run `grant_app_permissions` task |
@@ -852,5 +931,5 @@ glucosphere/
 │   └── configs/baseline_config.yaml
 └── scripts/
     ├── render_app_yaml.py                  ← Rewrites App/databricks/app.yaml per target
-    └── grant_app_permissions.py            ← Local fallback permissions script
+    └── grant_app_sp.py                     ← Local fallback permissions script
 ```

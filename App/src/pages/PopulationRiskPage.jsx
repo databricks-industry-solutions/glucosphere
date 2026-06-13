@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import CohortFaultPanel from '../components/CohortFaultPanel';
@@ -142,7 +142,8 @@ export default function PopulationRiskPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <BrandMark className="w-7 h-7 text-cyan-400" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><BrandMark className="w-5 h-5 text-cyan-400" /></Link>
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Population Risk</h1>
               <p className="text-xs text-slate-500 font-mono">③ Assess — the clinical blast radius</p>
@@ -221,7 +222,7 @@ export default function PopulationRiskPage() {
               {/* Carries the roster's model filter into the queue (?model=…). Region
                   can't carry — alerts don't store region — so region-filtered rosters
                   land on the unfiltered queue. */}
-              <button onClick={() => navigate(lakebaseConfigured ? `/triage${filter?.dim === 'model' ? `?model=${encodeURIComponent(filter.label)}` : ''}` : '/roadmap')}
+              <button onClick={() => navigate(lakebaseConfigured ? `/triage${filter?.dim === 'model' ? `?model=${encodeURIComponent(filter.label)}` : ''}` : '/full-loop')}
                 title={lakebaseConfigured ? '"Live Alert" = the workflow — alerts are batch-derived today; streaming ingestion would raise them in real time (see what\'s next).' : undefined}
                 className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
                 → Send to triage queue {lakebaseConfigured ? <span className="text-emerald-300">(Live Alert)</span> : <span className="text-slate-500">(Live Alert · wip)</span>}

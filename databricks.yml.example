@@ -33,6 +33,18 @@ variables:
   app_name:
     description: Databricks App display name
     default: glucosphere-app
+  lakebase_project_id:
+    description: |
+      Lakebase Autoscaling project id for the App's OLTP alert-triage store
+      (becomes `projects/<id>`; lowercase/digits/hyphens). The project itself is
+      created OUTSIDE the bundle (one-time CLI step — see DEPLOY.md and the
+      gsphere_fw_v2 target comments for why); this variable wires the App's
+      `database` postgres binding + LAKEBASE_ENDPOINT env to it by name.
+      Empty (default) = Lakebase NOT configured for the target: render_app_yaml.py
+      omits LAKEBASE_ENDPOINT, so the App runs read-only as before (the triage
+      panel hides behind the runtime `lakebase_configured` flag).
+      Set per target (see gsphere / gsphere_fw_v2) to enable.
+    default: ""
   dev_initials:
     description: |
       Personal initials suffix for harness target App + DB instance name
@@ -45,7 +57,7 @@ variables:
     description: |
       Base name for harness target App + DB instance resources. Default
       `glucosphere`. Override in .env.bundle.<target> to a shorter alias (e.g.
-      `your_workspace_target`) if long `dev_initials` push App names past the 30-char limit.
+      `gsphere`) if long `dev_initials` push App names past the 30-char limit.
       DB instance names allow up to 63 chars (DNS-compliant), so the
       constraint is App-side only.
     default: glucosphere
@@ -67,6 +79,32 @@ variables:
       target's `.env.bundle.<target>` sets it explicitly (e.g. `_synth_e2e` /
       `_from_table_e2e` / `_from_source_e2e`). Interpolated in `base_parameters`
       of the tasks that pass KA_NAME/MAS_NAME/GENIE_NAME/ENDPOINT_15M/ENDPOINT_30M downstream.
+    default: ""
+  existing_warehouse_id:
+    description: |
+      Reuse an EXISTING SQL warehouse instead of creating a bundle-managed one.
+      Default "" → the target creates its own `glucosphere-warehouse-<target>` (via
+      the `&glucosphere_warehouse` anchor on the create-own targets below). Set to an
+      existing warehouse id (in `.env.bundle.<target>` → BUNDLE_VAR_existing_warehouse_id)
+      for workspaces where the deploy identity lacks SQL-warehouse-create entitlement
+      (e.g. a shared booth that reuses a pre-provisioned warehouse). When set,
+      `render_app_yaml.py --warehouse-id` and `09_grant_app_permissions.py` use this id
+      directly instead of discovering the bundle warehouse by name, and the target omits
+      the `sql_warehouses` resource so nothing is created.
+    default: ""
+  mas_endpoint:
+    description: |
+      App-assistant agent-endpoint coords. Normally passed to render_app_yaml.py as
+      --mas-endpoint / --ka-endpoint / --genie-space-id flags. Set these in
+      `.env.bundle.<target>` (BUNDLE_VAR_mas_endpoint / _ka_endpoint / _genie_space_id)
+      for a target that renders from its env file alone (e.g. a reuse/booth target) so
+      render auto-fills app.yaml without flags. Empty → render leaves app.yaml unchanged
+      for that field. Names are Agent-Bricks hex (ka-<hex>-endpoint / mas-<hex>-endpoint);
+      genie_space_id is a Genie space id. Update if the agents are ever recreated.
+    default: ""
+  ka_endpoint:
+    default: ""
+  genie_space_id:
     default: ""
 
 targets:
@@ -100,7 +138,59 @@ targets:
   # Deploy: `source .env.bundle.<target> && databricks bundle deploy -t <target>`.
   # No `default: true` on any target — `-t <target>` is always required.
   # ───────────────────────────────────────────────────────────────────────
-  your_workspace_target:
+  gsphere:
+    mode: development
+    variables:
+      # Lakebase project id for the App's alert-triage OLTP store — convention-
+      # derived (no workspace-specific value, so SSOT-safe to commit). The project
+      # itself is created ONCE outside the bundle (DEPLOY.md "Lakebase one-time
+      # setup") and is REQUIRED before deploying this target: the app's postgres
+      # binding below references its `production` branch by name.
+      lakebase_project_id: ${var.app_basename}-oltp-${bundle.target}
+    resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
+          # Lakebase binding lives on the App OBJECT (bundle-managed), NOT in
+          # app.yaml — app.yaml's `resources:` section is not applied by app
+          # deploys (verified 2026-06-12). The binding auto-creates the App SP's
+          # PG role + injects the PG* env vars. Defined ONCE here with a YAML
+          # anchor; gsphere_fw_v2 reuses it via *glucosphere_lakebase_binding.
+          resources: &glucosphere_lakebase_binding
+            - name: database
+              description: "Lakebase Autoscaling Postgres — alert-triage OLTP"
+              postgres:
+                branch: projects/${var.lakebase_project_id}/branches/production
+                database: projects/${var.lakebase_project_id}/branches/production/databases/databricks-postgres
+                permission: CAN_CONNECT_AND_CREATE
+      # Create-own targets get their own bundle-managed warehouse. Defined ONCE here
+      # with a YAML anchor; the harness targets below reuse this exact spec via
+      # `*glucosphere_warehouse` (DRY). `dais` omits this block and reuses an existing
+      # warehouse (BUNDLE_VAR_existing_warehouse_id) since the booth identity can't
+      # create warehouses. Discovered by name `glucosphere-warehouse-<target>` by
+      # render_app_yaml.py + 09_grant_app_permissions.py.
+      sql_warehouses:
+        glucosphere_warehouse: &glucosphere_warehouse
+          name: glucosphere-warehouse-${bundle.target}
+          cluster_size: "2X-Small"
+          enable_serverless_compute: true
+          warehouse_type: PRO
+          # auto_stop_mins=30 keeps the warehouse warm during demo sessions — the
+          # landing page hits it on every page load; cold-start adds ~5-15 sec.
+          auto_stop_mins: 30
+          min_num_clusters: 1
+          max_num_clusters: 1
+
+  # DAIS 2026 HLS booth target. All coords (workspace host via profile, catalog,
+  # schema, baseline_source, app_name, warehouse) live in its gitignored
+  # `.env.bundle.dais` — same env-driven SSOT as every other target, so nothing
+  # workspace-specific is committed here. Two booth specifics worth noting: the
+  # deploy identity can't create SQL warehouses (so this target reuses an existing
+  # one via BUNDLE_VAR_existing_warehouse_id — see the variable above — and omits
+  # the `sql_warehouses` block), and audience UC grants need an account-level
+  # principal / SP because a workspace-local `users` group can't hold UC grants
+  # (see scripts/grant_viewers.py).
+  dais:
     mode: development
 
   # ─── Adding a new live target ─────────────────────────────────────────
@@ -121,13 +211,14 @@ targets:
   #     (e.g. `*_synth_e2e`) AND by the isolated schema
   #     (`<base>_synth_e2e`)
   #
-  # `apps` and `database_instances` resource types do not accept brackets in
+  # `apps` and database resource types do not accept brackets in
   # their names; per-target `name:` overrides below keep them from colliding
-  # with the live `glucosphere-app` resource. (database_instances Lakebase
-  # is currently commented out at the resources block below — see issue #3.)
+  # with the live `glucosphere-app` resource. (Lakebase is an externally-created
+  # Autoscaling project referenced by name on gsphere_fw_v2 — gated by the
+  # `lakebase_project_id` variable; other targets leave it empty = no Lakebase.)
   #
   # Override any value below at deploy time via BUNDLE_VAR_<name> — e.g.
-  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t your_workspace_target_synth_e2e ...
+  #   BUNDLE_VAR_catalog=my_catalog databricks bundle deploy -t gsphere_synth_e2e ...
   #
   # Usage:
   #   databricks bundle deploy  -t <harness-target> --profile <profile>
@@ -142,21 +233,20 @@ targets:
   # BUNDLE_VAR_* env vars in DABs precedence).
   #
   # Operator runs:
-  #   source .env.bundle.your_workspace_target_synth_e2e
-  #   databricks bundle deploy -t your_workspace_target_synth_e2e
+  #   source .env.bundle.gsphere_synth_e2e
+  #   databricks bundle deploy -t gsphere_synth_e2e
   #
   # See `.env.bundle.example` for the template. Two operators sharing the
   # workspace give their files personal schema/suffix values
   # (e.g. `<base>_synth_e2e_<myname>`) to avoid schema collisions.
-  your_workspace_target_synth_e2e:
+  gsphere_synth_e2e:
     mode: development
     variables:
-      # catalog + schema come from BUNDLE_VAR_* in
-      # .env.bundle.your_workspace_target_synth_e2e. That file sets
-      # BUNDLE_VAR_schema=<base>_synth_e2e (its own isolated schema) +
-      # BUNDLE_VAR_harness_suffix=_synth_e2e explicitly. (No per-target `schema:`
-      # override here — DABs precedence puts BUNDLE_VAR_* above per-target
-      # variables, so the env-side value is the source of truth.)
+      # catalog + schema come from BUNDLE_VAR_* in .env.bundle.gsphere_synth_e2e.
+      # That file sets BUNDLE_VAR_schema=<base>_synth_e2e (its own isolated
+      # schema) + BUNDLE_VAR_harness_suffix=_synth_e2e explicitly. (No per-target
+      # `schema:` override here — DABs precedence puts BUNDLE_VAR_* above
+      # per-target variables, so the env-side value is the source of truth.)
       baseline_source: synthetic
       # Default harness App name (used when BUNDLE_VAR_app_name is unset).
       # resources.apps.glucosphere_app.name below references ${var.app_name},
@@ -168,8 +258,11 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
-      # database_instances Lakebase override deferred — see resources.database_instances
-      # block below (commented out until app code wires Lakebase in, issue #3).
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
+      # Lakebase (issue #3) — see gsphere_fw_v2's pattern: create the project
+      # externally (DEPLOY.md), set `lakebase_project_id`, and copy that
+      # target's apps `database` binding. (Provisioned stub superseded:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-synth-e2e-${var.dev_initials}
@@ -182,12 +275,11 @@ targets:
   # The from_table mode is source-agnostic by design — synthetic-populated
   # source behaves like any other UC table conforming to the diabetes_data
   # contract.
-  your_workspace_target_from_table_e2e:
+  gsphere_from_table_e2e:
     mode: development
     variables:
-      # catalog + schema come from BUNDLE_VAR_* in
-      # .env.bundle.your_workspace_target_from_table_e2e. That file sets
-      # BUNDLE_VAR_schema=<base>_from_table_e2e AND
+      # catalog + schema come from BUNDLE_VAR_* in .env.bundle.gsphere_from_table_e2e.
+      # That file sets BUNDLE_VAR_schema=<base>_from_table_e2e AND
       # BUNDLE_VAR_source_schema=<base>_synth_e2e (CTAS-copies from the synth_e2e
       # harness output) + BUNDLE_VAR_harness_suffix=_from_table_e2e. No per-target
       # schema overrides here (BUNDLE_VAR_* beats per-target variables in DABs precedence).
@@ -202,7 +294,9 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
-      # database_instances Lakebase override deferred — see issue #3.
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
+      # Lakebase (issue #3) — see gsphere_fw_v2's external-project pattern. (Superseded stub:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-table-e2e-${var.dev_initials}
@@ -211,12 +305,11 @@ targets:
   # download + parse path + source-adaptive sampler against real HUPA-UCM
   # source distribution. Isolated sandbox schema — does not affect the
   # live target's data.
-  your_workspace_target_from_source_e2e:
+  gsphere_from_source_e2e:
     mode: development
     variables:
-      # catalog + schema come from BUNDLE_VAR_* in
-      # .env.bundle.your_workspace_target_from_source_e2e. That file sets
-      # BUNDLE_VAR_schema=<base>_from_source_e2e +
+      # catalog + schema come from BUNDLE_VAR_* in .env.bundle.gsphere_from_source_e2e.
+      # That file sets BUNDLE_VAR_schema=<base>_from_source_e2e +
       # BUNDLE_VAR_harness_suffix=_from_source_e2e explicitly. (No per-target `schema:`
       # override; BUNDLE_VAR_* beats per-target variables in DABs precedence.)
       baseline_source: from_source
@@ -228,10 +321,68 @@ targets:
       apps:
         glucosphere_app:
           name: ${var.app_name}
-      # database_instances Lakebase override deferred — see issue #3.
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
+      # Lakebase (issue #3) — see gsphere_fw_v2's external-project pattern. (Superseded stub:)
       # database_instances:
       #   glucosphere_oltp:
       #     name: ${var.app_basename}-oltp-source-e2e-${var.dev_initials}
+
+  # Isolated from_source sandbox for the firmware-heatmap / device-error-gradient work.
+  # A SEPARATE target (not a schema override on from_source_e2e) so its pipeline/job/
+  # warehouse/app — all named with ${bundle.target} — get distinct names and never touch
+  # the from_source_e2e demo deploy. Deploy with:
+  #   source .env.bundle.gsphere_fw_v2   # sets BUNDLE_VAR_schema=glucosphere_fw_v2,
+  #                                       # BUNDLE_VAR_app_name, and
+  #                                       # BUNDLE_VAR_harness_suffix=_fw_v2 (isolates
+  #                                       # workspace-global KA/MAS/Genie/endpoints)
+  #   databricks bundle deploy -t gsphere_fw_v2
+  gsphere_fw_v2:
+    mode: development
+    variables:
+      baseline_source: from_source
+      app_name: ${var.app_basename}-fw-v2-${var.dev_initials}
+      lakebase_project_id: ${var.app_basename}-oltp-fw-v2-${var.dev_initials}
+    resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
+          # Same Lakebase binding as gsphere (the &glucosphere_lakebase_binding
+          # anchor); ${var.lakebase_project_id} resolves per-target, so this
+          # points at the fw_v2 sandbox project.
+          resources: *glucosphere_lakebase_binding
+      sql_warehouses:  # create-own (same spec as gsphere via the &glucosphere_warehouse anchor)
+        glucosphere_warehouse: *glucosphere_warehouse
+      # Lakebase Autoscaling project — the App's OLTP store for the alert-triage
+      # MVP (alerts + alert_audit; see lakebase_probe/README.md).
+      # The project is created OUTSIDE the bundle (one-time, see DEPLOY.md):
+      #   databricks postgres create-project --json '{"project": {"project_id":
+      #     "<lakebase_project_id>", "spec": {"pg_version": 17,
+      #     "default_endpoint_settings": {"autoscaling_limit_min_cu": 0.5,
+      #     "autoscaling_limit_max_cu": 1, "suspend_timeout_duration": "600s"}}}}'
+      # The App's `database` postgres binding (declared on the apps resource
+      # ABOVE) references the project's branch BY NAME — it does not need the
+      # project to be bundle-managed — and auto-creates the App SP's PG role +
+      # injects the PG* env vars on deploy.
+      #
+      # WHY external (was a bundle-managed `postgres_projects` resource until
+      # 2026-06-12): `bundle destroy` deletes the project INCLUDING DATA and
+      # leaves the id soft-delete-tombstoned (~7 days) — a same-id redeploy then
+      # fails "project with such id already exists". Recovery required
+      # `POST /api/2.0/postgres/projects/<id>/undelete` + `bundle deployment
+      # bind` + manual tfstate surgery (the provider never reads back `spec`,
+      # so a bound project always re-plans as `recreate`). Keeping the project
+      # external removes the whole failure class: destroy leaves data intact,
+      # redeploys just re-bind the App by name. (Superseded resource block:)
+      # postgres_projects:
+      #   glucosphere_oltp:
+      #     project_id: ${var.lakebase_project_id}
+      #     display_name: ${var.lakebase_project_id}
+      #     pg_version: 17
+      #     default_endpoint_settings:   # right-sized for an intermittent demo
+      #       autoscaling_limit_min_cu: 0.5
+      #       autoscaling_limit_max_cu: 1
+      #       suspend_timeout_duration: 600s   # idle 10 min → suspend (scale-to-zero)
 
 resources:
 
@@ -557,9 +708,10 @@ resources:
           description: >
             Grant the deployed app's service principal access to the catalog,
             all serving endpoints, the SQL warehouse, and the Genie space.
-            WAREHOUSE_ID is left empty so the notebook discovers the
-            bundle-managed warehouse by deterministic name (see
-            sql_warehouses.glucosphere_warehouse resource below).
+            WAREHOUSE_ID = ${var.existing_warehouse_id}: empty on create-own
+            targets so the notebook discovers the bundle-managed warehouse by
+            deterministic name; set on reuse targets (e.g. dais) so it grants
+            on the existing warehouse directly.
           max_retries: 0
           depends_on:
             - task_key: check_post_endpoint_grants
@@ -569,10 +721,11 @@ resources:
               CATALOG_NAME:      ${var.catalog}
               SCHEMA_NAME:       ${var.schema}
               APP_NAME:          ${var.app_name}
-              # WAREHOUSE_ID empty → 09 discovers bundle-managed warehouse by
-              # name pattern `glucosphere-warehouse-${bundle.target}`.
-              # BUNDLE_TARGET passed in so 09 knows which target's warehouse to find.
-              WAREHOUSE_ID:      ""
+              # WAREHOUSE_ID = existing_warehouse_id: empty on create-own targets → 09
+              # discovers the bundle-managed warehouse by name `glucosphere-warehouse-${bundle.target}`;
+              # set on reuse targets (e.g. dais) → 09 grants the app SP CAN_USE on that id directly.
+              # BUNDLE_TARGET drives the by-name discovery in the create-own (empty) case.
+              WAREHOUSE_ID:      ${var.existing_warehouse_id}
               BUNDLE_TARGET:     ${bundle.target}
               # KA/MAS endpoint names and Genie space ID are auto-discovered when
               # left empty. The *_NAME params anchor the discovery to the exact
@@ -631,14 +784,20 @@ resources:
           environment_key: default
 
   # ---------------------------------------------------------------------------
-  # Lakebase: OLTP alert state cache — DEFERRED (planned follow-up, issue #3)
+  # Lakebase: OLTP alert state cache — SUPERSEDED 2026-06-12 (issue #3)
   # ---------------------------------------------------------------------------
-  # Re-enable when the Lakebase path is actually wired into
-  # App/databricks/app.py (no app code reads from this instance today).
+  # Lakebase is now an EXTERNALLY-CREATED Autoscaling project referenced by name
+  # from the `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable;
+  # the app's `postgres` binding is declared on that target's apps resource —
+  # app.yaml's `resources:` section is NOT applied by app deploys; see that
+  # target's comments for why the project is not bundle-managed). The PROVISIONED `database_instances`
+  # stub below is kept for reference only — do NOT re-enable it; Autoscaling is
+  # the go-forward model (scale-to-zero; `databricks postgres` API). See
+  # lakebase_probe/README.md.
   # Note: CU_1 instances bill continuously while deployed, so keeping this
   # commented avoids paying for unused infra. Also: the hardcoded
   # `glucosphere-oltp-mmt-aws-usw2` name would need to become per-target
-  # before this can deploy outside the live your_workspace_target target.
+  # before this can deploy outside the live gsphere target.
   #
   # Original block (re-enable + parameterize name before reactivating):
   #
@@ -654,40 +813,23 @@ resources:
   #     # client is needed for debug / migrations.
 
   # ---------------------------------------------------------------------------
-  # SQL Warehouse: bundle-managed (powers App's /api/sql/query + comparison job)
+  # SQL Warehouse — defined PER-TARGET (no longer a top-level resource)
   # ---------------------------------------------------------------------------
-  # Bundle creates this warehouse on first deploy. Name pattern is
-  # `glucosphere-warehouse-${bundle.target}` (with `[dev USER]` prefix when a
-  # target uses `mode: development`).
+  # Top-level resources deploy to EVERY target, including `dais`, whose booth
+  # identity can't create SQL warehouses. So the bundle-managed warehouse now
+  # lives on each create-own target: defined ONCE with the `&glucosphere_warehouse`
+  # anchor on the `gsphere` target (top of `targets:`), reused by the harness
+  # targets via `*glucosphere_warehouse`. `dais` omits it and reuses an existing
+  # warehouse via BUNDLE_VAR_existing_warehouse_id (see the `existing_warehouse_id`
+  # variable). Unchanged spec: Serverless PRO 2X-Small, name
+  # `glucosphere-warehouse-<target>`.
   #
-  # Configured as a Serverless SQL Warehouse: `warehouse_type: PRO` +
-  # `enable_serverless_compute: true` is the canonical serverless combination
-  # (PRO is the modern warehouse tier; CLASSIC is the legacy non-serverless
-  # tier). `cluster_size: "2X-Small"` is the smallest serverless size —
-  # escalate only on demonstrated workload need.
-  #
-  # Discovery flow:
-  #   - `09_grant_app_permissions.py` discovers this warehouse by name suffix
-  #     and grants CAN_USE to the App SP.
-  #   - `scripts/render_app_yaml.py` discovers by same name + writes
-  #     `WAREHOUSE_ID` into App/databricks/app.yaml's env block.
-  #   - App's `/api/sql/query` uses `WAREHOUSE_ID` env var with the direct
-  #     Statement Execution API to route SQL to this warehouse.
-  sql_warehouses:
-    glucosphere_warehouse:
-      name: glucosphere-warehouse-${bundle.target}
-      cluster_size: "2X-Small"
-      enable_serverless_compute: true
-      warehouse_type: PRO
-      # auto_stop_mins=30 keeps the warehouse warm during demo sessions —
-      # the landing page (IncidentImpactChart + GlucoseAbsoluteChart +
-      # GlucoseTimelineChart) hits the warehouse on every page load, and
-      # cold-start adds ~5-15 sec on top of query time when the warehouse
-      # has stopped. 30 min strikes a balance: warm enough for typical
-      # demo / review sessions without leaving compute idle overnight.
-      auto_stop_mins: 30
-      min_num_clusters: 1
-      max_num_clusters: 1
+  # Discovery flow (create-own targets):
+  #   - 09_grant_app_permissions.py discovers by name suffix → grants CAN_USE to app SP
+  #     (or, when existing_warehouse_id is set, grants on that id directly).
+  #   - render_app_yaml.py discovers by name (or takes --warehouse-id for reuse) →
+  #     writes WAREHOUSE_ID into App/databricks/app.yaml.
+  #   - App's /api/sql/query uses WAREHOUSE_ID via the Statement Execution API.
 
   # ---------------------------------------------------------------------------
   # App: Glucosphere App (front-end branding: "GlucoStream Intelligence")

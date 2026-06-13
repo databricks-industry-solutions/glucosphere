@@ -123,3 +123,33 @@ So:
   (e.g. `GROUP BY key HAVING COUNT(*) > 1` to catch fan-out) after the change.
 - Fix at the source so every consumer benefits, then grep for the same anti-pattern elsewhere
   (e.g. other inclusive interval joins) — fix the **class**, not just the instance.
+
+## 10. Lakebase (alert-triage OLTP) — what bites, in order
+
+The triage queue's Postgres lives OUTSIDE the bundle; the bundle only carries the App's
+`postgres` resource binding (referencing `projects/<id>/branches/production` by name).
+Hard-won rules (all from the 2026-06-12 destroy→rebuild incident — see
+`lakebase_probe/README.md` and DEPLOY.md → *Lakebase one-time setup* / *Teardown*):
+
+- **Never bundle-manage a stateful DB.** `bundle destroy` deletes the project INCLUDING
+  data, and Lakebase deletion is soft — the id stays tombstoned (~7 days), so a same-id
+  recreate fails "already exists". The bind/import path can't repair it either: the
+  provider never reads back `spec`, so a bound project perpetually re-plans as `recreate`.
+  External `databricks postgres create-project` once; the binding re-attaches by name.
+- **app.yaml's `resources:` section is INERT** — app deploys don't apply it. The binding
+  must live on the bundle App resource (databricks.yml). `render_app_yaml.py` renders only
+  the `LAKEBASE_ENDPOINT` env var.
+- **Every App recreate rotates its service principal**, and the rotated SP does not own
+  the PG objects its predecessor created. `App/databricks/lakebase.py` is rotation-proofed
+  three ways (PUBLIC read/write grants; probe-first bootstrap — re-running DDL as a
+  non-owner fails on `CREATE INDEX`'s ownership check; `TRUNCATE` without
+  `RESTART IDENTITY` — sequence restart needs ownership). Don't "simplify" those away.
+- **No grant scripts for Lakebase** — the binding auto-creates the SP's PG role; the app
+  bootstraps + owns its `triage` schema at first touch. If a rotated SP is still denied
+  (pre-rotation-proofing schema), the operator fix is control-plane, not SQL:
+  `databricks postgres delete-role` on the ORPHANED old-SP role reassigns its objects to
+  the project owner (SQL can't — `databricks_superuser` membership is granted without
+  the SET option).
+- **Trust smoke check 9, not "binding present".** The functional `/api/alerts` probe is
+  the only layer that catches app↔schema permission breaks — project+binding checks
+  passed while every queue call 500'd.

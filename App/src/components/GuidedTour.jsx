@@ -5,7 +5,8 @@ import { useLakebaseConfigured } from '../hooks/useLakebase';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
-// step's target element, and renders a Next/Back/Done card.
+// step's target element, and renders a Next/Back/Done card with a step
+// scrubber (drag to jump to any step).
 export default function GuidedTour() {
   const [active, setActive] = useState(false);
   const [variant, setVariant] = useState(null); // null → show Quick/Full chooser; 'quick' | 'full' once picked
@@ -114,6 +115,13 @@ export default function GuidedTour() {
     if (!rect || !cardRef.current) { setCardStyle(null); return; }
     const card = cardRef.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
+    // Assistant steps: the slide-over panel owns the RIGHT side — dock the card
+    // hard LEFT so the panel (the thing being toured) stays fully visible
+    // (booth catch 2026-06-12: the generic placement covered the panel).
+    if (step?.openAssistant) {
+      setCardStyle({ position: 'fixed', top: Math.max(M, Math.min(rect.top, vh - card.height - M)), left: M, pointerEvents: 'auto' });
+      return;
+    }
     const clampX = (x) => Math.max(M, Math.min(x, vw - card.width - M));
     const clampY = (y) => Math.max(M, Math.min(y, vh - card.height - M));
     const cx = rect.left + rect.width / 2 - card.width / 2;   // horizontally centered on element
@@ -142,7 +150,7 @@ export default function GuidedTour() {
     return (
       <div className="fixed inset-0 z-[110]">
         <div className="absolute inset-0 bg-black/40" onClick={close} />
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-40 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
           <div className="flex flex-col gap-2 mt-4">
@@ -205,7 +213,10 @@ export default function GuidedTour() {
 
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
-      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} onClick={close} />
+      {/* Backdrop deliberately does NOT close the tour: a stray click outside the card used
+          to silently end it mid-walkthrough with no way back to the current step (booth
+          feedback 2026-06-12). Skip (and Done) are the explicit exits. */}
+      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} />
       {rect && (
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
           style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2,6,23,0.55)' }} />
@@ -221,19 +232,30 @@ export default function GuidedTour() {
             (step.explore) → "Explore". Pure-narrative steps and the FAB step — where the next steps
             auto-open the assistant — get a plain Next, no redundant pause. */}
         {variant === 'interactive' && (step.interactive || step.openAssistant || step.explore) && (
-          <button onClick={() => { setPaused(true); setJustResumed(false); }}
-            className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
-            ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
-          </button>
+          <>
+            <button onClick={() => { setPaused(true); setJustResumed(false); }}
+              className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
+              ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
+            </button>
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-snug">
+              While you explore, an amber <span className="text-amber-300">▶ Resume tour</span> pill stays
+              on screen — click it to come back to this step.
+            </p>
+          </>
         )}
-        <div className="flex justify-between items-center mt-4">
+        {/* Step scrubber: drag to jump to any step (fast-forward back after a wrong turn —
+            e.g. an accidental Skip and restart — without clicking Next n times). */}
+        <input type="range" min={1} max={steps.length} value={i + 1} aria-label="Jump to tour step"
+          onChange={(e) => { setI(Number(e.target.value) - 1); setJustResumed(false); }}
+          className="w-full mt-4 h-1 accent-cyan-400 cursor-pointer" />
+        <div className="flex justify-between items-center mt-2">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
             {i > 0 && <button onClick={() => { setI(i - 1); setJustResumed(false); }} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}
             {i < steps.length - 1
               ? <button onClick={() => { setI(i + 1); setJustResumed(false); }}
                   className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${justResumed ? 'bg-cyan-500 text-slate-950 font-semibold border border-cyan-400 ring-2 ring-cyan-400/50' : 'text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/10'}`}>Next</button>
-              : <button onClick={() => { close(); navigate('/'); }} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
+              : <button onClick={close} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, ChevronRight } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
 import FirmwareLifecycleChart from '../components/FirmwareLifecycleChart';
@@ -63,7 +63,8 @@ export default function FirmwareLifecyclePage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <BrandMark className="w-7 h-7 text-cyan-400" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><BrandMark className="w-5 h-5 text-cyan-400" /></Link>
             <div>
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Firmware Lifecycle</h1>
               <p className="text-xs text-slate-500 font-mono">② Diagnose — trace the spike to the firmware at fault</p>
@@ -142,7 +143,7 @@ export default function FirmwareLifecyclePage() {
                       {/* Carries THIS firmware into the queue (?fw=…) so the operator
                           lands on exactly the rollback cohort. */}
                       <button
-                        onClick={() => navigate(lakebaseConfigured ? `/triage?fw=${encodeURIComponent(f.fw)}` : '/roadmap')}
+                        onClick={() => navigate(lakebaseConfigured ? `/triage?fw=${encodeURIComponent(f.fw)}` : '/full-loop')}
                         title={lakebaseConfigured ? `Open the triage queue filtered to FW ${f.fw}. "Live Alert" = the workflow — alerts are batch-derived today; streaming ingestion would raise them in real time (see what's next).` : undefined}
                         className="text-xs font-mono px-3 py-2 rounded-lg border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors shrink-0"
                       >

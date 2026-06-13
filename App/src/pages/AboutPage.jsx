@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
-  HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink,
+  HeartHandshake, Wrench, BookOpen, ArrowLeft, ArrowRight, Github, ExternalLink, Info,
   Layers, Database, FlaskConical, Server, Sparkles, Boxes, MessagesSquare, HardDrive, Telescope,
 } from 'lucide-react';
 import BrandMark from '../components/BrandMark';
@@ -22,7 +22,7 @@ const ROLE_CARDS = [
   { icon: Wrench, title: 'Device Support', sub: 'Biomedical Engineering', route: '/device-support' },
   { icon: HeartHandshake, title: 'Diabetes Coach', sub: 'Diabetes Coaching', route: '/diabetes-coach' },
   { icon: BookOpen, title: 'Metrics Explained', sub: 'How every metric is computed', route: '/metrics-explained' },
-  { icon: Telescope, title: 'The Full Loop', sub: 'Detect · Diagnose · Assess — how it comes together', route: '/roadmap' },
+  { icon: Telescope, title: 'The Full Loop', sub: 'Detect · Diagnose · Assess — how it comes together', route: '/full-loop' },
 ];
 
 // "Under the hood" platform stack, grouped as a Data → ML/AI → Agentic pipeline flow.
@@ -80,7 +80,8 @@ function linksFromConfig(cfg) {
     // deep-link straight to the forecast endpoint (the list page has no URL filter);
     // fall back to the full endpoints listing if the name wasn't discovered.
     serving: cfg?.forecast_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
-    lakebase: wh ? `${wh}/lakebase` : '',
+    // Exact SQL-editor deep link when the backend resolved it; generic landing otherwise.
+    lakebase: (cfg && cfg.lakebase_editor_url) || (wh ? `${wh}/lakebase` : ''),
     genie: wh && cfg?.genie_space_id ? `${wh}/genie/rooms/${cfg.genie_space_id}` : '',
     ka: cfg?.ka_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
     mas: cfg?.mas_endpoint_url || (wh ? `${wh}/ml/endpoints` : ''),
@@ -151,7 +152,8 @@ export default function AboutPage() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3 min-w-0">
-            <BrandMark className="w-7 h-7 text-cyan-400 shrink-0" />
+            <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+              className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10"><Info className="w-5 h-5 text-cyan-400" /></Link>
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>About Glucosphere</h1>
               <p className="text-xs text-slate-500 font-mono truncate">CGM Stream Intelligence — fleet control tower · detect · diagnose · act</p>

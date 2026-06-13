@@ -110,20 +110,68 @@ CREATE TABLE IF NOT EXISTS triage.alert_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON triage.alerts(status);
 CREATE INDEX IF NOT EXISTS idx_audit_alert ON triage.alert_audit(alert_id);
--- Read-only visibility for human operators (workspace UI SQL editor / any DB
--- role): the tables are owned by the app SP's role, and Postgres grants nothing
--- to others by default — without these, the schema looks empty from the UI.
--- Writes remain the app's alone (no INSERT/UPDATE granted).
-GRANT USAGE ON SCHEMA triage TO PUBLIC;
-GRANT SELECT ON ALL TABLES IN SCHEMA triage TO PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA triage GRANT SELECT ON TABLES TO PUBLIC;
+"""
+
+_GRANTS_SQL = """
+-- Read/WRITE for every role on this database (PUBLIC here = only the roles
+-- provisioned on this Lakebase project: the operator + app SPs). Two reasons:
+--   1. Operator visibility — tables are owned by the app SP's role and PG
+--      grants nothing to others by default; without these the schema looks
+--      empty from the workspace SQL editor.
+--   2. App-SP ROTATION — every app recreate (e.g. bundle destroy → redeploy)
+--      issues a NEW service principal whose role does not own the existing
+--      triage objects; with read-only grants the rebuilt app got
+--      "permission denied for schema triage" (observed 2026-06-12). Full
+--      table/sequence grants + CREATE let a rotated SP keep operating.
+-- (Was read-only `GRANT SELECT` until 2026-06-12.) Demo-grade posture —
+-- alert rows are disposable demo state; see App/README "Operational notes".
+GRANT USAGE, CREATE ON SCHEMA triage TO PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA triage TO PUBLIC;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA triage TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA triage
+  GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON TABLES TO PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA triage
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO PUBLIC;
 """
 
 
 def _ensure_schema(conn):
+    import psycopg  # deferred (see get_conn)
+    # Fast path: schema already bootstrapped — possibly by a PREVIOUS app SP
+    # (every app recreate rotates the SP). Re-running the DDL as a rotated
+    # non-owner SP fails: CREATE INDEX IF NOT EXISTS checks table OWNERSHIP
+    # before the IF-NOT-EXISTS short-circuit ("must be owner of table alerts",
+    # observed 2026-06-12), even though the PUBLIC read/write grants below make
+    # the schema fully usable. So probe usability instead of re-running DDL.
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM triage.alerts LIMIT 1")
+            cur.execute("SELECT 1 FROM triage.alert_audit LIMIT 1")
+        return  # usable as-is (rotated SP relies on the owner's PUBLIC grants)
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()  # genuine first bootstrap — fall through to the DDL
+    except psycopg.errors.InsufficientPrivilege as e:
+        conn.rollback()
+        raise RuntimeError(
+            "triage schema exists but this app SP cannot use it — likely a "
+            "schema bootstrapped by a pre-2026-06-12 build (read-only grants) "
+            "under a rotated-away SP. Fix: DEPLOY.md 'App-SP rotation note' "
+            "(postgres delete-role on the old SP's role, then re-grant or "
+            "DROP SCHEMA triage CASCADE and restart the app)."
+        ) from e
     with conn.cursor() as cur:
         cur.execute(_SCHEMA_SQL)
     conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_GRANTS_SQL)
+        conn.commit()
+    except psycopg.errors.InsufficientPrivilege:
+        # Mixed-ownership edge (non-owner SP re-creating missing tables in an
+        # existing schema): GRANT requires the grant option, which only the
+        # schema owner holds. The owner's PUBLIC grants are already in place
+        # from the original bootstrap — safe to continue.
+        conn.rollback()
 
 
 # ── Queue operations (called by app.py routes) ─────────────────────────────────
@@ -232,12 +280,74 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
     return len(done)
 
 
+_editor_url_cache = {'url': None}  # None = not resolved yet; '' = resolved-failed
+
+
+def editor_url() -> str:
+    """Deep link to the workspace's Lakebase SQL editor for THIS project/branch:
+    {host}/lakebase/projects/{project_uid}/branches/{branch_uid}/sql-editor?database=…
+    The UI route needs the project UID + Neon-style branch uid (br-…), neither of
+    which the app's env carries — resolved once via the postgres API and cached."""
+    if _editor_url_cache['url'] is not None:
+        return _editor_url_cache['url']
+    url = ''
+    try:
+        # LAKEBASE_ENDPOINT = projects/<id>/branches/<branch>/endpoints/<ep>
+        parts = LAKEBASE_ENDPOINT.split('/')
+        project_path, branch_path = '/'.join(parts[:2]), '/'.join(parts[:4])
+        host, ws_token = _get_auth()
+        hdrs = {'Authorization': f'Bearer {ws_token}'}
+        proj = requests.get(f"{host}/api/2.0/postgres/{project_path}", headers=hdrs, timeout=20).json()
+        br = requests.get(f"{host}/api/2.0/postgres/{branch_path}", headers=hdrs, timeout=20).json()
+        if proj.get('uid') and br.get('uid'):
+            url = (f"{host}/lakebase/projects/{proj['uid']}/branches/{br['uid']}"
+                   f"/sql-editor?database={os.environ.get('PGDATABASE', 'databricks_postgres')}")
+    except Exception as e:
+        print(f"[TRIAGE] editor_url resolve failed: {e}")
+    _editor_url_cache['url'] = url
+    return url
+
+
+# The exact SQL the "Verify in Postgres" panel shows + runs — kept as ONE constant
+# so the UI displays precisely what executes (honesty: no hidden massaging).
+RAW_AUDIT_SQL = (
+    "SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at\n"
+    "FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)\n"
+    "ORDER BY u.at DESC LIMIT %s"
+)
+
+
+def raw_audit(limit: int = 12):
+    """The alerts ⋈ audit join, newest first — the in-app "see your click as a
+    Postgres row" peek (same query the Verify dropdown offers for the SQL editor)."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(RAW_AUDIT_SQL, (limit,))
+        cols = ('patient_id', 'status', 'assigned_to', 'action', 'actor', 'detail', 'at')
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        for r in rows:
+            r['at'] = str(r['at'])
+    return {'sql': RAW_AUDIT_SQL % 'N', 'rows': rows}
+
+
+def dump_all():
+    """Every alert ⋈ audit row (no limit) — the reset-time archive payload."""
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT a.patient_id, a.device_id, a.device_model, a.firmware, a.alert_type, "
+            "a.severity, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at "
+            "FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id) ORDER BY u.at")
+        return cur.fetchall()
+
+
 def reset_alerts():
     """Demo reset: wipe the queue + audit so booth visitors can triage fresh.
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
-    demo state by design — see the bundle-destroy footgun note in databricks.yml."""
+    demo state by design. NO `RESTART IDENTITY`: restarting a sequence requires
+    sequence OWNERSHIP, which a rotated app SP doesn't have ("must be owner of
+    sequence alert_audit_audit_id_seq", observed 2026-06-12) — plain TRUNCATE
+    only needs the granted TRUNCATE privilege; ids simply keep climbing."""
     with get_conn() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE triage.alert_audit, triage.alerts RESTART IDENTITY")
+        cur.execute("TRUNCATE triage.alert_audit, triage.alerts")
         conn.commit()
 
 
