@@ -39,7 +39,7 @@ What's automated (8 checks + a 9th on Lakebase-enabled targets):
        postgres resource binding to it AND the app's /api/alerts answers HTTP 200
        (functional probe: credential mint + PG connect + triage schema usable —
        catches the app-SP-rotation "permission denied for schema triage" failure
-       that project+binding checks alone missed, 2026-06-12). Doubles as the DRIFT
+       that project+binding checks alone missed). Doubles as the DRIFT
        detector — a CLI/UI-deleted project fails here while `bundle deploy` stays
        silent (no state refresh);
        recovery: `POST /api/2.0/postgres/projects/<id>/undelete` + app restart.
@@ -284,9 +284,8 @@ def check_lakebase(profile: str, project_id: str, app_name: str) -> tuple[bool, 
          binding auto-creates the App SP's PG role + injects the PG* env),
       c. FUNCTIONAL: the app's /api/alerts endpoint answers HTTP 200 — proves
          the app can mint a PG credential, connect, and use the triage schema.
-         (Added 2026-06-12 after a rebuild passed a+b while every triage call
-         failed "permission denied for schema triage" — app-SP rotation had
-         orphaned the schema under the old SP's role.)
+         (a rebuild can pass a+b while every triage call fails "permission denied
+         for schema triage" — app-SP rotation orphaning the schema under the old role.)
     Also the drift detector: a CLI/UI-deleted project makes (a) FAIL while
     `bundle deploy` stays silent (no state refresh) — recovery is
     `POST /api/2.0/postgres/projects/<id>/undelete` + app restart."""

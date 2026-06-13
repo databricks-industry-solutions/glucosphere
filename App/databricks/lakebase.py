@@ -5,8 +5,8 @@ binding (render_app_yaml.py sets LAKEBASE_ENDPOINT + the `database` app resource
 which injects PGHOST/PGUSER/PGDATABASE/PGSSLMODE and auto-creates the App SP's PG
 role — but NO PGPASSWORD, by design). The password is a short-lived OAuth token
 minted per ~50 min via POST /api/2.0/postgres/credentials (raw REST, matching
-app.py's requests-based style; shape verified live — see
-ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md).
+app.py's requests-based style; see lakebase_probe/README.md for the connection
+recipe this was validated against).
 
 Schema (created idempotently on first use, in the app-owned `triage` PG schema —
 PG 15+ denies CREATE in `public`; CAN_CONNECT_AND_CREATE lets the app make its own):
@@ -121,9 +121,8 @@ _GRANTS_SQL = """
 --   2. App-SP ROTATION — every app recreate (e.g. bundle destroy → redeploy)
 --      issues a NEW service principal whose role does not own the existing
 --      triage objects; with read-only grants the rebuilt app got
---      "permission denied for schema triage" (observed 2026-06-12). Full
---      table/sequence grants + CREATE let a rotated SP keep operating.
--- (Was read-only `GRANT SELECT` until 2026-06-12.) Demo-grade posture —
+--      "permission denied for schema triage". Full table/sequence grants +
+--      CREATE let a rotated SP keep operating. Demo-grade posture —
 -- alert rows are disposable demo state; see App/README "Operational notes".
 GRANT USAGE, CREATE ON SCHEMA triage TO PUBLIC;
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA triage TO PUBLIC;
@@ -140,8 +139,8 @@ def _ensure_schema(conn):
     # Fast path: schema already bootstrapped — possibly by a PREVIOUS app SP
     # (every app recreate rotates the SP). Re-running the DDL as a rotated
     # non-owner SP fails: CREATE INDEX IF NOT EXISTS checks table OWNERSHIP
-    # before the IF-NOT-EXISTS short-circuit ("must be owner of table alerts",
-    # observed 2026-06-12), even though the PUBLIC read/write grants below make
+    # before the IF-NOT-EXISTS short-circuit ("must be owner of table alerts"),
+    # even though the PUBLIC read/write grants below make
     # the schema fully usable. So probe usability instead of re-running DDL.
     try:
         with conn.cursor() as cur:
@@ -154,7 +153,7 @@ def _ensure_schema(conn):
         conn.rollback()
         raise RuntimeError(
             "triage schema exists but this app SP cannot use it — likely a "
-            "schema bootstrapped by a pre-2026-06-12 build (read-only grants) "
+            "schema bootstrapped by an earlier read-only-grants build "
             "under a rotated-away SP. Fix: DEPLOY.md 'App-SP rotation note' "
             "(postgres delete-role on the old SP's role, then re-grant or "
             "DROP SCHEMA triage CASCADE and restart the app)."
@@ -166,11 +165,13 @@ def _ensure_schema(conn):
         with conn.cursor() as cur:
             cur.execute(_GRANTS_SQL)
         conn.commit()
-    except psycopg.errors.InsufficientPrivilege:
+    except psycopg.errors.InsufficientPrivilege as e:
         # Mixed-ownership edge (non-owner SP re-creating missing tables in an
         # existing schema): GRANT requires the grant option, which only the
         # schema owner holds. The owner's PUBLIC grants are already in place
-        # from the original bootstrap — safe to continue.
+        # from the original bootstrap — safe to continue, but leave a trace so
+        # the swallow isn't fully silent.
+        print(f"[TRIAGE] grants skipped (non-owner SP — relying on prior PUBLIC grants): {e}")
         conn.rollback()
 
 
@@ -280,7 +281,7 @@ def bulk_act(ids, action: str, actor: str, detail: str | None = None) -> int:
     return len(done)
 
 
-_editor_url_cache = {'url': None}  # None = not resolved yet; '' = resolved-failed
+_editor_url_cache = {'url': ''}  # '' = not yet RESOLVED; only a success is cached
 
 
 def editor_url() -> str:
@@ -288,7 +289,7 @@ def editor_url() -> str:
     {host}/lakebase/projects/{project_uid}/branches/{branch_uid}/sql-editor?database=…
     The UI route needs the project UID + Neon-style branch uid (br-…), neither of
     which the app's env carries — resolved once via the postgres API and cached."""
-    if _editor_url_cache['url'] is not None:
+    if _editor_url_cache['url']:
         return _editor_url_cache['url']
     url = ''
     try:
@@ -304,7 +305,10 @@ def editor_url() -> str:
                    f"/sql-editor?database={os.environ.get('PGDATABASE', 'databricks_postgres')}")
     except Exception as e:
         print(f"[TRIAGE] editor_url resolve failed: {e}")
-    _editor_url_cache['url'] = url
+    # Cache only a successful resolve — a transient postgres-API blip must not
+    # permanently disable the deep link for the process lifetime; retry next call.
+    if url:
+        _editor_url_cache['url'] = url
     return url
 
 
@@ -344,7 +348,7 @@ def reset_alerts():
     Caller (the /api/alerts/reset route) reseeds immediately after. Disposable
     demo state by design. NO `RESTART IDENTITY`: restarting a sequence requires
     sequence OWNERSHIP, which a rotated app SP doesn't have ("must be owner of
-    sequence alert_audit_audit_id_seq", observed 2026-06-12) — plain TRUNCATE
+    sequence alert_audit_audit_id_seq") — plain TRUNCATE
     only needs the granted TRUNCATE privilege; ids simply keep climbing."""
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute("TRUNCATE triage.alert_audit, triage.alerts")

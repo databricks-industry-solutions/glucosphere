@@ -379,7 +379,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             device_type: d.device_type,
             firmware_version: d.firmware_version,
             region: d.region,
-            rate_pct: d.avg_oor_rate_pct,
+            deviceError: d.device_error_mae,   // in-incident MAE — the ranking signal
+            rate_pct: d.avg_oor_rate_pct,      // OOR rate — secondary (physiology-dominated)
             oorEvents: d.total_oor_events,
             days_tracked: d.days_tracked
           }));
@@ -545,7 +546,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
       </header>
 
       {/* pb-32: breathing room below the last section — the focused-device row was
-          pinned to the viewport bottom under the Ask FAB (booth catch 2026-06-12) */}
+          pinned to the viewport bottom under the Ask FAB */}
       <main className="max-w-[88rem] mx-auto px-6 pt-8 pb-32">
         {/* Population Overview */}
         <section className="mb-8">
@@ -706,7 +707,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Pattern Alerts</h3>
-                <p className="text-xs text-slate-500 font-mono">Detected device performance patterns</p>
+                <p className="text-xs text-slate-500 font-mono">Ranked by device error (in-incident MAE) — the fault signal, not raw out-of-range rate</p>
               </div>
               
               {alertsLoading ? (
@@ -719,19 +720,19 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 </div>
               ) : (
                 (() => {
-                  // Compact ranked list (no bars) — complements the heatmap matrix instead
-                  // of echoing its colored bars. Top out-of-range patterns by reading volume.
-                  // Two-line rows so device·firmware (line 1) and region·tracking (line 2)
-                  // aren't truncated. The severity dot is sized + coloured by out-of-range
-                  // rate (bigger/redder = worse), scaled across the shown alerts so it reads
-                  // at a glance — orange→rose ramp (no green: even the lowest shown rate is high).
-                  const rates = alerts.map(a => a.rate_pct);
-                  const lo = Math.min(...rates), hi = Math.max(...rates);
+                  // Ranked by DEVICE ERROR (in-incident MAE), not OOR rate — the fault
+                  // signal: faulted rollouts hit ~40 mg/dL, clean firmware sits near 0.
+                  // The dot is sized + coloured by that error, scaled across the shown
+                  // rows (bigger/redder = larger device error). Two-line rows keep
+                  // device·firmware and region·tracking from truncating.
+                  const errs = alerts.map(a => a.deviceError || 0);
+                  const lo = Math.min(...errs), hi = Math.max(...errs);
                   const lerp = (a, b, t) => Math.round(a + (b - a) * t);
-                  const dotStyle = (r) => {
-                    const t = hi > lo ? (r - lo) / (hi - lo) : 1;       // 0..1 across shown alerts
+                  const dotStyle = (e) => {
+                    const t = hi > lo ? (e - lo) / (hi - lo) : 1;       // 0..1 across shown rows
                     const px = 8 + t * 6;                                // 8..14px
-                    return { width: `${px}px`, height: `${px}px`, backgroundColor: `rgb(${lerp(251, 244, t)} ${lerp(146, 63, t)} ${lerp(60, 94, t)})` };
+                    // emerald (clean ~0) → rose (high error)
+                    return { width: `${px}px`, height: `${px}px`, backgroundColor: `rgb(${lerp(52, 244, t)} ${lerp(211, 63, t)} ${lerp(153, 94, t)})` };
                   };
                   return (
                     <div className="flex-1 flex flex-col">
@@ -740,30 +741,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         <span className="w-4 shrink-0" />
                         <span className="w-4 shrink-0" />
                         <span className="flex-1 min-w-0">device · firmware · region</span>
-                        <span className="shrink-0 w-16 text-right text-amber-400/80">OOR reads</span>
-                        <span className="shrink-0 w-12 text-right">rate</span>
+                        <span className="shrink-0 w-20 text-right text-rose-400/80">device err</span>
+                        <span className="shrink-0 w-12 text-right">OOR%</span>
                       </div>
                       <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
-                        {[...alerts].sort((a, b) => b.oorEvents - a.oorEvents).map((alert, idx) => (
+                        {[...alerts].sort((a, b) => (b.deviceError || 0) - (a.deviceError || 0)).map((alert, idx) => (
                           <li key={idx} className="flex items-center gap-3 py-2.5">
                             <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
                             <span className="w-4 flex justify-center shrink-0">
-                              <span className="rounded-full" style={dotStyle(alert.rate_pct)} title={`out-of-range rate ${alert.rate_pct}%`} />
+                              <span className="rounded-full" style={dotStyle(alert.deviceError || 0)} title={`device error ${alert.deviceError} mg/dL (in-incident)`} />
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-mono text-slate-200 truncate">{alert.device_type} {alert.firmware_version}</div>
                               <div className="text-[11px] font-mono text-slate-500 truncate">{alert.region} · {alert.days_tracked}d tracked</div>
                             </div>
-                            <span className="text-sm font-mono text-amber-400 shrink-0 w-16 text-right tabular-nums">{alert.oorEvents.toLocaleString()}</span>
+                            <span className="text-sm font-mono text-rose-400 shrink-0 w-20 text-right tabular-nums">{alert.deviceError != null ? `${alert.deviceError}` : '—'}<span className="text-[10px] text-slate-600"> mg/dL</span></span>
                             <span className="text-xs font-mono text-slate-500 shrink-0 w-12 text-right tabular-nums">{alert.rate_pct}%</span>
                           </li>
                         ))}
                       </ol>
                       {/* key — one line per item */}
                       <div className="mt-3 pt-2 border-t border-slate-800/70 text-[10px] font-mono text-slate-500 leading-relaxed space-y-0.5">
-                        <div><span className="text-amber-400/80">OOR reads</span> = count of out-of-range device readings</div>
-                        <div><span className="text-slate-300">rate</span> = share of that group's readings out of range</div>
-                        <div>● dot — bigger / redder = higher out-of-range rate</div>
+                        <div><span className="text-rose-400/80">device err</span> = mean |observed − true| mg/dL over in-incident readings — the fault magnitude (clean ≈ 0)</div>
+                        <div><span className="text-slate-300">OOR%</span> = out-of-range rate — shown for context; ~36–40% on every cohort (physiology), so it can't rank the fault</div>
+                        <div>● dot — bigger / redder = larger device error</div>
                       </div>
                     </div>
                   );
@@ -971,7 +972,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                             {/* Reading Details — ONE band → ONE color, used by the value,
                                 the Range Status text, and the action banner below (a mixed
                                 amber value + white status + rose banner read as three
-                                different severities for the same reading — booth catch). */}
+                                different severities for the same reading. */}
                             {(() => { const v = device.glucose_value;
                               const band = (v < 54 || v > 250) ? 'critical' : (v < 70 || v > 180) ? 'warn' : 'ok';
                               const bandText = band === 'critical' ? 'text-rose-400' : band === 'warn' ? 'text-amber-400' : 'text-emerald-400';

@@ -173,6 +173,25 @@ to before (wip labels intact).
   registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
   then 600 fresh alerts reseeded.
 
+### Fixed — PR review pass (code-reviewer · silent-failure-hunter · comment-analyzer)
+- **Device Pattern Alerts ranked by the wrong metric** (honesty): it ordered cohorts by
+  out-of-range *rate*, which reads ~36–40% on EVERY model×firmware — clean controls included
+  — so its "top patterns" were physiology noise (clean Alpha/Gamma-4.0.3 cohorts ranked while
+  the genuinely faulted Delta-4.0.3 ranked last). Now ranked by **device error** (in-incident
+  mean |observed − true|, the heatmap's metric): faulted rollouts surface at ~40 mg/dL, clean
+  firmware ≈ 0. OOR% kept as a labeled secondary column ("can't rank the fault").
+- **`editor_url()` permanent negative cache** — a transient postgres-API blip at startup
+  permanently disabled the Verify-in-Postgres deep link; now caches only a successful resolve.
+- **Reset reseed-after-truncate** now returns a specific "queue wiped + archived — press Reset
+  again" message instead of a generic 500 that read as "nothing happened".
+- **Watchlist load failures surface** to the error banner (a `loadWatchlist` helper) instead
+  of a silent empty "no one at risk"; raw-peek + grants-skip now log; dead `load(filter)` arg
+  and over-permissive `_safe_ident` cleaned up.
+- **Comment hygiene** (public-repo): stripped ~33 date-stamped `(booth catch 2026-06-12)` /
+  incident-narration parentheticals (kept the load-bearing WHY), removed two commented-out
+  dead-code blocks + a commented `postgres_projects:` stub + a leaked patient id from
+  comments, and repointed a gitignored `ref_notes/` link to the committed `lakebase_probe/README.md`.
+
 ### Changed — booth-polish round 2 (same day, later still)
 - **Composable row inputs**: fill assignee and/or addendum, one **Apply** — each filled
   field still writes its own audit row (per-event compliance trail preserved).

@@ -335,7 +335,7 @@ export async function getPatientDetail(patientId) {
   // …PLUS the patient's very latest reading regardless of grid alignment: the %15
   // sample can drop the final 5-/10-min points, hiding a fast move (e.g. a hypo
   // rebound 51→64 in the last 10 min) and making the batch forecast's anchor look
-  // detached from the chart tail (booth catch 2026-06-12).
+  // detached from the chart tail.
   const seriesQ = `
     SELECT time, glucose_observed, glucose_true, incident_start_time, incident_end_time, incident_direction
     FROM ${inc}

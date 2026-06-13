@@ -383,20 +383,31 @@ export async function getDevicePatternAlerts() {
   // device_model from silver_patient_registry (per-patient SSOT) joined on patient_id
   // — gold's per-reading device_model disagrees with the registry. region is consistent
   // across both tables (verified 0 mismatch), sourced from the registry here for SSOT.
+  // Rank by DEVICE ERROR (in-incident mean |observed − true|), NOT by out-of-range
+  // rate. OOR rate reads ~36–40% on EVERY cohort — clean controls included —
+  // because real HUPA-UCM glucose sits outside 70–180 about a third of the time;
+  // ranking by it surfaces physiology noise and buries the real fault (the same
+  // reason the heatmap measures error directly). Device error isolates the fault:
+  // faulted rollouts hit ~40 mg/dL, clean firmware sits near 0. OOR rate is kept
+  // as a secondary displayed number, not the sort key.
   const query = `
     SELECT
       r.device_model as device_type,
       CAST(g.firmware_version AS STRING) as firmware_version,
       r.region,
+      ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL
+                     THEN ABS(p.glucose_observed - p.glucose_true) END), 1) as device_error_mae,
       SUM(g.glucose_out_of_range) as total_oor_events,
       COUNT(*) as total_events,
       ROUND(AVG(CASE WHEN g.glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
       COUNT(DISTINCT DATE(g.time)) as days_tracked
     FROM ${catalog}.${schema}.gold_patient_device_readings g
     JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      ON g.patient_id = p.patient_id AND g.time = p.time
     GROUP BY r.device_model, g.firmware_version, r.region
-    HAVING SUM(g.glucose_out_of_range) > 10
-    ORDER BY avg_oor_rate_pct DESC
+    HAVING COUNT(CASE WHEN p.incident_type IS NOT NULL THEN 1 END) > 10
+    ORDER BY device_error_mae DESC NULLS LAST
     LIMIT 4
   `;
   
@@ -413,15 +424,16 @@ export async function getDevicePatternAlerts() {
           structuredContent.result.data_array.length > 0) {
         
         const alerts = structuredContent.result.data_array.map(row => {
-          if (row.values && row.values.length >= 7) {
+          if (row.values && row.values.length >= 8) {
             return {
               device_type: row.values[0].string_value,
               firmware_version: row.values[1].string_value,
               region: row.values[2].string_value,
-              total_oor_events: parseInt(row.values[3].string_value, 10),
-              total_events: parseInt(row.values[4].string_value, 10),
-              avg_oor_rate_pct: parseFloat(row.values[5].string_value),
-              days_tracked: parseInt(row.values[6].string_value, 10)
+              device_error_mae: parseFloat(row.values[3].string_value),
+              total_oor_events: parseInt(row.values[4].string_value, 10),
+              total_events: parseInt(row.values[5].string_value, 10),
+              avg_oor_rate_pct: parseFloat(row.values[6].string_value),
+              days_tracked: parseInt(row.values[7].string_value, 10)
             };
           }
           return null;
