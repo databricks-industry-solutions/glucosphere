@@ -649,18 +649,26 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
                     className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
                 )}
+                {/* Inline at the row's end, right beside sort (it wrapped onto an
+                    orphan second line before — booth catch); the old "N matching"
+                    text is gone too: it just repeated the bell counts. Only the
+                    over-cap note and the watch-view count carry information. */}
                 {(() => { const active = q || faultFilter !== 'all' || modelFilter !== 'all' || fwFilter !== 'all';
                   return (
                     <button onClick={() => { setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all'); setJumpCtx(null); }}
                       disabled={!active}
                       title={active ? 'Clear the search / fault / model / firmware filters (status tab + scenario stay)' : 'No filters active'}
-                      className={`ml-auto px-2.5 py-1 rounded-md border text-[11px] font-mono shrink-0 ${active ? 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10' : 'border-slate-800 text-slate-700 cursor-default'}`}>
+                      className={`px-2.5 py-1 rounded-md border text-[11px] font-mono shrink-0 ${active ? 'border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10' : 'border-slate-800 text-slate-700 cursor-default'}`}>
                       ✕ clear filters
                     </button>
                   ); })()}
-                <span className="text-slate-500">
-                  {scenario === 'last3h' ? `${watchRows.length} patient${watchRows.length === 1 ? '' : 's'} in the danger bands${extraWatchRow ? ' (1 fetched below the top-100 cutoff)' : ''}` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
-                </span>
+                {(scenario === 'last3h' || filtered.length > VISIBLE_CAP) && (
+                  <span className="text-slate-500">
+                    {scenario === 'last3h'
+                      ? `${watchRows.length} patient${watchRows.length === 1 ? '' : 's'} in the danger bands${extraWatchRow ? ' (1 fetched below the top-100 cutoff)' : ''}`
+                      : `showing first ${VISIBLE_CAP} of ${filtered.length} — refine to narrow`}
+                  </span>
+                )}
               </div>
 
               {jumpCtx && scenario === 'week' && (
