@@ -148,7 +148,7 @@ function AlertRow({ alert, onAction, busy, defaultExpanded = false }) {
               <div className="flex flex-col gap-1.5 shrink-0">
                 {/* Composable inputs: fill any/all, ONE Apply — each filled field still
                     writes its OWN audit row (assigned / note stay separate verbs), so the
-                    compliance trail keeps per-event fidelity (booth ask 2026-06-12). */}
+                    compliance trail keeps per-event fidelity. */}
                 {alert.status !== 'resolved' && (
                   <div className="flex items-center gap-1.5">
                     <input value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="assignee (e.g. tech-1)"
@@ -209,24 +209,12 @@ export default function TriagePage() {
   const configured = useLakebaseConfigured();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState({ alerts: [], counts: {} });
-  // THE PAGE REMEMBERS WHERE YOU WERE (per tab): the booth loop detours through
-  // Coach / Device-Support and returns — landing on cold defaults every time read
-  // as "my filters got reset" (booth 2026-06-12). View state persists to
-  // sessionStorage; explicit URL params (deep-links) take precedence, and a
-  // queue-targeting deep-link (?q/?fault/?model/?fw) overrides a remembered live
-  // view (those links point at queue rows). Fresh tab = fresh defaults.
-  // (2026-06-12, reverted same day: cross-mount view persistence confused bare
-  // visits — "Open queue →" landed on the previous session's live view instead
-  // of the queue. Context now travels via URL params on every deep-link button,
-  // so a paramless /triage means fresh intent → clean defaults.)
-  // const persisted = (() => {
-  //   try { return JSON.parse(sessionStorage.getItem('triageView')) || {}; } catch { return {}; }
-  // })();
+  // View state is NOT persisted — context travels via URL params on every
+  // deep-link, so a paramless /triage always opens to clean defaults.
   const persisted = {};
   const hasQueueParams = ['q', 'fault', 'model', 'fw'].some((k) => searchParams.get(k));
-  // ?alert=1 marks ALERT-intent links ("work this device's alert") — declared
-  // BEFORE first use (the filter init below reads it; a later declaration was a
-  // TDZ crash, 2026-06-12).
+  // ?alert=1 marks ALERT-intent links ("work this device's alert"). Declared
+  // before first use — the filter init below reads it.
   const alertIntent = !!searchParams.get('alert');
   const [filter, setFilter] = useState(alertIntent ? 'all' : (persisted.filter || 'open'));  // status tab — client-side (we fetch all statuses once)
   // Deep-links carry their context: Population Risk passes ?model=, Firmware
@@ -238,13 +226,13 @@ export default function TriagePage() {
   const [fwFilter, setFwFilter] = useState(searchParams.get('fw') || (hasQueueParams ? 'all' : persisted.fwFilter) || 'all');
   // Patient-scoped deep-links (?q= — Coach / device rows / watch ⚑) land on the
   // LIVE last-3h view: they all originate from a "this patient NOW" context, and
-  // the watch row's ⚑ chip hands off to the queue when an alert exists (booth
-  // 2026-06-12: landing them on the retrospective queue read as a context loss).
+  // the watch row's ⚑ chip hands off to the queue when an alert exists (landing
+  // them on the retrospective queue instead would read as a context loss).
   // Cohort deep-links (?model= / ?fw= — Population Risk / Firmware bulk sends)
   // still land on the queue, where bulk actions live.
   // Alert-intent links land straight on the queue with the row auto-expanded
-  // (status notes visible in ONE click from the source page; it took three —
-  // booth frustration 2026-06-12). Plain ?q= stays a patient-NOW link → live view.
+  // (status notes visible in ONE click from the source page). Plain ?q= stays a
+  // patient-NOW link → live view.
   const [autoExpandPid, setAutoExpandPid] = useState(
     alertIntent ? (searchParams.get('q') || '').trim().toUpperCase() : '');
   const [scenario, setScenario] = useState(
@@ -263,7 +251,7 @@ export default function TriagePage() {
   // Fetch ALL statuses once (600-alert demo scale; server caps at 1000) so the
   // status tabs AND the header counts can both react client-side to the active
   // search/fault/model/fw filters — server-side status fetches made the header
-  // counts static under filters (caught at the booth 2026-06-12).
+  // counts static under filters.
   const load = useCallback(async () => {
     try {
       setLoading(true); setError('');
@@ -274,7 +262,18 @@ export default function TriagePage() {
 
   useEffect(() => { if (configured) load(); }, [configured, load]);
   // Full model roster (incl. Epsilon/Zeta clean controls) — once, from the registry SSOT.
-  useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels).catch(() => {}); }, [configured]);
+  // (getAllDeviceModels resolves to [] on failure and logs there; the dropdown
+  // degrades to affected-only — no extra handling needed.)
+  useEffect(() => { if (configured) getAllDeviceModels().then(setAllModels); }, [configured]);
+  // Watchlist loader — surfaces a backend failure to the error banner rather than
+  // showing a silent empty "no one at risk" (a [] result still means genuinely none).
+  const loadWatchlist = useCallback(() => {
+    getLiveRiskWatchlist().then(setWatchlist).catch((e) => {
+      console.error('[triage] live-risk watchlist failed:', e);
+      setError('Live-risk watchlist failed to load — ↻ Refresh to retry.');
+      setWatchlist([]);
+    });
+  }, []);
   // Scenario vantage: day presets force the matching fault filter; the last-3h
   // live view lazily fetches the watchlist (readings-only — no incident labels).
   const scenarioMounted = React.useRef(false);
@@ -284,39 +283,14 @@ export default function TriagePage() {
     // 'week' view would force fault back to 'all').
     if (!scenarioMounted.current) {
       scenarioMounted.current = true;
-      if (scenario === 'last3h' && watchlist === null) {
-        getLiveRiskWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
-      }
+      if (scenario === 'last3h' && watchlist === null) loadWatchlist();
       return;
     }
     const s = SCENARIOS[scenario];
     if (s?.fault) setFaultFilter(s.fault);
     if (scenario === 'week') setFaultFilter('all');
-    if (scenario === 'last3h' && watchlist === null) {
-      getLiveRiskWatchlist().then(setWatchlist).catch(() => setWatchlist([]));
-    }
+    if (scenario === 'last3h' && watchlist === null) loadWatchlist();
   }, [scenario]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Patient deep-links (?q= from Coach / device-focus / watchlist ⚑) carry no
-  // fault/model params — once the queue loads, snap those pills to the matched
-  // alert's attributes (one-time; only when the pills are still at 'all'), so the
-  // filter row reads coherently with the row it shows (booth catch 2026-06-12).
-  // (Retired 2026-06-12, kept for reference: the q-based pill-snap + zero-match
-  // smart-landing below became moot once ?q deep-links started landing on the
-  // live view directly — the watch row needs no pill snapping, and the queue is
-  // one ⚑ click away. Re-enable only if q-links ever return to queue landings.)
-  // const snappedRef = React.useRef(false);
-  // useEffect(() => {
-  //   if (snappedRef.current || !data.alerts?.length) return;
-  //   const q0 = (searchParams.get('q') || '').trim().toLowerCase();
-  //   if (!q0 || searchParams.get('fault') || searchParams.get('model')) { snappedRef.current = true; return; }
-  //   const hits = data.alerts.filter(a => `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q0));
-  //   const types = new Set(hits.map(a => a.alert_type));
-  //   const models = new Set(hits.map(a => a.device_model));
-  //   if (hits.length && types.size === 1 && faultFilter === 'all') setFaultFilter([...types][0]);
-  //   if (hits.length && models.size === 1 && modelFilter === 'all') setModelFilter([...models][0]);
-  //   if (!hits.length && data.alerts.length) setScenario('last3h');
-  //   snappedRef.current = true;
-  // }, [data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the fault filter strands the selected model (e.g. Alpha under under-read),
   // fall back to 'all' — the dropdown also greys those options out dynamically.
@@ -386,19 +360,13 @@ ORDER BY u.at DESC LIMIT 20;`;
   // the queue and refreshed with every queue load — click Ack, watch the row land.
   const [rawOpen, setRawOpen] = useState(false);
   // Breadcrumb for the watchlist→queue jump: the scenario flip (live → week) is
-  // necessary (the queue only exists in queue views) but was SILENT — confusing
-  // (booth 2026-06-12). The jump now leaves a visible banner with a one-click
-  // return that restores the live view + its filters.
-  // Persisted in sessionStorage: the booth loop often detours through Coach /
-  // Device-Support and returns via their ⚑ buttons — a state-only breadcrumb
-  // unmounted with the page and the return landed cold on the week default
-  // (booth catch 2026-06-12). sessionStorage = per-tab, survives navigation.
-  // In-page state only (storage-backed survival retired with view persistence —
-  // the watch→queue ⚑ jump that sets this never unmounts the page).
+  // necessary (the queue only exists in queue views), so it leaves a visible banner
+  // with a one-click return that restores the live view + its filters. In-page
+  // state only — the jump that sets it never unmounts the page.
   const [jumpCtx, setJumpCtx] = useState(null); // { patient, search, modelFilter }
   const [raw, setRaw] = useState(null);
   useEffect(() => {
-    if (rawOpen) fetchRawRows().then(setRaw).catch(() => setRaw({ error: true }));
+    if (rawOpen) fetchRawRows().then(setRaw).catch((e) => { console.error('[triage] raw rows failed:', e); setRaw({ error: true }); });
   }, [rawOpen, data]); // refetch whenever the queue reloads (i.e. after every action)
   const copySampleSql = () => {
     navigator.clipboard?.writeText(SAMPLE_SQL).then(() => {
@@ -414,7 +382,7 @@ ORDER BY u.at DESC LIMIT 20;`;
       if (res?.archived) setNotice(res);  // { archived, reset_id, archive_table }
       // "Reset demo" = fresh booth state: the DATA is truncated+reseeded, so the
       // VIEW resets too — sticky filters would otherwise keep narrowing the fresh
-      // 600 to the previous visitor's slice (booth catch 2026-06-12).
+      // 600 to the previous visitor's slice.
       setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all');
       setSortBy('severity'); setFilter('open'); setScenario('week'); setJumpCtx(null);
       setSearchParams({}, { replace: true });  // strip ?q= etc. so a refresh can't resurrect them
@@ -447,15 +415,22 @@ ORDER BY u.at DESC LIMIT 20;`;
   // until/unless the registry query resolves.
   const modelOptions = allModels.length ? allModels : [...affectedModels].sort();
   const q = search.trim().toLowerCase();
+  // Single-patient focus: a PSEUDO_* search is active in a queue scenario. Drives
+  // the Alert-detail chip (vs the window dropdown) — keyed on the SEARCH, not on
+  // how you arrived, so it holds whether you came via the watchlist ⚑ (in-page) or
+  // a device-page "work this alert" deep-link (?q=…&alert=1, fresh load), and
+  // survives navigating out to Coach/Device and back (the patient is in the URL).
+  const focusPid = /^pseudo_\d+$/.test(q) ? q.toUpperCase() : null;
+  const singlePatientFocus = !!focusPid && scenario !== 'last3h';
   // Watch view rows under the active model/search filters — one definition feeds
   // BOTH the table and the "N patients in the danger bands" label, so the label
-  // reacts to filters (it sat frozen at the full fetch count before, 2026-06-12).
+  // reacts to filters (it would otherwise sit frozen at the full fetch count).
   const watchFiltered = (watchlist || []).filter(w =>
     (modelFilter === 'all' || w.deviceModel === modelFilter) &&
     (!q || w.patientId.toLowerCase().includes(q)));
   // The watchlist is the TOP-100 by danger-reading count — a searched patient
-  // with only a few danger readings (or none) misses the cut and the view looked
-  // "stuck" empty (booth catch 2026-06-12, PSEUDO_0000940 with 3 very-highs).
+  // with only a few danger readings (or none) misses the cut and the view would
+  // otherwise look "stuck" empty.
   // Fetch that patient's last-3h summary directly and synthesize their row.
   const [extraWatchRow, setExtraWatchRow] = useState(null);
   useEffect(() => {
@@ -465,7 +440,10 @@ ORDER BY u.at DESC LIMIT 20;`;
     let stale = false;
     getPatientRecent3h(pid).then(r => {
       if (stale) return;
-      if (!r || !r.readings) { setExtraWatchRow(null); return; }
+      // Only surface them if they ACTUALLY have a danger-band reading — a searched
+      // patient whose last-3h is in range (e.g. a fixed device) is NOT "in the danger
+      // bands"; showing them there contradicts the dashes in their own row.
+      if (!r || (!r.veryLow && !r.veryHigh)) { setExtraWatchRow(null); return; }
       const al = (data.alerts || []).find(a => a.patient_id === pid);
       setExtraWatchRow({
         patientId: pid, deviceModel: al?.device_model || '—', firmware: al?.firmware || '—',
@@ -481,7 +459,7 @@ ORDER BY u.at DESC LIMIT 20;`;
   // risk from device-fault fallout at a glance (replaces a dead "n/a" label).
   const watchIds = new Set(watchRows.map(w => w.patientId));
   const alertPatients = new Set((data.alerts || [])
-    .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
+    .filter(a => a.status !== 'resolved' && watchIds.has(a.patient_id))  // open OR acked = still an active case
     .map(a => a.patient_id));
   const watchAlertOverlap = alertPatients.size;
   // refined = every filter EXCEPT the status tab; `filtered` adds the tab.
@@ -491,9 +469,8 @@ ORDER BY u.at DESC LIMIT 20;`;
     (modelFilter === 'all' || a.device_model === modelFilter) &&
     (fwFilter === 'all' || a.firmware === fwFilter) &&
     (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
-  // STABLE SEMANTICS (consolidated 2026-06-12 after three drifting meanings
-  // confused the booth): the bell counts are the WHOLE queue's per-status
-  // totals, always — filter-scoped numbers render beside the filters instead.
+  // STABLE SEMANTICS: the bell counts are the WHOLE queue's per-status totals,
+  // always — filter-scoped numbers render beside the filters instead.
   const counts = data.counts || {};
   const filtered = filter === 'all' ? refined : refined.filter(a => a.status === filter);
   // Sort: severity = the server's triage order (open first, HIGH first). The other two
@@ -578,8 +555,8 @@ ORDER BY u.at DESC LIMIT 20;`;
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
                   {isWatch ? (
-                    // Whole-queue totals stay visible here too (booth: "the LHS numbers
-                    // were useful"), plus the bridge stat: danger-band patients ∩ open
+                    // Whole-queue totals stay visible here too, plus the bridge stat:
+                    // danger-band patients ∩ open
                     // device alerts — physiology vs device-fault fallout at a glance.
                     <>
                       <span className="text-slate-500" title="Whole queue — regardless of filters">queue:</span>
@@ -590,10 +567,10 @@ ORDER BY u.at DESC LIMIT 20;`;
                       <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
                       <span className="text-slate-600">·</span>
                       <span className="text-slate-400"
-                        title="Overlap between the danger-band patients listed below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
+                        title="Overlap between the danger-band patients listed below and active (open or acked) device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
                         {watchAlertOverlap === watchRows.length && watchRows.length === 1
-                          ? <>the patient below <span className="text-rose-300 font-semibold">has an open device alert</span> (⚑)</>
-                          : <><span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of the {watchRows.length} patients below {watchAlertOverlap === 1 ? 'has' : 'have'} an open device alert (⚑)</>}
+                          ? <>the patient below <span className="text-rose-300 font-semibold">has an active device alert</span> (⚑)</>
+                          : <><span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of the {watchRows.length} patients below {watchAlertOverlap === 1 ? 'has' : 'have'} an active device alert (⚑)</>}
                       </span>
                     </>
                   ) : (<>
@@ -637,7 +614,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                       )}
                     </div>
                   )}
-                  <button onClick={() => load(filter)} disabled={busy || loading}
+                  <button onClick={() => load()} disabled={busy || loading}
                     title="Re-queries Postgres and redraws the queue — changes nothing in the database (use it to pick up actions made elsewhere, e.g. another visitor's tab)."
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
                   <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">
@@ -652,11 +629,21 @@ ORDER BY u.at DESC LIMIT 20;`;
 
               {/* refinement bar — client-side over the loaded queue */}
               <div className="flex items-center gap-2 flex-wrap mb-2 text-[11px] font-mono">
-                <select value={scenario} onChange={e => { setScenario(e.target.value); setJumpCtx(null); }}
-                  title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
-                  className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
-                  {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
-                </select>
+                {/* When focused on a single jumped alert, the time-window selector is
+                    meaningless (one alert isn't "a week" or "last 3h") and its
+                    "Full week (retrospective)" label contradicts the "from the live
+                    view" banner — so show a plain Alert-detail chip instead. */}
+                {singlePatientFocus ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-amber-500/40 text-amber-300 bg-amber-500/5">
+                    ⚑ Alert detail — {focusPid}
+                  </span>
+                ) : (
+                  <select value={scenario} onChange={e => { setScenario(e.target.value); setJumpCtx(null); }}
+                    title="Re-frame the queue as a point in the incident story; 'last 3h' switches to the live readings-only risk view"
+                    className="bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-cyan-300">
+                    {Object.entries(SCENARIOS).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+                  </select>
+                )}
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="search patient / device…"
                   className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-300 placeholder:text-slate-600 w-52" />
                 <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Fault filter" title={isWatch ? NA_WATCH : undefined}>
@@ -683,10 +670,9 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <button onClick={() => setFwFilter('all')} title="Clear the firmware filter (set by the Firmware Lifecycle deep-link)"
                     className="px-2 py-0.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10">FW {fwFilter} ×</button>
                 )}
-                {/* Inline at the row's end, right beside sort (it wrapped onto an
-                    orphan second line before — booth catch); the old "N matching"
-                    text is gone too: it just repeated the bell counts. Only the
-                    over-cap note and the watch-view count carry information. */}
+                {/* Inline at the row's end, right beside sort. The old "N matching"
+                    text is gone — it just repeated the bell counts; only the over-cap
+                    note and the watch-view count carry information. */}
                 {(() => { const active = q || faultFilter !== 'all' || modelFilter !== 'all' || fwFilter !== 'all';
                   return (
                     <button onClick={() => { setSearch(''); setFaultFilter('all'); setModelFilter('all'); setFwFilter('all'); setJumpCtx(null); }}
@@ -707,8 +693,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                 <div className="flex items-center gap-3 text-xs font-mono mb-4 border border-amber-500/30 bg-amber-500/5 rounded-lg px-3 py-2">
                   <span className="text-amber-300">⚑</span>
                   <span className="text-slate-300">
-                    Jumped from the <span className="text-amber-300">live last-3h view</span> to{' '}
-                    <span className="text-cyan-300">{jumpCtx.patient}</span>'s device alert — the queue lives in the retrospective views.
+                    Showing <span className="text-cyan-300">{jumpCtx.patient}</span>'s device alert (from the live view) — acknowledge / assign / resolve it below.
                   </span>
                   <button onClick={() => { setScenario('last3h'); setSearch(jumpCtx.search); setModelFilter(jumpCtx.modelFilter); setJumpCtx(null); }}
                     className="ml-auto shrink-0 px-2.5 py-1 rounded-md border border-amber-500/40 text-amber-300 hover:bg-amber-500/10">

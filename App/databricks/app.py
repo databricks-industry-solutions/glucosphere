@@ -526,8 +526,10 @@ def _is_clinical_knowledge(text):
 
 
 def _safe_ident(s):
-    """Allow-list for SQL string literals interpolated into fleet-stats query."""
-    return ''.join(ch for ch in str(s or '') if ch.isalnum() or ch in ' ._-')
+    """Allow-list for SQL string literals interpolated into the fleet-stats query.
+    Device-model / firmware tokens only — alphanumerics, dot, underscore, hyphen
+    (no spaces; matches the stricter guards used by the JS query builders)."""
+    return ''.join(ch for ch in str(s or '') if ch.isalnum() or ch in '._-')
 
 
 def _fleet_stats(model, firmware):
@@ -923,7 +925,7 @@ def _archive_session_to_delta():
         COMMENT 'Triage sessions archived from Lakebase at each demo reset (one row per audit entry)'""")
 
     def esc(v):
-        # SQL-literal hardening (security review 2026-06-12): detail/assigned_to/
+        # SQL-literal hardening: detail/assigned_to/
         # actor are user-supplied free text. Doubling ONLY quotes leaves the
         # backslash escape path open (Spark SQL's default parser treats \ as an
         # escape — a value ending in \ would swallow the closing quote), so
@@ -968,12 +970,21 @@ def reset_alerts():
                                  f'Grant the app SP CREATE TABLE on the schema (scripts/grant_app_sp.py) and retry.'}), 500
     try:
         lakebase.reset_alerts()
-        inserted, cohort = _seed_from_gold()
-        return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort,
-                        'archived': archived, 'reset_id': reset_id, 'archive_table': ARCHIVE_TABLE})
     except Exception as e:
-        print(f"[TRIAGE] reset failed: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"[TRIAGE] reset truncate failed: {e}")
+        return jsonify({'error': f'reset failed before wiping the queue: {e}'}), 500
+    try:
+        inserted, cohort = _seed_from_gold()
+    except Exception as e:
+        # The queue is ALREADY truncated here (archive + truncate both succeeded);
+        # only the reseed failed. Tell the operator exactly that so the generic
+        # 500 doesn't read as "nothing happened" — a second Reset reseeds cleanly.
+        print(f"[TRIAGE] reseed-after-truncate failed: {e}")
+        return jsonify({'error': f'queue wiped + archived (reset_id {reset_id}) but reseed failed: {e} '
+                                 f'— press Reset again to repopulate.', 'reset': True,
+                        'seeded': 0, 'archived': archived, 'reset_id': reset_id}), 500
+    return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort,
+                    'archived': archived, 'reset_id': reset_id, 'archive_table': ARCHIVE_TABLE})
 
 @app.route('/health')
 def health():
@@ -1056,8 +1067,8 @@ def serve_spa(path):
     print(f"[DEBUG] Serving index.html for path: {path}")
     resp = send_from_directory(DIST_DIR, 'index.html')
     # The SPA shell must never be cached: stale index.html pins users to old
-    # content-hashed bundles across deploys (booth kept seeing previous builds
-    # until a hard refresh — 2026-06-12). The hashed assets themselves stay
+    # content-hashed bundles across deploys (without this, a deploy isn't picked
+    # up until a hard refresh). The hashed assets themselves stay
     # long-cacheable; only this entry document is volatile.
     resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return resp

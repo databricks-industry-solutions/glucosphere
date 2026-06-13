@@ -153,7 +153,7 @@ targets:
           name: ${var.app_name}
           # Lakebase binding lives on the App OBJECT (bundle-managed), NOT in
           # app.yaml — app.yaml's `resources:` section is not applied by app
-          # deploys (verified 2026-06-12). The binding auto-creates the App SP's
+          # deploys. The binding auto-creates the App SP's
           # PG role + injects the PG* env vars. Defined ONCE here with a YAML
           # anchor; gsphere_fw_v2 reuses it via *glucosphere_lakebase_binding.
           resources: &glucosphere_lakebase_binding
@@ -365,24 +365,15 @@ targets:
       # project to be bundle-managed — and auto-creates the App SP's PG role +
       # injects the PG* env vars on deploy.
       #
-      # WHY external (was a bundle-managed `postgres_projects` resource until
-      # 2026-06-12): `bundle destroy` deletes the project INCLUDING DATA and
+      # WHY external (was a bundle-managed `postgres_projects` resource):
+      # `bundle destroy` deletes the project INCLUDING DATA and
       # leaves the id soft-delete-tombstoned (~7 days) — a same-id redeploy then
       # fails "project with such id already exists". Recovery required
       # `POST /api/2.0/postgres/projects/<id>/undelete` + `bundle deployment
       # bind` + manual tfstate surgery (the provider never reads back `spec`,
       # so a bound project always re-plans as `recreate`). Keeping the project
       # external removes the whole failure class: destroy leaves data intact,
-      # redeploys just re-bind the App by name. (Superseded resource block:)
-      # postgres_projects:
-      #   glucosphere_oltp:
-      #     project_id: ${var.lakebase_project_id}
-      #     display_name: ${var.lakebase_project_id}
-      #     pg_version: 17
-      #     default_endpoint_settings:   # right-sized for an intermittent demo
-      #       autoscaling_limit_min_cu: 0.5
-      #       autoscaling_limit_max_cu: 1
-      #       suspend_timeout_duration: 600s   # idle 10 min → suspend (scale-to-zero)
+      # redeploys just re-bind the App by name.
 
 resources:
 
@@ -784,7 +775,7 @@ resources:
           environment_key: default
 
   # ---------------------------------------------------------------------------
-  # Lakebase: OLTP alert state cache — SUPERSEDED 2026-06-12 (issue #3)
+  # Lakebase: OLTP alert state cache — SUPERSEDED (issue #3)
   # ---------------------------------------------------------------------------
   # Lakebase is now an EXTERNALLY-CREATED Autoscaling project referenced by name
   # from the `gsphere_fw_v2` target (gated by the `lakebase_project_id` variable;

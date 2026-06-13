@@ -342,8 +342,8 @@ def main() -> int:
 
     # Lakebase (Autoscaling) — OPTIONAL, marker-rendered LAKEBASE_ENDPOINT env.
     # NOTE the binding itself is NOT rendered here: app.yaml's `resources:` section
-    # is not applied by app deploys (verified 2026-06-12 — the prod app object
-    # carries 0 resources), so the `database` postgres binding is declared on the
+    # is not applied by app deploys (the prod app object carries 0 resources),
+    # so the `database` postgres binding is declared on the
     # bundle's App resource in databricks.yml (gsphere_fw_v2 target). That binding
     # auto-creates the App SP's PG role + injects PGHOST/PGUSER/PGDATABASE.
     # This env var is the credential-mint coordinate: the app POSTs

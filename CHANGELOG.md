@@ -173,6 +173,37 @@ to before (wip labels intact).
   registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
   then 600 fresh alerts reseeded.
 
+### Fixed — single-patient alert focus (the all-day "retrospective week" confusion)
+- Jumping to one patient's alert (from the live watchlist ⚑, a device-page "work this
+  alert" deep-link, or a manual `PSEUDO_*` search) no longer shows the meaningless
+  "Full week (retrospective)" window selector — which contradicted the "from the live view"
+  banner. A single-patient focus now shows a plain **⚑ Alert detail — <patient>** chip
+  instead, keyed on the patient in the URL so it HOLDS through navigating out to Coach /
+  Device-Support and back (the earlier `jumpCtx`-only version reset to the week dropdown on
+  the round-trip). The window selector returns when you clear back to the full queue.
+- Bridge stat counts open OR acked as an "active device alert" (no more "0 have an open
+  alert" beside a visible ⚑ acked chip); the watchlist below-cutoff fetch only lists a
+  searched patient as "in the danger bands" when they actually have <54/>250 readings.
+
+### Fixed — PR review pass (code-reviewer · silent-failure-hunter · comment-analyzer)
+- **Device Pattern Alerts ranked by the wrong metric** (honesty): it ordered cohorts by
+  out-of-range *rate*, which reads ~36–40% on EVERY model×firmware — clean controls included
+  — so its "top patterns" were physiology noise (clean Alpha/Gamma-4.0.3 cohorts ranked while
+  the genuinely faulted Delta-4.0.3 ranked last). Now ranked by **device error** (in-incident
+  mean |observed − true|, the heatmap's metric): faulted rollouts surface at ~40 mg/dL, clean
+  firmware ≈ 0. OOR% kept as a labeled secondary column ("can't rank the fault").
+- **`editor_url()` permanent negative cache** — a transient postgres-API blip at startup
+  permanently disabled the Verify-in-Postgres deep link; now caches only a successful resolve.
+- **Reset reseed-after-truncate** now returns a specific "queue wiped + archived — press Reset
+  again" message instead of a generic 500 that read as "nothing happened".
+- **Watchlist load failures surface** to the error banner (a `loadWatchlist` helper) instead
+  of a silent empty "no one at risk"; raw-peek + grants-skip now log; dead `load(filter)` arg
+  and over-permissive `_safe_ident` cleaned up.
+- **Comment hygiene** (public-repo): stripped ~33 date-stamped `(booth catch 2026-06-12)` /
+  incident-narration parentheticals (kept the load-bearing WHY), removed two commented-out
+  dead-code blocks + a commented `postgres_projects:` stub + a leaked patient id from
+  comments, and repointed a gitignored `ref_notes/` link to the committed `lakebase_probe/README.md`.
+
 ### Changed — booth-polish round 2 (same day, later still)
 - **Composable row inputs**: fill assignee and/or addendum, one **Apply** — each filled
   field still writes its own audit row (per-event compliance trail preserved).
@@ -272,6 +303,28 @@ classes; both are now fixed at the source:
   recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the
   old app SP's role makes the control plane reassign its objects to the project owner, who can
   then re-grant or `DROP SCHEMA triage CASCADE` (alerts are reseedable demo state).
+
+### Changed — Diabetes Coach: honest device-distortion banners (clinical honesty)
+- The Coach's single under-read "masked severity" alert is now **three** symmetric
+  device-distortion banners, so the per-patient view honestly names *every* way the
+  calibration fault could mislead a clinician — not just the one direction
+  (`App/src/pages/DiabetesCoachDashboard.jsx`, `…/DiabetesCoachDashboard/queries.js`):
+  - **Masked high** (under-read hid a real hyper — device under-reported danger; a
+    dangerously-high patient looks fine). Threshold raised from true-max > 180 → **> 200**
+    so a marginal 181 no longer trips it and competes with a co-occurring false-low story.
+  - **Masked low** (over-read hid a real hypo — the **deadly missed low**: device shows safe
+    while the patient is genuinely < 70). The Day 2 / FW 4.0 over-read direction.
+  - **False low** (under-read **displayed** a low that wasn't real — true ≥ 70): a false
+    alarm whose treatment (fast carbs / glucose / reduced insulin) would drive an
+    already-fine patient **into hyperglycemia**. The Day 5 / FW 4.0.3 under-read direction.
+  - Each banner gates on sustained evidence (≥ 3 qualifying points) so a single borderline
+    blip doesn't fire it; `incidentQ` extended to return the true/observed troughs + peaks
+    and the per-direction point counts that drive them.
+- **Featured false-low exemplar → `PSEUDO_0000257`** (placeholder + tour step ③,
+  `App/src/tour/steps.js`): a Day-5 under-read patient whose device displayed ~40 mg/dL while
+  true glucose was ~87 (in range) across ~100 readings, with only ~5% genuine hypo elsewhere —
+  so the fabricated low stands out as the device's fault rather than competing with the
+  patient's own lows (an earlier candidate ran ~17% true hypo, muddying the story).
 
 ## [2026-06-11]
 

@@ -27,8 +27,8 @@ function App() {
         <Route path="/metrics-explained" element={<MetricsExplained />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/full-loop" element={<RoadmapPage />} />
-        {/* Legacy alias: the page lived at /roadmap until the 2026-06-12 "The Full
-            Loop" rename — keep old bookmarks/shared links working via redirect. */}
+        {/* Legacy alias: the page lived at /roadmap before the "The Full Loop"
+            rename — keep old bookmarks/shared links working via redirect. */}
         <Route path="/roadmap" element={<Navigate to="/full-loop" replace />} />
         <Route path="/firmware-lifecycle" element={<FirmwareLifecyclePage />} />
         <Route path="/population-risk" element={<PopulationRiskPage />} />

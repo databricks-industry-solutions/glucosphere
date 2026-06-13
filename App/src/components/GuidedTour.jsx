@@ -117,7 +117,7 @@ export default function GuidedTour() {
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
     // Assistant steps: the slide-over panel owns the RIGHT side — dock the card
     // hard LEFT so the panel (the thing being toured) stays fully visible
-    // (booth catch 2026-06-12: the generic placement covered the panel).
+    // (the generic placement covered the panel).
     if (step?.openAssistant) {
       setCardStyle({ position: 'fixed', top: Math.max(M, Math.min(rect.top, vh - card.height - M)), left: M, pointerEvents: 'auto' });
       return;
@@ -214,8 +214,8 @@ export default function GuidedTour() {
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
       {/* Backdrop deliberately does NOT close the tour: a stray click outside the card used
-          to silently end it mid-walkthrough with no way back to the current step (booth
-          feedback 2026-06-12). Skip (and Done) are the explicit exits. */}
+          to silently end it mid-walkthrough with no way back to the current step.
+          Skip (and Done) are the explicit exits. */}
       <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} />
       {rect && (
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
