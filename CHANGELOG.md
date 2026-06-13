@@ -31,6 +31,24 @@ grouped by date rather than semver tags.
   into the **top-right** corner instead of top-left, so the page title (top-left, by the nav
   rail) stays visible.
 
+### Changed — Metrics Explained: dynamic dates, simplification, honesty pass
+- **Backdated window is now data-discovered** — `/api/config` gains a cached `data_window`
+  (`DATE(MIN(time))…DATE(MAX(time))` on the gold readings; `_get_data_window` in
+  `App/databricks/app.py`), so the "Why use MAX(time)?" note shows the **actual** span (e.g.
+  `2026-06-05 → 2026-06-11`) instead of a hardcoded `Jan 5-11, 2026` that drifts every regen /
+  target. Two stale `(2026-05-18)` design-stamps removed from the MAE-timeline + calibration-bias
+  prose (the relative "Day 2 / Day 5" labels — consistent across triage/tour — stay).
+- **Prose walls broken into scannable structure** (no detail lost): the MAE-Timeline and
+  Calibration-Bias "What it shows" paragraphs become a lead sentence + bullet list (fleet-wide vs
+  affected MAE; +40/−40 per-cohort windows), matching the page's existing pattern.
+- **Distribution 4-panel chart right-sized** — capped at `max-w-4xl` + centered (was full-width).
+- **Honest forward-looking language** (no overpromising): "(not a real-time stream)" → "batch
+  pipeline today (not real-time) — **ideally run as a data stream** for sub-minute updates";
+  the stale "alert & triage queue **is on the roadmap**" → "on Lakebase-enabled deploys these
+  **feed the live Alert Triage queue**" (it's built); Coach near-real-time/60-min "on the
+  roadmap" → "**natural next steps**". MARD caption tightened to "the **basis of** the industry
+  MARD accuracy metric" (`AboutPage.jsx`) — MARD is the metric derived from the reference checks.
+
 ---
 
 ## [2026-06-12]
