@@ -122,23 +122,20 @@ to before (wip labels intact).
   physiological risk from device-fault fallout at a glance; a per-row **Queue column**
   identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
   "—" = looks physiological).
-- **The Triage page remembers where you were** (booth catch): the booth loop detours
-  through Coach / Device-Support and returns — and every return landed on the cold
-  retrospective-week defaults. The whole view state (scenario, status tab, fault/model/fw
-  filters, search, sort) now persists per tab (sessionStorage); explicit deep-link params
-  still win, a queue-targeting deep-link overrides a remembered live view, and a fresh tab
-  gets fresh defaults. The scenario presets now apply on *change* only (the mount run used
-  to clobber the restored fault filter). The jump breadcrumb persists the same way.
+- **Triage navigation model (final — after a per-tab-persistence detour the same day)**:
+  context travels via URL params, never hidden state. Bare `/triage` = fresh defaults (week
+  queue, Open tab). Patient-NOW links (`?q=`, e.g. from Coach) land on the **live last-3h
+  view** searched to the patient. **Alert-intent links** (`?q=…&alert=1` — device-focus
+  "work this device's alert", OOR-row ⚑ chips, the live view's ⚑) land on the **queue with
+  the row auto-expanded** (trail + assign/resolve one click from the source — it took
+  three). Cohort sends (`?model=`/`?fw=`) land on the queue for bulk actions. Scenario
+  presets apply on change only.
 - **Watchlist→queue jump breadcrumb** (booth catch): clicking "⚑ open alert" in the live
   view flips the scenario to the retrospective queue (the queue only exists there), but
   the flip was silent and read as "my filters got reset". The jump now leaves an amber
   banner — "Jumped from the live last-3h view to <patient>'s device alert…" — with a
   one-click **⏱ Back to live view** that restores the scenario + its filters; manual
   scenario changes dismiss it.
-- **Deep-link filter coherence** (booth catch): a patient `?q=` deep-link into Triage now
-  snaps the fault/model pills to the matched alert's attributes (one-time, only when the
-  pills are untouched and the match is unambiguous) — the filter row reads coherently with
-  the row it shows instead of "all faults · all models" over a single under-read Delta.
 - **Triage "🛢 Verify in Postgres" button** (booth verification): a toolbar button beside
   Reset/Refresh opens a 2-step dropdown — "1 · Copy the query" (alerts ⋈ audit-trail,
   newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
@@ -176,12 +173,28 @@ to before (wip labels intact).
   registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
   then 600 fresh alerts reseeded.
 
+### Changed — booth-polish round 2 (same day, later still)
+- **Composable row inputs**: fill assignee and/or addendum, one **Apply** — each filled
+  field still writes its own audit row (per-event compliance trail preserved).
+- **Live-view Queue cell**: inline **Ack** (no view switch); ⚑ shows the alert's status
+  (open/acked) and lands on the expanded queue row.
+- **Header semantics finalized**: bell counts = whole queue, always ("queue: N open · …");
+  the watch view appends "N of the M patients below has/have an open device alert (⚑)"
+  (referents explicit, number agreement); "N matching" + **✕ clear filters** live inline
+  with the filters; status tabs are always clickable (from the live view they switch to the
+  queue on that status); Reset works from any view.
+- **Reset notice** offers a copyable `reset_id`-scoped Delta query alongside the UC link;
+  the archive table is **drop-safe** (recreated on the next reset, `UNDROP` within
+  retention). Watchlist: a searched patient below the top-100 cutoff gets a direct-fetch
+  row instead of an empty "stuck" view.
+- **SPA shell `Cache-Control: no-cache`** — stale `index.html` kept pinning booth browsers
+  to previous bundles across deploys (hashed assets stay cacheable). Plus a TDZ crash
+  hotfix from this same polish run (declaration-order bug — caught live, fixed within
+  minutes).
+
 ### Changed — booth-polish round-up (same day, late)
 - **Reset demo resets the view too**: clears the patient search + jump breadcrumb and strips
   URL deep-link params (sticky filters made a completed reset look like a hang).
-- **Smart landing**: a patient deep-link matching zero alerts (clean-control device —
-  physiological readings) lands on the live last-3h view with the search kept, instead of an
-  empty queue.
 - **One band, one color**: Device-Support reading details derive a single band (critical /
   warn / ok) driving the value, Range-Status text, AND the action banner — which gains an
   honest amber "Monitor" middle tier (rose reserved for <54/>250).
