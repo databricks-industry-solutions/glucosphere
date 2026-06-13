@@ -468,16 +468,17 @@ ORDER BY u.at DESC LIMIT 20;`;
     .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
     .map(a => a.patient_id));
   const watchAlertOverlap = alertPatients.size;
-  // refined = every filter EXCEPT the status tab → the header counts break this
-  // set down by status, so they update live as filters narrow the queue.
+  // refined = every filter EXCEPT the status tab; `filtered` adds the tab.
+  // (Header counts are GLOBAL server totals — see the consolidation note above.)
   const refined = (data.alerts || []).filter(a =>
     (faultFilter === 'all' || a.alert_type === faultFilter) &&
     (modelFilter === 'all' || a.device_model === modelFilter) &&
     (fwFilter === 'all' || a.firmware === fwFilter) &&
     (!q || `${a.patient_id} ${a.device_id}`.toLowerCase().includes(q)));
-  const counts = { open: 0, acked: 0, resolved: 0 };
-  refined.forEach(a => { counts[a.status] = (counts[a.status] || 0) + 1; });
-  const total = refined.length;
+  // STABLE SEMANTICS (consolidated 2026-06-12 after three drifting meanings
+  // confused the booth): the bell counts are the WHOLE queue's per-status
+  // totals, always — filter-scoped numbers render beside the filters instead.
+  const counts = data.counts || {};
   const filtered = filter === 'all' ? refined : refined.filter(a => a.status === filter);
   // Sort: severity = the server's triage order (open first, HIGH first). The other two
   // interleave the cohorts (an "all faults" view is otherwise a wall of HIGH/under-read).
@@ -561,16 +562,23 @@ ORDER BY u.at DESC LIMIT 20;`;
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <BellRing className="w-4 h-4 text-cyan-400" />
                   {isWatch ? (
-                    // Queue counts are an ALERTS concept — readings rows have no status, so
-                    // per-status counts would contradict the table (booth catch 2026-06-12).
-                    // Show the BRIDGE stat instead: danger-band patients ∩ open device alerts —
-                    // physiological risk vs device-fault fallout at a glance.
-                    <span className="text-slate-400"
-                      title="Overlap between the danger-band patients below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
-                      <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchRows.length} patients also have open device alerts in the queue
-                    </span>
+                    // Whole-queue totals stay visible here too (booth: "the LHS numbers
+                    // were useful"), plus the bridge stat: danger-band patients ∩ open
+                    // device alerts — physiology vs device-fault fallout at a glance.
+                    <>
+                      <span className="text-rose-300" title="Whole queue — regardless of filters">{counts.open || 0} open</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-amber-300">{counts.acked || 0} acked</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
+                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-400"
+                        title="Overlap between the danger-band patients below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
+                        <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchRows.length} patients also have open device alerts in the queue
+                      </span>
+                    </>
                   ) : (<>
-                  <span className="text-rose-300">{counts.open || 0} open</span>
+                  <span className="text-rose-300" title="Whole queue — regardless of filters">{counts.open || 0} open</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-amber-300">{counts.acked || 0} acked</span>
                   <span className="text-slate-600">·</span>
@@ -613,10 +621,10 @@ ORDER BY u.at DESC LIMIT 20;`;
                   <button onClick={() => load(filter)} disabled={busy || loading}
                     title="Re-queries Postgres and redraws the queue — changes nothing in the database (use it to pick up actions made elsewhere, e.g. another visitor's tab)."
                     className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-40">↻ Refresh</button>
-                  <div className={`inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono ${isWatch ? 'opacity-40' : ''}`} role="group" aria-label="Status filter" title={isWatch ? NA_WATCH : undefined}>
+                  <div className="inline-flex rounded-md border border-slate-700 overflow-hidden text-[11px] font-mono" role="group" aria-label="Status filter">
                     {FILTERS.map(f => (
-                      <button key={f} onClick={() => setFilter(f)} disabled={isWatch}
-                        title={f === 'all' ? 'All statuses — the search/fault/model filters below still apply' : undefined}
+                      <button key={f} onClick={() => { if (isWatch) setScenario('week'); setFilter(f); }}
+                        title={isWatch ? 'Switches to the retrospective queue on this status' : f === 'all' ? 'All statuses — the search/fault/model filters below still apply' : undefined}
                         className={`px-2.5 py-1 transition-colors capitalize ${f !== FILTERS[0] ? 'border-l border-slate-700' : ''} ${filter === f ? 'bg-slate-700 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}>{f === 'all' ? 'All statuses' : f}</button>
                     ))}
                   </div>
@@ -669,13 +677,11 @@ ORDER BY u.at DESC LIMIT 20;`;
                       ✕ clear filters
                     </button>
                   ); })()}
-                {(scenario === 'last3h' || filtered.length > VISIBLE_CAP) && (
-                  <span className="text-slate-500">
-                    {scenario === 'last3h'
-                      ? `${watchRows.length} patient${watchRows.length === 1 ? '' : 's'} in the danger bands${extraWatchRow ? ' (1 fetched below the top-100 cutoff)' : ''}`
-                      : `showing first ${VISIBLE_CAP} of ${filtered.length} — refine to narrow`}
-                  </span>
-                )}
+                <span className="text-slate-500" title="Scoped to the active filters (the bell counts above are the whole queue)">
+                  {scenario === 'last3h'
+                    ? `${watchRows.length} patient${watchRows.length === 1 ? '' : 's'} in the danger bands${extraWatchRow ? ' (1 fetched below the top-100 cutoff)' : ''}`
+                    : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP}` : ''}`}
+                </span>
               </div>
 
               {jumpCtx && scenario === 'week' && (
