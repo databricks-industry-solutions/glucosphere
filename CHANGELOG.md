@@ -320,11 +320,17 @@ classes; both are now fixed at the source:
   - Each banner gates on sustained evidence (≥ 3 qualifying points) so a single borderline
     blip doesn't fire it; `incidentQ` extended to return the true/observed troughs + peaks
     and the per-direction point counts that drive them.
-- **Featured false-low exemplar → `PSEUDO_0000257`** (placeholder + tour step ③,
-  `App/src/tour/steps.js`): a Day-5 under-read patient whose device displayed ~40 mg/dL while
-  true glucose was ~87 (in range) across ~100 readings, with only ~5% genuine hypo elsewhere —
-  so the fabricated low stands out as the device's fault rather than competing with the
-  patient's own lows (an earlier candidate ran ~17% true hypo, muddying the story).
+- **Featured false-low exemplar is data-discovered, not hardcoded** — `/api/config` exposes
+  an `exemplars.false_low` patient picked straight from the incident data (`_get_tour_exemplars`
+  in `App/databricks/app.py`, cached): the under-read patient whose device displayed the most
+  *sustained* dramatic low (< 55 mg/dL) while true glucose stayed clearly in range (≥ 85) and
+  wasn't *also* masking a real high — tie-broken toward the fewest genuine lows elsewhere, so
+  the fabricated low stands out rather than competing with a frequently-low patient's real lows.
+  The Coach search placeholder and tour step ③ (`{{falseLow*}}` tokens filled in
+  `GuidedTour.jsx`) read it via the `useFalseLowExemplar` hook, so the example is correct on
+  **any dataset** (prod / sandbox / DAIS) — the curation logic lives in the ranking, not a
+  frozen id, and no per-target verification is needed. A concrete fallback keeps the copy intact
+  if the query can't run.
 
 ## [2026-06-11]
 
