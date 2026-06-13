@@ -738,6 +738,43 @@ def _get_tour_exemplars():
     c['fetched_at'] = now
     return fallback
 
+
+_data_window_cache = {'value': None, 'fetched_at': 0, 'ttl': 300}  # 5-min TTL
+
+def _get_data_window():
+    """Date span of the gold readings, so the Metrics-Explained page can state the
+    actual backdated window. The data is generated relative to deploy time (the
+    incident sits a few days before "now"), so a hardcoded date is wrong on every
+    redeploy / target. Statement Execution + TTL cache + graceful fallback
+    (None → the frontend omits the explicit range)."""
+    now = _time.time()
+    c = _data_window_cache
+    if c['value'] and now < c['fetched_at'] + c['ttl']:
+        return c['value']
+    DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not DATABRICKS_TOKEN or not warehouse_id:
+        return None
+    try:
+        resp = requests.post(
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'},
+            json={'warehouse_id': warehouse_id,
+                  'statement': f"SELECT DATE(MIN(time)), DATE(MAX(time)) FROM {CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings",
+                  'wait_timeout': '30s'},
+            timeout=35,
+        )
+        if resp.ok:
+            data = resp.json().get('result', {}).get('data_array', [])
+            if data and len(data[0]) >= 2 and data[0][0] and data[0][1]:
+                value = {'start': data[0][0], 'end': data[0][1]}
+                c['value'] = value
+                c['fetched_at'] = now
+                return value
+    except Exception as _e:
+        print(f"[DATA_WINDOW] query failed: {_e}")
+    return None
+
 @app.route('/api/config')
 def get_config():
     """Expose non-secret config to the frontend. Includes baseline_source provenance
@@ -745,6 +782,7 @@ def get_config():
     accurately reflects what was last ingested by the pipeline."""
     provenance = _get_baseline_provenance()
     exemplars = _get_tour_exemplars()
+    data_window = _get_data_window()
     # workspace_host lets the React UI build runtime links into the deploying
     # workspace (e.g. the Jobs UI from MetricsExplained) without hardcoding a
     # specific tenant in JSX or the committed static bundle. The Databricks
@@ -791,6 +829,10 @@ def get_config():
         # _get_tour_exemplars) so the per-patient tour step + search placeholder
         # are correct on any dataset, not a hardcoded id.
         'exemplars': exemplars,
+        # Actual date span of the gold readings (see _get_data_window) so the
+        # Metrics-Explained page states the real backdated window — the data is
+        # generated relative to deploy time, so a hardcoded date drifts.
+        'data_window': data_window,
         'workspace_host': raw_host,
         'setup_job_url': setup_job_url,
         'pipeline_url': pipeline_url,

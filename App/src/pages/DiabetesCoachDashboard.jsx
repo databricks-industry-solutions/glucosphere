@@ -724,7 +724,7 @@ export default function DiabetesCoachDashboard() {
                   <p className="text-[11px] text-slate-600 leading-relaxed">
                     Predicted CGM value vs the forecast baseline — the reading the model scored from in the
                     latest <span className="text-slate-500">batch</span> run (one row per patient, not a live tick).
-                    Near-real-time scoring and a 60-min horizon are on the roadmap.
+                    Near-real-time scoring and a 60-min horizon are natural next steps.
                   </p>
                 </div>
               ) : (

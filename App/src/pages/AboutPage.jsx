@@ -281,7 +281,7 @@ export default function AboutPage() {
             measurement — so the same calibration drift is caught from the <em>observed</em> readings alone: by watching a
             firmware/model cohort's glucose <span className="text-slate-200">distribution shift</span> away from a matched
             baseline (other firmware, its own pre-rollout window, or the fleet), corroborated by occasional fingerstick/lab
-            reference checks (the industry <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7189145/" target="_blank" rel="noopener noreferrer" className="font-mono text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">MARD</a> accuracy metric) and per-lot
+            reference checks (the basis of the industry <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7189145/" target="_blank" rel="noopener noreferrer" className="font-mono text-cyan-400 hover:text-cyan-300 underline decoration-dotted underline-offset-2">MARD</a> accuracy metric) and per-lot
             sensor-quality telemetry. The operator views are unchanged — same Firmware × Day heatmap and its
             In-incident ⇄ Fleet-wide toggle — only the cell metric swaps from <em>error-vs-truth</em> to
             <em> distribution divergence from a matched baseline</em>. On this same Lakehouse that would run as streaming
