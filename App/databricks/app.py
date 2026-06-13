@@ -2,6 +2,8 @@ from flask import Flask, send_from_directory, request, jsonify
 import os
 import requests
 
+import lakebase
+
 app = Flask(__name__)
 
 # Static config (safe to read at startup).
@@ -77,6 +79,10 @@ def get_auth():
         else:
             print(f"[AUTH] No credentials available")
     return host, token
+
+# Lakebase reuses get_auth's cached M2M token to mint PG credentials (no second
+# OAuth implementation). No-op on targets without the Lakebase binding.
+lakebase.init(get_auth)
 
 @app.route('/api/sql/query', methods=['POST'])
 def execute_sql():
@@ -520,8 +526,10 @@ def _is_clinical_knowledge(text):
 
 
 def _safe_ident(s):
-    """Allow-list for SQL string literals interpolated into fleet-stats query."""
-    return ''.join(ch for ch in str(s or '') if ch.isalnum() or ch in ' ._-')
+    """Allow-list for SQL string literals interpolated into the fleet-stats query.
+    Device-model / firmware tokens only — alphanumerics, dot, underscore, hyphen
+    (no spaces; matches the stricter guards used by the JS query builders)."""
+    return ''.join(ch for ch in str(s or '') if ch.isalnum() or ch in '._-')
 
 
 def _fleet_stats(model, firmware):
@@ -664,12 +672,117 @@ def _get_baseline_provenance():
     _baseline_provenance_cache['fetched_at'] = now
     return fallback
 
+
+_tour_exemplars_cache = {'value': None, 'fetched_at': 0, 'ttl': 300}  # 5-min TTL — exemplars are data-stable
+
+def _get_tour_exemplars():
+    """Pick the per-patient tour's *false-low* exemplar straight from the incident
+    data, so the Coach search placeholder + tour step are correct on ANY dataset
+    (prod / sandbox / DAIS) — not a hardcoded patient id that only holds while the
+    data-gen seed is unchanged.
+
+    The "good teaching exemplar" judgment is encoded as the ranking, not a person:
+    an under-read (negative) device that DISPLAYED a sustained, dramatic low
+    (< 55 mg/dL) while true glucose stayed clearly in range (>= 85) and was NOT
+    also masking a real high (true_max < 195, so it fires the false-low banner
+    ONLY). Prefer the most sustained false alarm; break ties toward the patient
+    with the fewest *genuine* lows elsewhere (rlo) so the fabricated low stands
+    out rather than a frequently-low patient's real lows. Mirrors
+    _get_baseline_provenance: Statement Execution + TTL cache + graceful fallback
+    (a sane default keeps the tour copy concrete if the query can't run)."""
+    now = _time.time()
+    c = _tour_exemplars_cache
+    if c['value'] and now < c['fetched_at'] + c['ttl']:
+        return c['value']
+    fallback = {'false_low': {'patient_id': 'PSEUDO_0000257', 'displayed': 40, 'true_val': 87}}
+    DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not DATABRICKS_TOKEN or not warehouse_id:
+        return fallback
+    inc = f"{CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled"
+    sql = (
+        "WITH inc AS (SELECT patient_id, MAX(glucose_true) tmax, MIN(glucose_observed) omin, "
+        "MIN_BY(glucose_true, glucose_observed) t_at_omin, "
+        "COUNT(CASE WHEN glucose_observed<70 AND glucose_true>=70 THEN 1 END) flp "
+        f"FROM {inc} WHERE incident_direction='negative' "
+        "AND time>=incident_start_time AND time<incident_end_time GROUP BY patient_id), "
+        "noise AS (SELECT patient_id, COUNT(CASE WHEN glucose_true<70 "
+        "AND (time<incident_start_time OR time>=incident_end_time) THEN 1 END) rlo "
+        f"FROM {inc} WHERE incident_direction='negative' GROUP BY patient_id) "
+        "SELECT i.patient_id, CAST(ROUND(i.omin,0) AS INT), CAST(ROUND(i.t_at_omin,0) AS INT) "
+        "FROM inc i JOIN noise n USING(patient_id) "
+        "WHERE i.omin<55 AND i.t_at_omin>=85 AND i.tmax<195 AND i.flp>=30 AND n.rlo<=150 "
+        "ORDER BY i.flp DESC, n.rlo ASC, i.t_at_omin DESC, i.patient_id ASC LIMIT 1"
+    )
+    try:
+        resp = requests.post(
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'},
+            json={'warehouse_id': warehouse_id, 'statement': sql, 'wait_timeout': '30s'},
+            timeout=35,
+        )
+        if resp.ok:
+            data = resp.json().get('result', {}).get('data_array', [])
+            if data and len(data[0]) >= 3 and data[0][0]:
+                value = {'false_low': {
+                    'patient_id': data[0][0],
+                    'displayed': int(float(data[0][1])),
+                    'true_val': int(float(data[0][2])),
+                }}
+                c['value'] = value
+                c['fetched_at'] = now
+                return value
+    except Exception as _e:
+        print(f"[EXEMPLARS] query failed, using fallback: {_e}")
+    c['value'] = fallback
+    c['fetched_at'] = now
+    return fallback
+
+
+_data_window_cache = {'value': None, 'fetched_at': 0, 'ttl': 300}  # 5-min TTL
+
+def _get_data_window():
+    """Date span of the gold readings, so the Metrics-Explained page can state the
+    actual backdated window. The data is generated relative to deploy time (the
+    incident sits a few days before "now"), so a hardcoded date is wrong on every
+    redeploy / target. Statement Execution + TTL cache + graceful fallback
+    (None → the frontend omits the explicit range)."""
+    now = _time.time()
+    c = _data_window_cache
+    if c['value'] and now < c['fetched_at'] + c['ttl']:
+        return c['value']
+    DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not DATABRICKS_TOKEN or not warehouse_id:
+        return None
+    try:
+        resp = requests.post(
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'},
+            json={'warehouse_id': warehouse_id,
+                  'statement': f"SELECT DATE(MIN(time)), DATE(MAX(time)) FROM {CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings",
+                  'wait_timeout': '30s'},
+            timeout=35,
+        )
+        if resp.ok:
+            data = resp.json().get('result', {}).get('data_array', [])
+            if data and len(data[0]) >= 2 and data[0][0] and data[0][1]:
+                value = {'start': data[0][0], 'end': data[0][1]}
+                c['value'] = value
+                c['fetched_at'] = now
+                return value
+    except Exception as _e:
+        print(f"[DATA_WINDOW] query failed: {_e}")
+    return None
+
 @app.route('/api/config')
 def get_config():
     """Expose non-secret config to the frontend. Includes baseline_source provenance
     queried from the data layer (not env), so prose on the Metrics Explained page
     accurately reflects what was last ingested by the pipeline."""
     provenance = _get_baseline_provenance()
+    exemplars = _get_tour_exemplars()
+    data_window = _get_data_window()
     # workspace_host lets the React UI build runtime links into the deploying
     # workspace (e.g. the Jobs UI from MetricsExplained) without hardcoding a
     # specific tenant in JSX or the committed static bundle. The Databricks
@@ -712,13 +825,279 @@ def get_config():
         'genie_space_id': GENIE_SPACE_ID,
         'baseline_source': provenance['baseline_source'],
         'baseline_source_detail': provenance['source_detail'],
+        # Tour/Coach demo exemplar(s) discovered from the incident data (see
+        # _get_tour_exemplars) so the per-patient tour step + search placeholder
+        # are correct on any dataset, not a hardcoded id.
+        'exemplars': exemplars,
+        # Actual date span of the gold readings (see _get_data_window) so the
+        # Metrics-Explained page states the real backdated window — the data is
+        # generated relative to deploy time, so a hardcoded date drifts.
+        'data_window': data_window,
         'workspace_host': raw_host,
         'setup_job_url': setup_job_url,
         'pipeline_url': pipeline_url,
         'mas_endpoint_url': mas_endpoint_url,
         'ka_endpoint_url': ka_endpoint_url,
         'forecast_endpoint_url': forecast_endpoint_url,
+        # Feature flag for the Alert Triage page (Lakebase OLTP). True only when
+        # the deploy target rendered the Lakebase binding (render_app_yaml.py);
+        # false → React hides /triage + keeps the "wip" labels, so non-Lakebase
+        # targets look exactly as before.
+        'lakebase_configured': lakebase.is_configured(),
+        # Deep link straight into the workspace's Lakebase SQL editor for this
+        # project/branch ('' when not Lakebase-configured or not resolvable) —
+        # used by the Triage "Verify in Postgres" dropdown + the About tile.
+        'lakebase_editor_url': lakebase.editor_url() if lakebase.is_configured() else '',
     })
+
+
+# ── Alert Triage (Lakebase OLTP) — flag-gated; see lakebase.py ────────────────
+def _lakebase_guard():
+    """503 for every triage route on targets without the Lakebase binding."""
+    if not lakebase.is_configured():
+        return jsonify({'error': 'lakebase not configured for this deploy target'}), 503
+    return None
+
+
+def _actor() -> str:
+    """Audit actor: the signed-in user when the Apps proxy forwards it, else 'operator'."""
+    return request.headers.get('X-Forwarded-Email') or request.headers.get('X-Forwarded-Preferred-Username') or 'operator'
+
+
+@app.route('/api/alerts/raw')
+def raw_alert_rows():
+    """The alerts ⋈ audit join, newest first — the in-app "Verify in Postgres"
+    peek panel (shows the exact SQL + its live result without leaving the page)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        return jsonify(lakebase.raw_audit(limit=int(request.args.get('limit', 12))))
+    except Exception as e:
+        print(f"[TRIAGE] raw_audit failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts')
+def list_alerts():
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        status = request.args.get('status', 'all')
+        return jsonify(lakebase.list_alerts(status=status))
+    except Exception as e:
+        print(f"[TRIAGE] list_alerts failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<int:alert_id>/<action>', methods=['POST'])
+def alert_action(alert_id, action):
+    """Ack / assign / resolve / note / followup one alert; every action appends an
+    audit row. Body fields: assign={"assignee"}, note={"note"} (audit-only),
+    resolve={"resolution"} (the outcome), followup={"followup"} (e.g. fingerstick
+    verification requested — engagement, not closure: status → acked)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    if action not in ('ack', 'assign', 'resolve', 'note', 'followup'):
+        return jsonify({'error': f'unknown action {action!r}'}), 400
+    try:
+        body = request.get_json(silent=True) or {}
+        # resolve carries an optional {"resolution": "..."} — the outcome (rollback /
+        # device swap / not-a-device-issue / EMS escalation) lands in the audit trail.
+        detail = (body.get('assignee') if action == 'assign'
+                  else body.get('note') if action == 'note'
+                  else body.get('resolution') if action == 'resolve'
+                  else body.get('followup') if action == 'followup' else None)
+        if action == 'note' and not (detail or '').strip():
+            return jsonify({'error': 'note requires non-empty {"note": "..."}'}), 400
+        alert = lakebase.act_on_alert(alert_id, action, actor=_actor(), detail=detail)
+        if alert is None:
+            return jsonify({'error': f'alert {alert_id} not found'}), 404
+        return jsonify(alert)
+    except Exception as e:
+        print(f"[TRIAGE] {action} on alert {alert_id} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _seed_from_gold():
+    """Shared by /api/alerts/seed and /api/alerts/reset: query the affected
+    cohort from gold via the Statement Execution API, bulk-insert as open
+    alerts. Idempotent (UNIQUE key). Severity mirrors the demo narrative:
+    under-read masks real highs (HIGH), over-read causes false alarms (MEDIUM).
+    Returns (inserted, cohort_rows); raises RuntimeError on warehouse failure."""
+    host, token = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not (token and warehouse_id):
+        raise RuntimeError('warehouse auth not available')
+    seed_sql = f"""
+            SELECT p.patient_id,
+                   MAX(g.device_id)                                   AS device_id,
+                   MAX(CAST(g.device_model AS STRING))                AS device_model,
+                   MAX(CASE WHEN p.time >= p.incident_start_time AND p.time < p.incident_end_time
+                            THEN CAST(g.firmware_version AS STRING) END) AS firmware,
+                   CASE WHEN p.incident_direction = 'positive' THEN 'over-read' ELSE 'under-read' END AS alert_type,
+                   CASE WHEN p.incident_direction = 'negative' THEN 'HIGH' ELSE 'MEDIUM' END AS severity
+            FROM {CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled p
+            JOIN {CATALOG_NAME}.{SCHEMA_NAME}.gold_patient_device_readings g
+              ON p.patient_id = g.patient_id AND p.time = g.time
+            WHERE p.incident_direction IN ('positive', 'negative')
+            GROUP BY p.patient_id, p.incident_direction
+        """
+    resp = requests.post(
+        f"{host}/api/2.0/sql/statements",
+        headers={'Authorization': f'Bearer {token}'},
+        json={'statement': seed_sql, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    state = body.get('status', {}).get('state')
+    if state != 'SUCCEEDED':
+        raise RuntimeError(f'seed query state={state}')
+    rows = body.get('result', {}).get('data_array', []) or []
+    inserted = lakebase.seed_alerts(rows, actor=_actor())
+    return inserted, len(rows)
+
+
+@app.route('/api/alerts/bulk', methods=['POST'])
+def bulk_alerts():
+    """Bulk ack/resolve: {"ids": [...], "action": "ack"|"resolve",
+    "resolution": "..."} — the fleet move (e.g. one firmware rollback resolves
+    the whole filtered cohort). One audit row per alert."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    body = request.get_json(silent=True) or {}
+    ids = body.get('ids') or []
+    action = body.get('action', '')
+    if action not in ('ack', 'resolve') or not isinstance(ids, list) or not ids:
+        return jsonify({'error': 'expects {"ids": [..], "action": "ack"|"resolve"}'}), 400
+    try:
+        n = lakebase.bulk_act([int(i) for i in ids], action, actor=_actor(),
+                              detail=body.get('resolution'))
+        return jsonify({'action': action, 'requested': len(ids), 'transitioned': n})
+    except Exception as e:
+        print(f"[TRIAGE] bulk {action} failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/seed', methods=['POST'])
+def seed_alerts():
+    """Seed the queue from the gold layer's affected cohort (idempotent)."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        inserted, cohort = _seed_from_gold()
+        return jsonify({'seeded': inserted, 'cohort_rows': cohort})
+    except Exception as e:
+        print(f"[TRIAGE] seed failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+ARCHIVE_TABLE = f"{CATALOG_NAME}.{SCHEMA_NAME}.triage_session_archive"
+
+
+def _archive_session_to_delta():
+    """Snapshot the FULL triage state (alerts ⋈ audit) to a Delta table before a
+    reset truncates it — every booth session's work stays queryable in UC.
+    Returns (archived_rows, reset_id). Raises on failure — the caller ABORTS the
+    reset then (preservation is the point; losing the session silently isn't ok).
+    The app SP needs CREATE TABLE on the schema (grant_app_sp.py / 09 grant
+    task); the SP then owns the table, so inserts need no further grants."""
+    rows = lakebase.dump_all()
+    if not rows:
+        return 0, None
+    import uuid as _uuid
+    reset_id = str(_uuid.uuid4())[:8]
+    host, token = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not (token and warehouse_id):
+        raise RuntimeError('warehouse auth not available for archiving')
+
+    def run_sql(stmt):
+        r = requests.post(
+            f"{host}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {token}'},
+            json={'statement': stmt, 'warehouse_id': warehouse_id, 'wait_timeout': '50s'},
+            timeout=120,
+        )
+        r.raise_for_status()
+        st = r.json().get('status', {})
+        if st.get('state') != 'SUCCEEDED':
+            raise RuntimeError(f"archive SQL failed: {st.get('error', {}).get('message', st.get('state'))}")
+
+    run_sql(f"""
+        CREATE TABLE IF NOT EXISTS {ARCHIVE_TABLE} (
+          reset_id STRING, archived_at TIMESTAMP,
+          patient_id STRING, device_id STRING, device_model STRING, firmware STRING,
+          alert_type STRING, severity STRING, status STRING, assigned_to STRING,
+          action STRING, actor STRING, detail STRING, action_at TIMESTAMP)
+        COMMENT 'Triage sessions archived from Lakebase at each demo reset (one row per audit entry)'""")
+
+    def esc(v):
+        # SQL-literal hardening: detail/assigned_to/
+        # actor are user-supplied free text. Doubling ONLY quotes leaves the
+        # backslash escape path open (Spark SQL's default parser treats \ as an
+        # escape — a value ending in \ would swallow the closing quote), so
+        # backslashes are doubled FIRST, then quotes; NULs stripped. Per-row
+        # parameter binding would be the textbook fix, but at 14 columns x 400
+        # rows per chunk it exceeds the Statement Execution API's per-request
+        # parameter budget — batched VALUES with full literal escaping is the
+        # workable middle. reset_id is uuid-derived; the table name comes from
+        # operator-controlled env, not user input.
+        if v is None:
+            return 'NULL'
+        t = str(v).replace('\x00', '').replace('\\', '\\\\').replace("'", "''")
+        return "'" + t + "'"
+    CHUNK = 400
+    for i in range(0, len(rows), CHUNK):
+        values = ",".join(
+            f"('{reset_id}', current_timestamp(), {esc(r[0])}, {esc(r[1])}, {esc(r[2])}, {esc(r[3])}, "
+            f"{esc(r[4])}, {esc(r[5])}, {esc(r[6])}, {esc(r[7])}, {esc(r[8])}, {esc(r[9])}, {esc(r[10])}, "
+            f"CAST({esc(str(r[11]))} AS TIMESTAMP))"
+            for r in rows[i:i + CHUNK])
+        run_sql(f"INSERT INTO {ARCHIVE_TABLE} VALUES {values}")
+    # Rolling retention: booth sessions are small, but keep the archive bounded —
+    # 30 days is plenty to demo "your session is in UC". Full cleanup is the
+    # operator's one-liner: DROP TABLE <catalog>.<schema>.triage_session_archive
+    run_sql(f"DELETE FROM {ARCHIVE_TABLE} WHERE archived_at < current_timestamp() - INTERVAL 30 DAYS")
+    return len(rows), reset_id
+
+
+@app.route('/api/alerts/reset', methods=['POST'])
+def reset_alerts():
+    """Booth demo reset: ARCHIVE the session to Delta (UC-queryable), then wipe
+    queue + audit and reseed fresh open alerts. Archive failure aborts the reset
+    — Postgres state is disposable only once its story is preserved."""
+    guard = _lakebase_guard()
+    if guard:
+        return guard
+    try:
+        archived, reset_id = _archive_session_to_delta()
+    except Exception as e:
+        print(f"[TRIAGE] archive-before-reset failed: {e}")
+        return jsonify({'error': f'reset aborted — could not archive the session to {ARCHIVE_TABLE}: {e}. '
+                                 f'Grant the app SP CREATE TABLE on the schema (scripts/grant_app_sp.py) and retry.'}), 500
+    try:
+        lakebase.reset_alerts()
+    except Exception as e:
+        print(f"[TRIAGE] reset truncate failed: {e}")
+        return jsonify({'error': f'reset failed before wiping the queue: {e}'}), 500
+    try:
+        inserted, cohort = _seed_from_gold()
+    except Exception as e:
+        # The queue is ALREADY truncated here (archive + truncate both succeeded);
+        # only the reseed failed. Tell the operator exactly that so the generic
+        # 500 doesn't read as "nothing happened" — a second Reset reseeds cleanly.
+        print(f"[TRIAGE] reseed-after-truncate failed: {e}")
+        return jsonify({'error': f'queue wiped + archived (reset_id {reset_id}) but reseed failed: {e} '
+                                 f'— press Reset again to repopulate.', 'reset': True,
+                        'seeded': 0, 'archived': archived, 'reset_id': reset_id}), 500
+    return jsonify({'reset': True, 'seeded': inserted, 'cohort_rows': cohort,
+                    'archived': archived, 'reset_id': reset_id, 'archive_table': ARCHIVE_TABLE})
 
 @app.route('/health')
 def health():
@@ -799,7 +1178,13 @@ def serve_spa(path):
     # Otherwise serve index.html for SPA routing
     index_path = os.path.join(DIST_DIR, 'index.html')
     print(f"[DEBUG] Serving index.html for path: {path}")
-    return send_from_directory(DIST_DIR, 'index.html')
+    resp = send_from_directory(DIST_DIR, 'index.html')
+    # The SPA shell must never be cached: stale index.html pins users to old
+    # content-hashed bundles across deploys (without this, a deploy isn't picked
+    # up until a hard refresh). The hashed assets themselves stay
+    # long-cacheable; only this entry document is volatile.
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))

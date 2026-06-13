@@ -59,6 +59,146 @@ export async function executeSQLQuery(query) {
  * Get count of distinct devices from patient registry
  * @returns {Promise<number>} Count of distinct devices
  */
+// ALL device models from the registry (per-patient SSOT) — incl. the clean control
+// models that never raise alerts. Used by the Triage page's model dropdown so the
+// unaffected models show as "clean" (disabled) rather than silently missing.
+export async function getAllDeviceModels() {
+  const { catalog, schema } = await getConfig();
+  const query = `SELECT DISTINCT CAST(device_model AS STRING) AS device_model FROM ${catalog}.${schema}.silver_patient_registry ORDER BY device_model`;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        return v[0]?.string_value ?? v[0];
+      }).filter(Boolean);
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to get device models:', error);
+    return [];
+  }
+}
+
+// PATIENT INCIDENT SNAPSHOT — one patient's worst in-incident moment (peak
+// |observed − true|): the "discovery" a triager needs BEFORE picking a
+// resolution. Returns { time, observed, trueGlucose, direction } or null.
+export async function getPatientIncidentSnapshot(patientId) {
+  const { catalog, schema } = await getConfig();
+  const pid = String(patientId).replace(/'/g, "''");
+  const query = `
+    SELECT p.time, p.glucose_observed, p.glucose_true, p.incident_direction
+    FROM ${catalog}.${schema}.pseudo_incident_7d_labeled p
+    WHERE p.patient_id = '${pid}'
+      AND p.incident_direction IN ('positive', 'negative')
+      AND p.time >= p.incident_start_time AND p.time < p.incident_end_time
+    ORDER BY ABS(p.glucose_observed - p.glucose_true) DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const v = rows[0].values || rows[0];
+      const g = i => v[i]?.string_value ?? v[i];
+      return {
+        time: g(0),
+        observed: Math.round(parseFloat(g(1))),
+        trueGlucose: Math.round(parseFloat(g(2))),
+        direction: g(3),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get patient incident snapshot:', error);
+    return null;
+  }
+}
+
+// PATIENT RECENT-3H SUMMARY — one patient's danger-band exposure in the last 3
+// hours of data (the High-Risk window). Complements getPatientIncidentSnapshot:
+// fault window = "then", this = "recent", the focus row's latest reading = "now".
+export async function getPatientRecent3h(patientId) {
+  const { catalog, schema } = await getConfig();
+  const pid = String(patientId).replace(/'/g, "''");
+  const query = `
+    SELECT COUNT(CASE WHEN glucose < 54  THEN 1 END) AS very_low,
+           COUNT(CASE WHEN glucose > 250 THEN 1 END) AS very_high,
+           MIN(glucose) AS min_g, MAX(glucose) AS max_g, COUNT(*) AS n
+    FROM ${catalog}.${schema}.gold_patient_device_readings
+    WHERE patient_id = '${pid}'
+      AND time >= (
+        SELECT MAX(time) - INTERVAL 3 HOUR
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      const v = rows[0].values || rows[0];
+      const g = i => v[i]?.string_value ?? v[i];
+      return {
+        veryLow: parseInt(g(0), 10) || 0, veryHigh: parseInt(g(1), 10) || 0,
+        min: Math.round(parseFloat(g(2))) || null, max: Math.round(parseFloat(g(3))) || null,
+        readings: parseInt(g(4), 10) || 0,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get patient recent-3h summary:', error);
+    return null;
+  }
+}
+
+// LIVE RISK WATCHLIST — patients with a Battelino level-2 danger-band reading
+// (<54 / >250 mg/dL) in the LAST 3 HOURS of data: the High-Risk-Alerts tile's
+// logic, in list form, for the Triage page's "last 3h" scenario. Deliberately
+// uses NO incident labels — detection keys off the readings alone, which is the
+// production-realistic path (labels exist only because the demo simulates truth).
+export async function getLiveRiskWatchlist() {
+  const { catalog, schema } = await getConfig();
+  const query = `
+    SELECT g.patient_id,
+           MAX(CAST(g.device_model AS STRING))     AS device_model,
+           MAX(CAST(g.firmware_version AS STRING)) AS firmware,
+           MIN(g.glucose)                          AS min_glucose,
+           MAX(g.glucose)                          AS max_glucose,
+           COUNT(CASE WHEN g.glucose < 54  THEN 1 END) AS very_low_readings,
+           COUNT(CASE WHEN g.glucose > 250 THEN 1 END) AS very_high_readings
+    FROM ${catalog}.${schema}.gold_patient_device_readings g
+    WHERE (g.glucose < 54 OR g.glucose > 250)
+      AND g.time >= (
+        SELECT MAX(time) - INTERVAL 3 HOUR
+        FROM ${catalog}.${schema}.gold_patient_device_readings
+      )
+    GROUP BY g.patient_id
+    ORDER BY GREATEST(COUNT(CASE WHEN g.glucose < 54 THEN 1 END),
+                      COUNT(CASE WHEN g.glucose > 250 THEN 1 END)) DESC
+    LIMIT 100
+  `;
+  try {
+    const result = await executeSQLQuery(query);
+    const rows = result?.result?.structuredContent?.result?.data_array;
+    if (rows && rows.length > 0) {
+      return rows.map(r => {
+        const v = r.values || r;
+        const g = i => v[i]?.string_value ?? v[i];
+        return {
+          patientId: g(0), deviceModel: g(1), firmware: g(2),
+          minGlucose: parseFloat(g(3)) || 0, maxGlucose: parseFloat(g(4)) || 0,
+          veryLow: parseInt(g(5), 10) || 0, veryHigh: parseInt(g(6), 10) || 0,
+        };
+      });
+    }
+    return [];
+  } catch (error) {
+    console.error('Failed to get live risk watchlist:', error);
+    return [];
+  }
+}
+
 export async function getDistinctDeviceCount() {
   const { catalog, schema } = await getConfig();
   const query = `SELECT COUNT(DISTINCT device_id) as device_count FROM ${catalog}.${schema}.silver_patient_registry`;
@@ -243,20 +383,31 @@ export async function getDevicePatternAlerts() {
   // device_model from silver_patient_registry (per-patient SSOT) joined on patient_id
   // — gold's per-reading device_model disagrees with the registry. region is consistent
   // across both tables (verified 0 mismatch), sourced from the registry here for SSOT.
+  // Rank by DEVICE ERROR (in-incident mean |observed − true|), NOT by out-of-range
+  // rate. OOR rate reads ~36–40% on EVERY cohort — clean controls included —
+  // because real HUPA-UCM glucose sits outside 70–180 about a third of the time;
+  // ranking by it surfaces physiology noise and buries the real fault (the same
+  // reason the heatmap measures error directly). Device error isolates the fault:
+  // faulted rollouts hit ~40 mg/dL, clean firmware sits near 0. OOR rate is kept
+  // as a secondary displayed number, not the sort key.
   const query = `
     SELECT
       r.device_model as device_type,
       CAST(g.firmware_version AS STRING) as firmware_version,
       r.region,
+      ROUND(AVG(CASE WHEN p.incident_type IS NOT NULL
+                     THEN ABS(p.glucose_observed - p.glucose_true) END), 1) as device_error_mae,
       SUM(g.glucose_out_of_range) as total_oor_events,
       COUNT(*) as total_events,
       ROUND(AVG(CASE WHEN g.glucose_out_of_range = 1 THEN 100.0 ELSE 0.0 END), 2) as avg_oor_rate_pct,
       COUNT(DISTINCT DATE(g.time)) as days_tracked
     FROM ${catalog}.${schema}.gold_patient_device_readings g
     JOIN ${catalog}.${schema}.silver_patient_registry r ON g.patient_id = r.patient_id
+    JOIN ${catalog}.${schema}.pseudo_incident_7d_labeled p
+      ON g.patient_id = p.patient_id AND g.time = p.time
     GROUP BY r.device_model, g.firmware_version, r.region
-    HAVING SUM(g.glucose_out_of_range) > 10
-    ORDER BY avg_oor_rate_pct DESC
+    HAVING COUNT(CASE WHEN p.incident_type IS NOT NULL THEN 1 END) > 10
+    ORDER BY device_error_mae DESC NULLS LAST
     LIMIT 4
   `;
   
@@ -273,15 +424,16 @@ export async function getDevicePatternAlerts() {
           structuredContent.result.data_array.length > 0) {
         
         const alerts = structuredContent.result.data_array.map(row => {
-          if (row.values && row.values.length >= 7) {
+          if (row.values && row.values.length >= 8) {
             return {
               device_type: row.values[0].string_value,
               firmware_version: row.values[1].string_value,
               region: row.values[2].string_value,
-              total_oor_events: parseInt(row.values[3].string_value, 10),
-              total_events: parseInt(row.values[4].string_value, 10),
-              avg_oor_rate_pct: parseFloat(row.values[5].string_value),
-              days_tracked: parseInt(row.values[6].string_value, 10)
+              device_error_mae: parseFloat(row.values[3].string_value),
+              total_oor_events: parseInt(row.values[4].string_value, 10),
+              total_events: parseInt(row.values[5].string_value, 10),
+              avg_oor_rate_pct: parseFloat(row.values[6].string_value),
+              days_tracked: parseInt(row.values[7].string_value, 10)
             };
           }
           return null;

@@ -2,39 +2,68 @@
 
 ## Overview
 
-This repo contains two main parts that work together:
+This repo has two parts that work together:
 
-- **`Data_DataGen_ModelForecast/`**: Databricks notebooks/scripts to ingest Continuous Glucose Monitoring (CGM) data, generate pseudo-patients, train forecasting models, simulate incidents, and deploy models to serving.
-- **`App/`**: The **control-tower** front-end (Databricks App) — a persistent nav rail, a command-center landing framed as **detect → diagnose → act**, live **Firmware Lifecycle** (device-error by firmware) and **Population Risk** (clinical blast radius) views, a real per-patient **Diabetes Coach** (search + 24h profile + near-term forecast), and a **unified assistant** folding **Genie** (NL→SQL) and a **Multi-Agent Supervisor** into one surface. It reads curated **bronze/silver/gold** tables derived from patient **CGM/IoT** signals (see [`Data_DataGen_ModelForecast/README_data.md`](Data_DataGen_ModelForecast/README_data.md)).
+**`Data_DataGen_ModelForecast/`** — Databricks notebooks/scripts that ingest Continuous
+Glucose Monitoring (CGM) data, generate pseudo-patients, train forecasting models, simulate
+device incidents, and deploy models to serving.
+Dependencies + licenses: [`Data_DataGen_ModelForecast/DEPENDENCIES.md`](Data_DataGen_ModelForecast/DEPENDENCIES.md).
 
-**glucosphere concept**: a monitoring "engine/sphere" on the Databricks platform that turns CGM + context data into curated signals, forecasts, and incident monitoring, then surfaces **actionable insights** via dashboards and agentic workflows (Genie / multi-agent tools) for multiple personas (e.g., physicians, caregivers, patients, device/MedTech teams, and regulators such as FDA review boards).
+**`App/`** — the **control-tower** front-end (a [Databricks App](https://docs.databricks.com/dev-tools/databricks-apps/)): a command-center landing
+framed as **detect → diagnose → act**, with a persistent nav rail and a built-in self-guided
+tour (quick-story or interactive try-it-yourself). Its main surfaces:
+
+- **Firmware Lifecycle** — device error by firmware version (which build is drifting).
+- **Population Risk** — the clinical blast radius of a device fault across the cohort.
+- **Diabetes Coach** — per-patient search, 24h glucose profile, and near-term (15/30-min)
+  forecast — plus **honest device-distortion banners** that flag when the device *masked* a
+  real high or low, or displayed a *false* low.
+- **Alert Triage** (`/triage`) — a **[Lakebase](https://docs.databricks.com/oltp/)-backed** queue to acknowledge / assign /
+  resolve the affected cohort with an audit trail (shown only on Lakebase-enabled targets).
+- **Unified assistant** — **[Genie](https://docs.databricks.com/aws/en/genie/)** (NL→SQL) and a **Multi-Agent Supervisor** on one surface.
+
+It reads curated **bronze/silver/gold** tables — built by [Lakeflow Declarative Pipelines](https://docs.databricks.com/ldp/)
+in [Unity Catalog](https://docs.databricks.com/data-governance/unity-catalog/) — from patient **CGM/IoT** signals
+(see [`Data_DataGen_ModelForecast/README_data.md`](Data_DataGen_ModelForecast/README_data.md)).
+Dependencies + licenses (npm + backend Python, incl. the LGPL-3.0 `psycopg` driver): [`App/DEPENDENCIES.md`](App/DEPENDENCIES.md).
+
+**The concept**: a monitoring "sphere" on Databricks that turns CGM + context data into curated
+signals, forecasts, and incident monitoring — then surfaces **actionable insights** through
+dashboards and agentic workflows (Genie / multi-agent tools). Built for multiple personas:
+physicians, caregivers, patients, device/MedTech teams, and regulators (e.g. FDA review boards).
 
 ## Power of this solution
 
 - **End-to-end monitoring sphere**: one coherent loop from CGM + context data → curated tables → forecasting/incident analytics → dashboards + agentic workflows.
 - **Actionable, not just descriptive**: produces KPIs, alerts, and explanations teams can act on (e.g., calibration-bug detection via performance + distribution shifts).
 - **Multi‑persona leverage**: supports physicians/caregivers, device/MedTech teams, patients, and regulators with views tailored to their needs—backed by the same governed data/model layer.
-- **Flexible integration**: exposes both **inference tables** (easy DBSQL consumption) and **serving endpoints** (for real-time use when needed).
-- **Governance + auditability**: Unity Catalog + MLflow provide lineage/traceability from data → curated tables/inference outputs → models → downstream metrics, improving trust, operations, and compliance. Feature tables can be incorporated later if/when needed.
+- **Flexible integration**: exposes both **inference tables** (easy DBSQL consumption) and **[serving endpoints](https://docs.databricks.com/machine-learning/model-serving/)** (for real-time use when needed).
+- **Governance + auditability**: Unity Catalog + **[MLflow](https://docs.databricks.com/mlflow/)** provide lineage/traceability from data → curated tables/inference outputs → models → downstream metrics, improving trust, operations, and compliance. Feature tables can be incorporated later if/when needed.
 
 ## Architecture
 
 ![Architecture](Data_DataGen_ModelForecast/assets/architecture.png)
 
-The App's natural-language query experience is powered by **Agent Bricks** — **Knowledge Assistant** (RAG over WHO clinical guidelines PDF) and a **Multi-Agent Supervisor (MAS)** — together with **AI/BI Genie** (NL→SQL over gold CGM tables), a separate Databricks capability the MAS orchestrates. The Device-support assistant runs through `/api/assist` with a **live engine switch** (⚡ Fast / 🤖 MAS): the default **fast router** makes one direct call to the right specialist (KA for clinical questions, a foundation model for device reasoning) — robust under load — while the MAS supervisor is one toggle away for live A/B. Genie (CGM-data mode) is always called directly. Full routing detail, the switch, and the latency rationale in [`App/README.md`](App/README.md).
+The App's natural-language experience is powered by **[Agent Bricks](https://www.databricks.com/product/artificial-intelligence/agent-bricks)** + **[AI/BI Genie](https://docs.databricks.com/aws/en/genie/)**:
+
+- **Knowledge Assistant (KA)** — RAG over the WHO clinical-guidelines PDF.
+- **Multi-Agent Supervisor (MAS)** — orchestrates the specialists.
+- **Genie** — NL→SQL over the gold CGM tables (a separate capability the MAS can orchestrate).
+
+The Device-support assistant runs through `/api/assist` with a **live engine switch** (⚡ Fast / 🤖 MAS): the default **fast router** makes one direct call to the right specialist (KA for clinical questions, a foundation model for device reasoning) — robust under load — while MAS is one toggle away for live A/B. Genie is always called directly. Full routing + latency detail in [`App/README.md`](App/README.md).
 
 ## Data fidelity & forecast model performance
 
 Three baseline source modes selectable at deploy time via `baseline_source`: **`from_source`** (real HUPA-UCM CGM, default), **`synthetic`** (in-cluster generator, for CI / restricted-egress), **`from_table`** (CTAS from an existing UC table). Real-mode pairs real CGM signal dynamics with synthetic patient identities — pseudo-patients with real clinical waveforms.
 
-Mode-by-mode model performance (clean ~5 mg/dL MAE → +631% incident-period degradation), column-level provenance, and synthetic-vs-real distribution comparison all live in [`Data_DataGen_ModelForecast/README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
+Mode-by-mode model performance (clean ~5.8 mg/dL MAE anchor → ~5× incident-period degradation), column-level provenance, and synthetic-vs-real distribution comparison all live in [`Data_DataGen_ModelForecast/README_data_fidelity_baseline.md`](Data_DataGen_ModelForecast/README_data_fidelity_baseline.md).
 
 ## Repository structure
 
 ```text
 /
 ├── databricks.yml                    # Bundle config (targets, resources)
-├── databricks.yml.example            # Template for external deployers
+├── databricks.yml.example            # Reference mirror of databricks.yml (no edits needed to deploy)
 ├── .env.bundle.example               # Template → cp to .env.bundle.<target> (one per deploy target)
 ├── DEPLOY.md                         # Step-by-step deploy guide
 ├── REPO_LAYOUT.md                    # Full navigation guide (what file does what)
@@ -48,21 +77,20 @@ Full file-by-file inventory + "I want to…" task index in [`REPO_LAYOUT.md`](RE
 
 ## How the two parts work together
 
-- **Data → App**:
-  - `Data_DataGen_ModelForecast/` produces curated UC tables, **inference / fleet-forecast tables**, and (optionally) **model serving endpoints**.
-  - The app **queries tables** (e.g., via DBSQL) to render **forecast metrics**, **incident monitoring**, and **fleet-level KPIs**.
-  - In the future, the app could call **model serving endpoints** and/or integrate the **inference tables** and incoming patient/IoT data to incorporate predictions directly into the UI.
-- **Agents / Genie**:
-  - The app can hook into **multi-agent systems** and use **Genie Space** as a tool to provide a comprehensive, Databricks-native UI experience.
-- **Assets**:
-  - `Data_DataGen_ModelForecast/assets/` contains analysis figures for documentation and stakeholder storytelling.
-  - The `App/` folder may include its own UI assets (icons/images) for the frontend (separate from analysis figures).
+- **Data → App**: `Data_DataGen_ModelForecast/` produces curated UC tables, **inference / fleet-forecast tables**, and **model serving endpoints**. The app queries those tables via DBSQL for **forecast metrics**, **incident monitoring**, and **fleet KPIs**. *(Calling the serving endpoints live — instead of reading the inference tables — is a natural next step.)*
+- **Agents / Genie**: the app **uses** Genie (NL→SQL) and the Multi-Agent Supervisor as tools — one Databricks-native assistant surface.
+- **Assets**: `Data_DataGen_ModelForecast/assets/` holds analysis figures for docs/storytelling; `App/` carries its own UI assets (icons/images), separate from those.
 
 ## Getting started
 
-Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers should add a target stanza per [`databricks.yml.example`](databricks.yml.example) and create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example).
+Prerequisites: Databricks CLI configured for your target workspace, a UC catalog you can write to, and [uv](https://docs.astral.sh/uv/) installed locally (run `uv sync` once in the repo root). External deployers don't need to edit `databricks.yml` (workspace selection is profile-driven) — just create a per-target config file (`.env.bundle.<target>`, one per target you deploy) from [`.env.bundle.example`](.env.bundle.example); [`databricks.yml.example`](databricks.yml.example) is a reference mirror.
 
-Canonical deploy sequence (full 8-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
+Canonical [Databricks Asset Bundles](https://docs.databricks.com/dev-tools/bundles/) deploy sequence (full 10-step walkthrough with explanations + troubleshooting in [`DEPLOY.md`](DEPLOY.md)):
+
+> **Lakebase targets** (`gsphere`, `gsphere_fw_v2` — the alert-triage queue's OLTP store): one
+> extra **one-time** command before the first deploy — `databricks postgres create-project …`
+> (see DEPLOY.md → *Lakebase one-time setup*). All other targets deploy without Lakebase and
+> the app hides the triage feature automatically.
 
 ```bash
 # load BUNDLE_VAR_* + DATABRICKS_CONFIG_PROFILE (one file per target — name = target key)
@@ -84,7 +112,7 @@ uv run python scripts/render_app_yaml.py --target <target> --profile <profile> \
 databricks bundle deploy -t <target> --profile <profile>
 databricks bundle run glucosphere_app -t <target> --profile <profile>
 
-# 8-check gate
+# automated gate (8 checks + a 9th on Lakebase targets)
 uv run python scripts/smoke_test.py --target <target> --profile <profile>      
 ```
 
@@ -109,6 +137,9 @@ End-to-end wall clock: **~48 min subsequent / ~51 min first deploy**. For deploy
 - **[Data_DataGen_ModelForecast/README_data.md](Data_DataGen_ModelForecast/README_data.md)** — schema documentation for curated tables
 - **[App/README.md](App/README.md)** — frontend + backend dev setup + agent endpoint detail
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — branch + commit conventions, dependency-table convention, CHANGELOG-update convention
+- **Dependencies & licenses** (for license/legal audits) — per-area inventories:
+  - [`Data_DataGen_ModelForecast/DEPENDENCIES.md`](Data_DataGen_ModelForecast/DEPENDENCIES.md) — pipeline/notebook Python deps
+  - [`App/DEPENDENCIES.md`](App/DEPENDENCIES.md) — frontend npm + backend Python (note the **LGPL-3.0** `psycopg` driver) + runtime platform services
 - **[CHANGELOG.md](CHANGELOG.md)** — dated history of every commit group
 
 ## For maintainers — optional Claude Code plugins

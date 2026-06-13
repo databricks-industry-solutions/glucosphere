@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { BookOpen, ArrowLeft } from 'lucide-react';
 import { getConfig } from '../api/config';
 import { useGoBack } from '../hooks/useGoBack';
@@ -33,6 +33,7 @@ export default function MetricsExplained() {
   const [baselineSourceDetail, setBaselineSourceDetail] = useState('');
   const [workspaceHost, setWorkspaceHost] = useState('');
   const [setupJobUrl, setSetupJobUrl] = useState('');
+  const [dataWindow, setDataWindow] = useState(null); // {start,end} date span of the gold data (dynamic — see /api/config)
   useEffect(() => {
     getConfig().then(cfg => {
       setCatalog(cfg.catalog || '');
@@ -41,6 +42,7 @@ export default function MetricsExplained() {
       setBaselineSourceDetail(cfg.baseline_source_detail || '');
       setWorkspaceHost(cfg.workspace_host || '');
       setSetupJobUrl(cfg.setup_job_url || '');
+      setDataWindow(cfg.data_window || null);
     }).catch(err => console.error('Failed to load config:', err));
   }, []);
 
@@ -57,9 +59,10 @@ export default function MetricsExplained() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <BookOpen className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Metrics Explained
@@ -82,7 +85,8 @@ export default function MetricsExplained() {
               This page documents how each metric is calculated across the Glucosphere Dashboard.
               All metrics are computed on demand from the governed gold tables in Databricks Unity Catalog,
               via SQL queries run against a Databricks SQL warehouse (Statement Execution API). The
-              underlying tables are produced by a batch pipeline (not a real-time stream).
+              underlying tables are produced by a batch pipeline today (not real-time) — ideally
+              run as a data stream for sub-minute updates.
             </p>
             <p className="text-sm text-slate-400 leading-relaxed mt-3">
               <span className="text-amber-300 font-medium">Note on demo data:</span> patient identifiers,
@@ -185,7 +189,7 @@ WHERE time >= (
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why use MAX(time)?</p>
                 <p className="text-sm text-slate-400">
-                  The data is backdated (Jan 5-11, 2026), so using CURRENT_TIMESTAMP would return 0 results. 
+                  The data is backdated{dataWindow ? ` (${dataWindow.start} → ${dataWindow.end})` : ''}, so using CURRENT_TIMESTAMP would return 0 results.
                   Instead, we find the most recent timestamp in the data and calculate 24 hours back from there.
                 </p>
               </div>
@@ -368,15 +372,17 @@ WHERE (glucose < 54 OR glucose > 250)
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Displays Mean Absolute Error (MAE) over a 7-day window, showing device accuracy degradation
-                  during incident periods. Two lines carry distinct information: <span className="text-blue-400 font-medium">fleet-wide</span> MAE
-                  (AVG across all patients — diluted because only the affected cohorts are drifting) vs{' '}
-                  <span className="text-orange-400 font-medium">affected-only</span> MAE (AVG over just the patients
-                  whose devices are currently in an incident window — shows the TRUE bias magnitude).
-                  With the two-window mirror simulation (2026-05-18), TWO separate red-tinted dashed-border
-                  rectangles mark the two incident windows: Day 2 (+40 mg/dL bias on Alpha/Gamma cohort) and
-                  Day 5 (-40 mg/dL bias on Beta/Delta cohort). Baseline sensor noise of 5.0 mg/dL is added
-                  to every reading to simulate realistic CGM accuracy (~5.8 mg/dL baseline mean absolute error).
+                  Mean Absolute Error (MAE) over a 7-day window — device accuracy degradation during incidents.
+                  Two lines carry distinct information:
+                </p>
+                <ul className="text-sm text-slate-400 space-y-1 ml-4 mt-2">
+                  <li>• <span className="text-blue-400 font-medium">Fleet-wide</span> MAE — AVG across all patients (diluted, because only the affected cohorts drift).</li>
+                  <li>• <span className="text-orange-400 font-medium">Affected-only</span> MAE — AVG over just the patients in an incident window right now (the TRUE bias magnitude).</li>
+                </ul>
+                <p className="text-sm text-slate-400 mt-2">
+                  Two red dashed-border rectangles mark the incident windows: Day 2 (+40 mg/dL, Alpha/Gamma) and
+                  Day 5 (−40 mg/dL, Beta/Delta). A 5.0 mg/dL baseline sensor noise on every reading yields the
+                  realistic ~5.8 mg/dL baseline MAE.
                 </p>
               </div>
 
@@ -459,7 +465,7 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">Why MAE spikes signal device drift:</p>
                 <p className="text-sm text-slate-400 leading-relaxed">
-                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 52% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 27% cross hypo vs ~6% baseline. The directional distribution shift drives a sharp MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) surfaces as out-of-range readings — batch today; a live alert &amp; triage queue is on the roadmap.
+                  Positive-bias cohort (<span className="text-red-400 font-medium">red</span>) shifts UP into hyperglycemic range (&gt;180 mg/dL) — 52% of readings cross the hyper threshold vs ~22% baseline. Negative-bias cohort (<span className="text-blue-400 font-medium">blue</span>) shifts DOWN into hypoglycemic range (&lt;70 mg/dL) — 27% cross hypo vs ~6% baseline. The directional distribution shift drives a sharp MAE spike fleetwide, which the rolling-window monitor (MAE Timeline chart on the Glucosphere landing page) surfaces as out-of-range readings — batch today; on Lakebase-enabled deploys these feed the live Alert Triage queue.
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL incident itself is a <span className="text-amber-300">simulated</span> calibration bug injected into the demo data for illustration — see _About This Page_ above for full provenance.)
@@ -469,7 +475,7 @@ ORDER BY minute`}
                 <img
                   src={FIG4_UC_PATH}
                   alt="4-panel glucose distribution comparison: baseline (darkgray), clean period (mediumturquoise), Inc+ cohort (red, over-reads), Inc- cohort (blue, under-reads). Histograms, bar chart, CDF, and box plot show how each incident direction shifts the distribution and how the shift maps to hypo/hyper threshold crossings."
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950/50"
+                  className="block mx-auto w-full max-w-4xl rounded-lg border border-slate-800 bg-slate-950/50"
                 />
               </div>
               <div>
@@ -508,7 +514,15 @@ ORDER BY minute`}
               <div>
                 <p className="text-sm font-medium text-slate-300 mb-2">What it shows:</p>
                 <p className="text-sm text-slate-400">
-                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window. With the two-window mirror design (2026-05-18), the positive-bias cohort (Alpha/Gamma devices) spikes to +40 mg/dL during Window 1 on Day 2, while the negative-bias cohort (Beta/Delta devices) drops to −40 mg/dL during Window 2 on Day 5. Outside each cohort's own window, that cohort's line sits at ≈ 0 (devices match ground truth) — diurnal glucose fluctuations cancel in the subtraction. Both directions are clinically relevant calibration failures and both are detected by the same direction-agnostic MAE monitor (MAE Timeline chart on the Glucosphere landing page).
+                  Signed device bias <span className="font-mono">(observed − true)</span> averaged per direction cohort over the same 7-day window — the metric that names which way each cohort drifted:
+                </p>
+                <ul className="text-sm text-slate-400 space-y-1 ml-4 mt-2">
+                  <li>• <span className="text-red-400 font-medium">Positive-bias cohort</span> (Alpha/Gamma) spikes to <span className="font-mono">+40 mg/dL</span> during Window 1 (Day 2).</li>
+                  <li>• <span className="text-blue-400 font-medium">Negative-bias cohort</span> (Beta/Delta) drops to <span className="font-mono">−40 mg/dL</span> during Window 2 (Day 5).</li>
+                  <li>• Outside its own window, each cohort's line sits at <span className="font-mono">≈ 0</span> (device matches truth) — diurnal glucose cancels in the subtraction.</li>
+                </ul>
+                <p className="text-sm text-slate-400 mt-2">
+                  Both directions are clinically dangerous calibration failures, and both are caught by the same direction-agnostic MAE monitor (the MAE Timeline above).
                 </p>
                 <p className="text-xs text-slate-500 italic mt-2">
                   (The ±40 mg/dL two-window incident is a <span className="text-amber-300">simulated</span> adverse device-calibration scenario injected into the demo data — see _About This Page_ above for full provenance.)

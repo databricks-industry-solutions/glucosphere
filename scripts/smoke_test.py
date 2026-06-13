@@ -7,7 +7,7 @@ endpoints + Genie space). Run after `databricks bundle run glucosphere_app …`
 completes (DEPLOY.md Step 9). Catches the backend failure modes that the manual
 browser-driven checks in DEPLOY.md Step 10 also catch, without needing SSO auth.
 
-What's automated (8 checks):
+What's automated (8 checks + a 9th on Lakebase-enabled targets):
     1. App state: `databricks api get /api/2.0/apps/<name>` → compute_status.state == ACTIVE
        and app_status.state == RUNNING.
     2. App URL: HEAD request to the App URL → non-5xx response (auth redirect is fine —
@@ -34,6 +34,15 @@ What's automated (8 checks):
        returns 200 + image/png bytes (catches the silent try/except in
        05_incident_inference_bidirectional.py PNG-save block — cycle 2 incident_inference
        task showed SUCCESS while the PNG was never written).
+    9. Lakebase (only when the target sets `lakebase_project_id`; skipped otherwise):
+       the externally-created Autoscaling project exists AND the App carries the
+       postgres resource binding to it AND the app's /api/alerts answers HTTP 200
+       (functional probe: credential mint + PG connect + triage schema usable —
+       catches the app-SP-rotation "permission denied for schema triage" failure
+       that project+binding checks alone missed). Doubles as the DRIFT
+       detector — a CLI/UI-deleted project fails here while `bundle deploy` stays
+       silent (no state refresh);
+       recovery: `POST /api/2.0/postgres/projects/<id>/undelete` + app restart.
 
 NOT covered (still needs the manual DEPLOY.md Step 10 checklist):
     - React UI build artifacts loading correctly
@@ -268,6 +277,53 @@ def check_uc_asset_png(catalog: str, schema: str, profile: str,
     return True, f"path={full_path}: HTTP 200, {len(body)} bytes, valid PNG header"
 
 
+def check_lakebase(profile: str, project_id: str, app_name: str) -> tuple[bool, str]:
+    """Lakebase (only when the target sets `lakebase_project_id`), three layers:
+      a. the externally-created Autoscaling project exists,
+      b. the App carries the postgres resource binding pointing at it (the
+         binding auto-creates the App SP's PG role + injects the PG* env),
+      c. FUNCTIONAL: the app's /api/alerts endpoint answers HTTP 200 — proves
+         the app can mint a PG credential, connect, and use the triage schema.
+         (a rebuild can pass a+b while every triage call fails "permission denied
+         for schema triage" — app-SP rotation orphaning the schema under the old role.)
+    Also the drift detector: a CLI/UI-deleted project makes (a) FAIL while
+    `bundle deploy` stays silent (no state refresh) — recovery is
+    `POST /api/2.0/postgres/projects/<id>/undelete` + app restart."""
+    proj_path = f"projects/{project_id}"
+    proj = _databricks(["postgres", "get-project", proj_path], profile)
+    if proj.get("name") != proj_path:
+        return False, f"project {proj_path} not found"
+    app = _databricks_api("GET", f"/api/2.0/apps/{app_name}", profile)
+    bindings = [r for r in (app.get("resources") or [])
+                if (r.get("postgres") or {}).get("branch", "").startswith(proj_path + "/")]
+    if not bindings:
+        return False, f"project {proj_path} OK but App has no postgres binding to it"
+    # c. functional probe through the app (operator OAuth token passes the
+    # app's SSO front door; the app then talks to Postgres as its own SP).
+    app_url = app.get("url", "")
+    if not app_url:
+        return False, f"project {proj_path} + binding OK but App has no URL"
+    token = subprocess.check_output(
+        ["databricks", "auth", "token", "--profile", profile],
+        text=True, env=_DATABRICKS_ENV)
+    access_token = json.loads(token)["access_token"]
+    req = urllib.request.Request(f"{app_url}/api/alerts?status=open",
+                                 headers={"Authorization": f"Bearer {access_token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:200]
+        return False, f"project + binding OK but /api/alerts HTTP {e.code}: {detail}"
+    except Exception as e:
+        return False, f"project + binding OK but /api/alerts unreachable: {e}"
+    if "alerts" not in body:
+        return False, f"project + binding OK but /api/alerts returned unexpected body: {str(body)[:200]}"
+    n_alerts = len(body["alerts"])
+    return True, (f"project {proj_path} + App postgres binding present; "
+                  f"/api/alerts HTTP 200 ({n_alerts} open alerts)")
+
+
 def _resolved_vars(target: str, profile: str) -> dict[str, str]:
     out = subprocess.check_output(
         ["databricks", "bundle", "validate", "-t", target, "--profile", profile, "-o", "json"],
@@ -286,6 +342,8 @@ def _resolved_vars(target: str, profile: str) -> dict[str, str]:
         "existing_warehouse_id": g("existing_warehouse_id"),
         "mas_endpoint": g("mas_endpoint"), "ka_endpoint": g("ka_endpoint"),
         "genie_space_id": g("genie_space_id"),
+        # empty on non-Lakebase targets → check 9 is skipped (not failed)
+        "lakebase_project_id": g("lakebase_project_id"),
     }
 
 
@@ -356,11 +414,21 @@ def main() -> int:
 
     run("8. UC asset PNG",          lambda: check_uc_asset_png(args.catalog, args.schema, args.profile))
 
+    # 9 — Lakebase (Alert Triage OLTP): only on targets that set lakebase_project_id;
+    # others skip without failing (the feature is deliberately absent there).
+    n_checks = 8
+    if rv["lakebase_project_id"]:
+        n_checks = 9
+        run("9. Lakebase project + binding + /api/alerts",
+            lambda: check_lakebase(args.profile, rv["lakebase_project_id"], args.app_name))
+    else:
+        print("  [SKIP] 9. Lakebase project + binding + /api/alerts: lakebase_project_id not set for this target")
+
     print()
     if fails:
-        print(f"FAIL — {fails}/8 smoke-test checks failed")
+        print(f"FAIL — {fails}/{n_checks} smoke-test checks failed")
         return 1
-    print("PASS — all 8 smoke-test checks passed")
+    print(f"PASS — all {n_checks} smoke-test checks passed")
     return 0
 
 

@@ -19,6 +19,364 @@ grouped by date rather than semver tags.
 
 ---
 
+## [2026-06-13]
+
+### Changed — guided-tour card placement + assistant-step legibility (booth polish)
+- **Assistant steps**: the coachmark card now docks *beside* the assistant slide-over (just
+  left of its `sm:w-[440px]` edge) instead of being stranded on the far-left — and the panel,
+  the thing being toured, is **no longer dimmed**. The backdrop masks only the area left of the
+  panel and the spotlight keeps just its cyan tab outline (no darkening box-shadow), so the
+  assistant reads clearly while the step describes it (`App/src/components/GuidedTour.jsx`).
+- **Oversized-target steps** (e.g. Population Risk's full-width cohort panel): the card tucks
+  into the **top-right** corner instead of top-left, so the page title (top-left, by the nav
+  rail) stays visible.
+
+### Changed — Metrics Explained: dynamic dates, simplification, honesty pass
+- **Backdated window is now data-discovered** — `/api/config` gains a cached `data_window`
+  (`DATE(MIN(time))…DATE(MAX(time))` on the gold readings; `_get_data_window` in
+  `App/databricks/app.py`), so the "Why use MAX(time)?" note shows the **actual** span (e.g.
+  `2026-06-05 → 2026-06-11`) instead of a hardcoded `Jan 5-11, 2026` that drifts every regen /
+  target. Two stale `(2026-05-18)` design-stamps removed from the MAE-timeline + calibration-bias
+  prose (the relative "Day 2 / Day 5" labels — consistent across triage/tour — stay).
+- **Prose walls broken into scannable structure** (no detail lost): the MAE-Timeline and
+  Calibration-Bias "What it shows" paragraphs become a lead sentence + bullet list (fleet-wide vs
+  affected MAE; +40/−40 per-cohort windows), matching the page's existing pattern.
+- **Distribution 4-panel chart right-sized** — capped at `max-w-4xl` + centered (was full-width).
+- **Honest forward-looking language** (no overpromising): "(not a real-time stream)" → "batch
+  pipeline today (not real-time) — **ideally run as a data stream** for sub-minute updates";
+  the stale "alert & triage queue **is on the roadmap**" → "on Lakebase-enabled deploys these
+  **feed the live Alert Triage queue**" (it's built); Coach near-real-time/60-min "on the
+  roadmap" → "**natural next steps**". MARD caption tightened to "the **basis of** the industry
+  MARD accuracy metric" (`AboutPage.jsx`) — MARD is the metric derived from the reference checks.
+
+### Changed — README readability + official-doc links; new `dais_lakebase` deploy target
+- **README readability pass**: the Architecture wall split into a lead + KA/MAS/Genie bullets;
+  the "glucosphere concept" run-on split into two sentences; the "How the two parts work
+  together" understatement corrected (the app **uses** Genie + the Multi-Agent Supervisor —
+  was "can hook into…"). Embedded sourced **official Databricks doc links** (Apps, Lakebase,
+  Genie, Lakeflow Declarative Pipelines, Unity Catalog, Model Serving, MLflow, Agent Bricks,
+  Asset Bundles), and each repo part now points to its **own** `DEPENDENCIES.md` inline.
+- **New `dais_lakebase` bundle target** (`databricks.yml`): a DAIS-booth Lakebase variant
+  deployed as a **separate** app (`glucosphere-dais-lakebase`) on its **own isolated schema**
+  (`glucosphere_lakebase`) with its own data + UC lineage and its own Lakebase project
+  (`glucosphere-oltp`) — so the plain `dais` app (`glucosphere-dais`) stays a known-good backup.
+  Mirrors `gsphere`'s app + `*glucosphere_lakebase_binding`; reuses the booth warehouse/agents.
+
+---
+
+## [2026-06-12]
+
+**Lakebase Alert Triage** — the roadmap's "Live Alert & Triage" card goes live: a Lakebase-backed
+(managed Postgres, **Autoscaling**) alert queue gives the app its first **transactional write
+path**. Feature-flagged per deploy target: targets without a Lakebase project render pixel-identical
+to before (wip labels intact).
+
+### Added — `/triage` Alert Triage page (Lakebase OLTP)
+- **New `/triage` route** (`App/src/pages/TriagePage.jsx`): the affected cohort lands as a live
+  alert queue — **acknowledge / assign / resolve**, each action appending an **audit row**
+  (expandable per-alert trail). Status filter (server-side) + client-side refinement: patient/device
+  search, fault-type pills (↑ over / ↓ under-read), device-model select; severity-ranked
+  (HIGH = under-read / masked real highs, per the masked-severity narrative).
+- **Scenario framing + cross-links**: an intro line ties the queue to the incident story
+  (FW 4.0 over-read → 4.0.3 hotfix under-read, ~600 devices); page links to Population Risk
+  (the blast radius the alerts came from); each alert's patient deep-links to the Diabetes Coach.
+- **Booth controls**: `⚡ Seed from the affected cohort` (idempotent — UNIQUE key), `↻ Refresh`,
+  and a two-step-confirm `⟲ Reset demo` (truncate + reseed → 600 fresh open alerts, so each
+  booth visitor triages from scratch).
+- **Flag-gated link flips** when `lakebase_configured` is true: Population Risk "Send to triage
+  queue" and Firmware Lifecycle "Flag for rollback" become real links (wip suffix dropped);
+  the Roadmap card flips PREVIEW → LIVE.
+
+### Added — Flask backend + Lakebase helper
+- **`App/databricks/lakebase.py`**: app-owned `triage` PG schema (`alerts` + `alert_audit` —
+  PG 15+ denies CREATE in `public`; the binding's `CAN_CONNECT_AND_CREATE` lets the app create
+  its own schema, no manual grants). Password = short-lived OAuth token minted via
+  `POST /api/2.0/postgres/credentials` (raw REST matching the app's style; cached ~50 min,
+  reusing `get_auth()`'s M2M token). `psycopg` added to requirements (lazily imported).
+- **Routes** (all 503 on non-Lakebase targets): `GET /api/alerts` (+counts+audit),
+  `POST /api/alerts/<id>/{ack,assign,resolve}`, `POST /api/alerts/seed`,
+  `POST /api/alerts/reset`; `/api/config` gains `lakebase_configured`.
+
+### Added — Lakebase provisioning (Autoscaling) + app binding
+- **Externally-created Lakebase Autoscaling project** (PG 17, 0.5–1 CU, 10-min suspend →
+  scale-to-zero; one-time `databricks postgres create-project` — DEPLOY.md "Lakebase one-time
+  setup"), wired to the **`gsphere` (prod) + `gsphere_fw_v2`** targets via the new
+  **`lakebase_project_id`** bundle variable (default `""` = Lakebase off; convention-derived
+  ids `glucosphere-oltp-gsphere` / `…-fw-v2-<initials>`). The app's **`postgres` resource
+  binding** is declared on the bundle's App resource (YAML-anchored
+  `&glucosphere_lakebase_binding`, defined on gsphere, reused by fw_v2) and references the
+  project's branch **by name** — *discovered in the process:* app.yaml's `resources:` section
+  is **not applied** by app deploys (the binding on the App object is what auto-creates the
+  App SP's PG role + injects `PG*` env vars). Note this makes Lakebase part of the `gsphere`
+  deploy contract: the one-time create-project step is required before deploying that target.
+  `render_app_yaml.py` renders the `LAKEBASE_ENDPOINT` env (marker-delimited, idempotent,
+  omitted when unset). DEPLOY.md variables table updated. *(Started the day as a bundle-managed
+  `postgres_projects` resource; moved external the same day — see "Lakebase hardening" below.)*
+- Validated end-to-end on the `gsphere_fw_v2` sandbox: project + role auto-created, 600 alerts
+  seeded, ack/assign/resolve + audit verified live. Connection-probe write-up:
+  `ref_notes/lakebase/2026-06-12_lakebase-autoscaling-app-connection-PROBE-PASS.md`.
+
+### Added — triage operations (same day, booth-driven iteration)
+- **Resolution-outcome menu** on Resolve: 🔧 firmware rolled back · 📦 device replaced ·
+  🩸 fingerstick-verified OK · ↪ not a device issue (routed to care team) · 🚑 EMS dispatched (911) ·
+  ✏️ Other… (free text) — the chosen outcome lands in the audit trail (the compliance record).
+- **🩸 Fingerstick follow-up** — a *request* is engagement, not closure: keeps the alert in the
+  queue (→ acked) with a "follow-up requested" audit row; resolve later with the real outcome.
+  **+ Note** addendum (audit-only, allowed post-resolve). Audit verbs now an explicit map.
+- **Bulk actions** over the filtered set: "Ack all N" / "Resolve all N ▾" (same outcome menu) —
+  e.g. filter to FW 4.0 → one "firmware rolled back" closes the 300-alert cohort, one audit row
+  per alert. New `POST /api/alerts/bulk` + `lakebase.bulk_act` (single UPDATE + audit unnest).
+- **Scenario vantages**: 📅 full week · 🚨 Day 2 (4.0 rollout) · 🚨 Day 5 (4.0.3 hotfix fault) ·
+  **⏱ last-3h live-risk view** — a readings-only watchlist (`<54/>250`, NO incident labels: the
+  production-realistic detection path; clean models legitimately appear as physiology).
+  Queue-only controls grey out there. Filters: patient/device search, fault pills, model select
+  (full registry roster — clean controls disabled; availability reacts to the fault filter), sort
+  (severity default — "masked highs first", honestly framed as recall-harm-informed), ↻ Refresh.
+- **Patient context on expand** (worst in-incident device-vs-true moment + Coach link) so the
+  triager sees the discovery *before* picking a resolution. **PUBLIC grants** on the `triage`
+  schema so operators can browse it from the workspace SQL editor *(read-only at first; widened
+  to read/write the same day for app-SP rotation — see "Lakebase hardening" below)*.
+
+### Added — cross-page loop + verification
+- **Deep-links carry context**: Population Risk → `?model=`, Firmware → `?fw=` (clearable chip),
+  per-row **⚑ triage** buttons on the roster + OOR table; device-focus view gains a layered
+  **🕰 fault-window / ⏱ last-3h / 📍 now** context card + a return-edge button back to the alert.
+- **`scripts/smoke_test.py` check 9** — Lakebase project + App binding **+ a functional
+  `/api/alerts` probe** through the app URL (skipped on non-Lakebase targets; the functional leg
+  added same-day — see "Lakebase hardening" below). Doubles as the **drift detector**: an
+  externally-deleted project fails it while `bundle deploy` stays silent (no state refresh).
+  DEPLOY.md gains the **undelete recovery runbook**
+  (`POST /api/2.0/postgres/projects/<id>/undelete` — deletion is soft; settings/roles/storage
+  survive).
+- **Tour**: Triage stop in all three variants (`requiresLakebase` — steps + chooser counts gate
+  on the flag); **all three tour variants now end on the Full Loop page** (the Quick tour's
+  "Explore from here" close; Full + Interactive gained a matching "The full loop" closing step
+  the same day).
+- **Triage counts react to filters** (booth feedback): the header `open · acked · resolved`
+  counts were whole-DB totals and sat frozen while filters narrowed the queue. The page now
+  fetches all statuses once and derives both the status tabs AND the counts client-side from
+  the filtered set; "queue is empty + Seed" shows only when the DB is truly empty, and a
+  filters-match-nothing state offers **Clear filters** instead.
+- **Watch-view contradictions** (booth feedback): in the last-3h live readings view, the
+  queue-counts header ("0 open · …" against 100 rows) now reads "queue counts n/a in the
+  live readings view" (same NA treatment as the other queue-only controls), and the
+  "N patients in the danger bands" label derives from the same filtered set as the table —
+  it reacts to the model/search filters instead of sitting at the full fetch count. The NA
+  text was then upgraded to a **bridge stat**: "N of these M patients also have open device
+  alerts in the queue" (danger-band ∩ open-alerts overlap, computed client-side) — separating
+  physiological risk from device-fault fallout at a glance; a per-row **Queue column**
+  identifies *which* patients ("⚑ open alert" jumps to the queue searched to that patient;
+  "—" = looks physiological).
+- **Triage navigation model (final — after a per-tab-persistence detour the same day)**:
+  context travels via URL params, never hidden state. Bare `/triage` = fresh defaults (week
+  queue, Open tab). Patient-NOW links (`?q=`, e.g. from Coach) land on the **live last-3h
+  view** searched to the patient. **Alert-intent links** (`?q=…&alert=1` — device-focus
+  "work this device's alert", OOR-row ⚑ chips, the live view's ⚑) land on the **queue with
+  the row auto-expanded** (trail + assign/resolve one click from the source — it took
+  three). Cohort sends (`?model=`/`?fw=`) land on the queue for bulk actions. Scenario
+  presets apply on change only.
+- **Watchlist→queue jump breadcrumb** (booth catch): clicking "⚑ open alert" in the live
+  view flips the scenario to the retrospective queue (the queue only exists there), but
+  the flip was silent and read as "my filters got reset". The jump now leaves an amber
+  banner — "Jumped from the live last-3h view to <patient>'s device alert…" — with a
+  one-click **⏱ Back to live view** that restores the scenario + its filters; manual
+  scenario changes dismiss it.
+- **Triage "🛢 Verify in Postgres" button** (booth verification): a toolbar button beside
+  Reset/Refresh opens a 2-step dropdown — "1 · Copy the query" (alerts ⋈ audit-trail,
+  newest first) and "2 · Open the Lakebase SQL editor ↗" — one click from the queue to
+  seeing your own ack/assign/note actions as Postgres rows. Readable by any viewer thanks
+  to the bootstrap's read grants. All three tour variants' Triage stops teach the
+  verification loop (the Interactive try-it leads with Ack → Peek → row appears). (First shipped as an inline honest-note link — too
+  buried; promoted to a button the same day.) The dropdown also offers **"Peek right
+  here ↓"** — an in-page panel (`GET /api/alerts/raw`) rendering the exact SQL + its live
+  result right under the queue, refetching on every queue action: click Ack above, watch
+  the row land below. "Open the Lakebase SQL editor" deep-links **directly into this
+  project's SQL editor** (the backend resolves the project + branch uids via the postgres
+  API, cached; exposed as `lakebase_editor_url` in `/api/config` — the About tile uses it
+  too; falls back to the generic `/lakebase` landing when unresolvable).
+- **Coach chart "Now" alert window** (booth feedback): the Glucose History chart shades the
+  trailing 3-hour window (amber, distinct from the rose incident band) when it contains
+  very-low/very-high readings — making "this patient is at risk *now*" visible (same <54/>250
+  · 3h lookback as the High-Risk tile and the Triage live view). The legend chip
+  "⚠ Now (last 3h) → forecast" clicks through to the near-term forecast card (scroll +
+  flash) — what just happened → where it's heading.
+- **Tour resilience** (booth feedback): clicking the dim backdrop **no longer silently ends
+  the tour** (a stray click outside the card lost the walkthrough with no way back — Skip/Done
+  are the explicit exits now); the card gains a **step scrubber slider** (drag to jump to any
+  step — the fast-forward after a wrong turn); the pause button gains a hint that the amber
+  **▶ Resume tour** pill stays on screen during explore.
+
+### Added — archive-on-reset: triage sessions land in UC (Delta)
+- **⟲ Reset demo now archives before it truncates**: the full alerts ⋈ audit state snapshots
+  to **`<catalog>.<schema>.triage_session_archive`** (Delta; one row per audit entry, tagged
+  `reset_id` + `archived_at`) via the Statement Execution API — every booth session's triage
+  work stays queryable from the lakehouse after the wipe. Archive failure **aborts the
+  reset** (preservation first). The success note in the UI deep-links to the UC table.
+  Rolling 30-day retention keeps it bounded (full cleanup = `DROP TABLE …`). The app SP
+  CREATEs + owns the table — new `GRANT CREATE TABLE ON SCHEMA` in `grant_app_sp.py` and the
+  `09` grant task. Closes the OLTP→lakehouse loop the roadmap promised (UC catalog
+  registration of the live Postgres remains phase-2). Verified live: 601 audit rows archived,
+  then 600 fresh alerts reseeded.
+
+### Fixed — single-patient alert focus (the all-day "retrospective week" confusion)
+- Jumping to one patient's alert (from the live watchlist ⚑, a device-page "work this
+  alert" deep-link, or a manual `PSEUDO_*` search) no longer shows the meaningless
+  "Full week (retrospective)" window selector — which contradicted the "from the live view"
+  banner. A single-patient focus now shows a plain **⚑ Alert detail — <patient>** chip
+  instead, keyed on the patient in the URL so it HOLDS through navigating out to Coach /
+  Device-Support and back (the earlier `jumpCtx`-only version reset to the week dropdown on
+  the round-trip). The window selector returns when you clear back to the full queue.
+- Bridge stat counts open OR acked as an "active device alert" (no more "0 have an open
+  alert" beside a visible ⚑ acked chip); the watchlist below-cutoff fetch only lists a
+  searched patient as "in the danger bands" when they actually have <54/>250 readings.
+
+### Fixed — PR review pass (code-reviewer · silent-failure-hunter · comment-analyzer)
+- **Device Pattern Alerts ranked by the wrong metric** (honesty): it ordered cohorts by
+  out-of-range *rate*, which reads ~36–40% on EVERY model×firmware — clean controls included
+  — so its "top patterns" were physiology noise (clean Alpha/Gamma-4.0.3 cohorts ranked while
+  the genuinely faulted Delta-4.0.3 ranked last). Now ranked by **device error** (in-incident
+  mean |observed − true|, the heatmap's metric): faulted rollouts surface at ~40 mg/dL, clean
+  firmware ≈ 0. OOR% kept as a labeled secondary column ("can't rank the fault").
+- **`editor_url()` permanent negative cache** — a transient postgres-API blip at startup
+  permanently disabled the Verify-in-Postgres deep link; now caches only a successful resolve.
+- **Reset reseed-after-truncate** now returns a specific "queue wiped + archived — press Reset
+  again" message instead of a generic 500 that read as "nothing happened".
+- **Watchlist load failures surface** to the error banner (a `loadWatchlist` helper) instead
+  of a silent empty "no one at risk"; raw-peek + grants-skip now log; dead `load(filter)` arg
+  and over-permissive `_safe_ident` cleaned up.
+- **Comment hygiene** (public-repo): stripped ~33 date-stamped `(booth catch 2026-06-12)` /
+  incident-narration parentheticals (kept the load-bearing WHY), removed two commented-out
+  dead-code blocks + a commented `postgres_projects:` stub + a leaked patient id from
+  comments, and repointed a gitignored `ref_notes/` link to the committed `lakebase_probe/README.md`.
+
+### Changed — booth-polish round 2 (same day, later still)
+- **Composable row inputs**: fill assignee and/or addendum, one **Apply** — each filled
+  field still writes its own audit row (per-event compliance trail preserved).
+- **Live-view Queue cell**: inline **Ack** (no view switch); ⚑ shows the alert's status
+  (open/acked) and lands on the expanded queue row.
+- **Header semantics finalized**: bell counts = whole queue, always ("queue: N open · …");
+  the watch view appends "N of the M patients below has/have an open device alert (⚑)"
+  (referents explicit, number agreement); "N matching" + **✕ clear filters** live inline
+  with the filters; status tabs are always clickable (from the live view they switch to the
+  queue on that status); Reset works from any view.
+- **Reset notice** offers a copyable `reset_id`-scoped Delta query alongside the UC link;
+  the archive table is **drop-safe** (recreated on the next reset, `UNDROP` within
+  retention). Watchlist: a searched patient below the top-100 cutoff gets a direct-fetch
+  row instead of an empty "stuck" view.
+- **SPA shell `Cache-Control: no-cache`** — stale `index.html` kept pinning booth browsers
+  to previous bundles across deploys (hashed assets stay cacheable). Plus a TDZ crash
+  hotfix from this same polish run (declaration-order bug — caught live, fixed within
+  minutes).
+
+### Changed — booth-polish round-up (same day, late)
+- **Reset demo resets the view too**: clears the patient search + jump breadcrumb and strips
+  URL deep-link params (sticky filters made a completed reset look like a hang).
+- **One band, one color**: Device-Support reading details derive a single band (critical /
+  warn / ok) driving the value, Range-Status text, AND the action banner — which gains an
+  honest amber "Monitor" middle tier (rose reserved for <54/>250).
+- **Unified page headers**: every page header icon is a cyan **outlined** square (filled
+  gradients retired) holding the page's own nav icon (Telescope = Full Loop, Info = About,
+  BookOpen = Metrics, HeartHandshake = Coach, Wrench = Device Support; BrandMark elsewhere),
+  and every header icon links home. Device-Support's Population-Overview section icon matches
+  Coach's (cyan Users).
+- **Tour**: chooser dialog centered in the viewport; **Done now ends ON The Full Loop page**
+  (no bounce home — "Done leaves you right here"); the Interactive triage stop split into
+  "work the queue" + a dedicated **"🛢 Proof: it's real Postgres"** step spotlighting the
+  Verify button (new `verify-postgres` tour anchor; counts self-update).
+
+### Changed — IA / naming honesty
+- **Roadmap page renamed "The Full Loop"** (nav label; sub `Detect·Diagnose·Assess`; page header
+  shows the full arc, gaining `→ Act` on Lakebase deploys; About gains a 4th quick-access card,
+  grid now 4-up). Route renamed `/roadmap` → **`/full-loop`** (same day; the old path
+  client-side-redirects via a `<Navigate replace>` alias so existing bookmarks keep working).
+  Named for the story — the loop literally closes now
+  that triage writes back.
+- **"Live Alert" framed as the workflow, not a latency claim**: the Triage intro + send-to-triage
+  tooltips note alerts are batch-derived today; with streaming ingestion (see the what's-next
+  backlog) the same queue raises them in real time. Backlog refreshed: monitoring-created alerts,
+  triage analytics via UC-catalog registration, incident playback.
+
+### Changed — Lakebase hardening (same day: from-scratch rebuild findings)
+
+A full `bundle destroy` → redeploy test of the Lakebase-enabled sandbox surfaced two failure
+classes; both are now fixed at the source:
+
+- **The Lakebase project moved OUT of the bundle** (`databricks.yml`: the `postgres_projects`
+  resource block is retired in favor of a one-time `databricks postgres create-project` —
+  DEPLOY.md "Lakebase one-time setup"; the app's `postgres` binding references the branch by
+  name and is unchanged). Why: `bundle destroy` deleted the project **including data** and left
+  the id **soft-delete-tombstoned (~7 days)** — the same-id redeploy then failed
+  `project with such id already exists`, and the recovery path (`undelete` +
+  `bundle deployment bind`) hit a provider bug (the API never returns `spec`, so a bound project
+  perpetually re-plans as `recreate`, re-destroying it) that only manual terraform-state surgery
+  broke. External creation removes the whole class: destroy leaves data intact, redeploys re-bind
+  by name.
+- **App-SP rotation proofing** (`App/databricks/lakebase.py`): every app recreate issues a
+  **new service principal**, and the rotated SP doesn't own the `triage` objects its predecessor
+  created — the rebuilt app failed every queue call with `permission denied for schema triage`
+  while smoke's project+binding checks passed. Three ownership edges fixed: (1) the schema
+  bootstrap now grants **read/write to all roles on the database** (tables + sequences +
+  matching default privileges; `PUBLIC` reaches only roles provisioned on the project) and
+  tolerates the GRANT statements failing for a non-owner SP; (2) the bootstrap **probes
+  usability first** and only runs DDL on genuine first boot — `CREATE INDEX IF NOT EXISTS`
+  checks table *ownership* before the IF-NOT-EXISTS short-circuit, so re-running DDL as a
+  rotated SP failed `must be owner of table alerts`; (3) demo reset drops `RESTART IDENTITY`
+  (restarting a sequence requires sequence *ownership*) — plain `TRUNCATE` runs on the granted
+  privilege, ids just keep climbing. Verified live: a 3rd-rotation SP read, acked, and
+  reset/reseeded 600 alerts with zero manual PG steps. Demo-grade posture, documented in
+  `App/README.md`.
+- **`smoke_test.py` check 9 gains the functional leg**: after project + binding, it calls the
+  app's `GET /api/alerts` with the operator's OAuth token and asserts HTTP 200 — proving
+  credential mint + PG connect + schema usability end-to-end (exactly the layer the rotation
+  failure hid in).
+- **New-adopter docs pass**: the at-a-glance flow gains a "Step 2½ — Lakebase one-time
+  create-project" node (required for `gsphere`/`gsphere_fw_v2`; all other targets deploy
+  Lakebase-free and the app hides triage automatically — stated explicitly); Troubleshooting
+  gains the three Lakebase failure signatures (branch-does-not-exist at App create / schema
+  permission denied / 404 credentials); grants-preflight + `grant_app_sp.py` note Lakebase
+  needs NO grants; `.env.bundle.example` + root README + CONTRIBUTING smoke-count updated;
+  `AGENTS.md` gains §10 (Lakebase gotchas for agents); both READMEs now document the
+  **self-guided tour** (variants, pause/resume, scrubber, flag-gated stops). Dependency +
+  license tables moved to dedicated per-area **`DEPENDENCIES.md`** files (App +
+  Data_DataGen) — the App backend table gains the missing **`psycopg` (LGPL-3.0)** row,
+  the `@types/*` dev-deps, and a **Lakebase** platform-services row; root README links
+  both inventories for license/legal audits; CONTRIBUTING convention updated. DEPLOY.md's
+  Architecture-Overview mermaid gains the Lakebase node (the App's only write path);
+  REPO_LAYOUT.md's stale "database_instances commented out" claims corrected.
+- **DEPLOY.md runbooks**: Lakebase one-time setup (create-project command validated live);
+  teardown notes the project survives destroy (+ explicit `delete-project` for full removal);
+  recovery section gains the **orphaned-role fix** — `databricks postgres delete-role` on the
+  old app SP's role makes the control plane reassign its objects to the project owner, who can
+  then re-grant or `DROP SCHEMA triage CASCADE` (alerts are reseedable demo state).
+
+### Changed — Diabetes Coach: honest device-distortion banners (clinical honesty)
+- The Coach's single under-read "masked severity" alert is now **three** symmetric
+  device-distortion banners, so the per-patient view honestly names *every* way the
+  calibration fault could mislead a clinician — not just the one direction
+  (`App/src/pages/DiabetesCoachDashboard.jsx`, `…/DiabetesCoachDashboard/queries.js`):
+  - **Masked high** (under-read hid a real hyper — device under-reported danger; a
+    dangerously-high patient looks fine). Threshold raised from true-max > 180 → **> 200**
+    so a marginal 181 no longer trips it and competes with a co-occurring false-low story.
+  - **Masked low** (over-read hid a real hypo — the **deadly missed low**: device shows safe
+    while the patient is genuinely < 70). The Day 2 / FW 4.0 over-read direction.
+  - **False low** (under-read **displayed** a low that wasn't real — true ≥ 70): a false
+    alarm whose treatment (fast carbs / glucose / reduced insulin) would drive an
+    already-fine patient **into hyperglycemia**. The Day 5 / FW 4.0.3 under-read direction.
+  - Each banner gates on sustained evidence (≥ 3 qualifying points) so a single borderline
+    blip doesn't fire it; `incidentQ` extended to return the true/observed troughs + peaks
+    and the per-direction point counts that drive them.
+- **Featured false-low exemplar is data-discovered, not hardcoded** — `/api/config` exposes
+  an `exemplars.false_low` patient picked straight from the incident data (`_get_tour_exemplars`
+  in `App/databricks/app.py`, cached): the under-read patient whose device displayed the most
+  *sustained* dramatic low (< 55 mg/dL) while true glucose stayed clearly in range (≥ 85) and
+  wasn't *also* masking a real high — tie-broken toward the fewest genuine lows elsewhere, so
+  the fabricated low stands out rather than competing with a frequently-low patient's real lows.
+  The Coach search placeholder and tour step ③ (`{{falseLow*}}` tokens filled in
+  `GuidedTour.jsx`) read it via the `useFalseLowExemplar` hook, so the example is correct on
+  **any dataset** (prod / sandbox / DAIS) — the curation logic lives in the ranking, not a
+  frozen id, and no per-target verification is needed. A concrete fallback keeps the copy intact
+  if the query can't run.
+
 ## [2026-06-11]
 
 Device-error realism overhaul: the calibration fault is now a **12-hour, device-model-gated, two-pulse** event (was a 3-hour flat-σ fleet-wide bump), so the demo shows two distinct buggy periods with a genuinely flat control cohort and gradual device recovery — while the firmware × day heatmap stays complete. App prose reconciled to the new duration.

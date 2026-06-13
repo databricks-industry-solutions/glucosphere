@@ -14,10 +14,15 @@ WHY THIS EXISTS
 WHAT IT GRANTS (idempotent — safe to re-run)
     Looks up the app's `service_principal_client_id`, derives the resource ids
     from App/databricks/app.yaml (no hardcoding), and applies:
-      - UC:               USE CATALOG <catalog>; USE SCHEMA + SELECT on <catalog>.<schema>
+      - UC:               USE CATALOG <catalog>; USE SCHEMA + SELECT + CREATE TABLE on <catalog>.<schema>
       - SQL warehouse:    CAN_USE
       - serving endpoints (MAS + KA + FM): CAN_QUERY
       - Genie space:      CAN_RUN
+
+    Lakebase is deliberately ABSENT here: the App's `postgres` binding
+    (databricks.yml) auto-creates the SP's PG role at deploy, and the app
+    bootstraps + owns its `triage` schema at runtime (lakebase.py) — there is
+    no grant to apply.
     Grants take effect per-request — no app redeploy needed afterward.
 
 RUN SEQUENCE
@@ -121,6 +126,8 @@ def main() -> None:
         f"GRANT USE CATALOG ON CATALOG {catalog} TO `{sp}`",
         f"GRANT USE SCHEMA ON SCHEMA {catalog}.{schema} TO `{sp}`",
         f"GRANT SELECT ON SCHEMA {catalog}.{schema} TO `{sp}`",
+        # Archive-on-reset: the app CREATEs (and then owns) triage_session_archive
+        f"GRANT CREATE TABLE ON SCHEMA {catalog}.{schema} TO `{sp}`",
         # READ VOLUME powers the app's /uc-assets/ PNG route (mirrors notebook
         # 09_grant_app_permissions.py). Non-fatal if the volume isn't present:
         # the statements API returns a FAILED state in-body (CLI exit 0).

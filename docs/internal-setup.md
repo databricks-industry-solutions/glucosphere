@@ -113,6 +113,13 @@ Plugins install into `~/.claude/plugins/` and persist across sessions, re-logins
 
 ## Catalog naming convention (internal fevm workspaces)
 
+> The workspace/catalog names below are **intentionally documented** — they're non-secret
+> internal conveniences (profile aliases + catalog names; no hosts, ids, or credentials),
+> and this doc's purpose is to point internal maintainers at the shared coords. For access
+> to the shared workspace/catalogs, **reach out to the Glucosphere maintainers**; then save
+> your coords into your own gitignored `.env.bundle.<target>` (copied from
+> [`.env.bundle.example`](../.env.bundle.example)) — never into committed files.
+
 Internal Databricks workspaces (`fevm-*`) typically expose two catalog
 variants for the same workspace. Treat them differently:
 

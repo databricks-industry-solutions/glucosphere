@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader } from 'lucide-react';
-import BrandMark from '../components/BrandMark';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Wrench, AlertTriangle, Search, TrendingUp, ChevronDown, ChevronRight, Brain, Loader, Users } from 'lucide-react';
 import { useGoBack } from '../hooks/useGoBack';
-import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle } from '../api/databricksSQL';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
+import { getDistinctDeviceCount, getDeviceHeatmapData, getOutOfRangeDevices, getDeviceLatestReading, getDevicePatternAlerts, getFirmwareCohorts, getFirmwareLifecycle, getPatientIncidentSnapshot, getPatientRecent3h } from '../api/databricksSQL';
 import { callAssistant } from '../api/databricksAgent';
 import { getEngine } from '../api/assistEngine';
 import { getConfig } from '../api/config';
@@ -30,6 +30,7 @@ const mdComponents = {
 export default function DeviceSupportDashboard() {
   const navigate = useNavigate();
   const goBack = useGoBack();
+  const lakebaseConfigured = useLakebaseConfigured();
   const [expandedDevice, setExpandedDevice] = useState(null);
   const [filterModel, setFilterModel] = useState('all');
   // Deep-link from a patient's Device panel (Coach → "Device fleet diagnostics"):
@@ -39,6 +40,10 @@ export default function DeviceSupportDashboard() {
   const focusModel = searchParams.get('model');
   const focusDevice = searchParams.get('device');
   const [focusRow, setFocusRow] = useState(null);       // that device's latest reading (OOR/3h gate overridden)
+  // Layered time context for the focused device: fault window ("then") +
+  // last-3h danger-band summary ("recent") — so arriving from a triage alert
+  // or the live watchlist doesn't contradict a healthy "latest" reading.
+  const [focusCtx, setFocusCtx] = useState(null);
   const [focusLoading, setFocusLoading] = useState(false);
   const [deviceCount, setDeviceCount] = useState('...');
   const [deviceCountLoading, setDeviceCountLoading] = useState(true);
@@ -98,6 +103,20 @@ export default function DeviceSupportDashboard() {
     })();
     return () => { alive = false; };
   }, [focusDevice]);
+
+  // Layered time context for the focused device — fetched once per focus:
+  // "then" (the patient's worst in-incident moment) + "recent" (last-3h
+  // danger-band summary). Whichever frame the visitor arrived from (triage
+  // alert / live watchlist / roster), the panel shows it next to "now".
+  useEffect(() => {
+    const pid = focusRow?.patient_id;
+    if (!pid) { setFocusCtx(null); return; }
+    let alive = true;
+    Promise.all([getPatientIncidentSnapshot(pid), getPatientRecent3h(pid)])
+      .then(([snap, recent]) => { if (alive) setFocusCtx({ snap, recent }); })
+      .catch(() => { if (alive) setFocusCtx(null); });
+    return () => { alive = false; };
+  }, [focusRow?.patient_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear the patient-focus deep-link (drops the banner + the focused device, resets the
   // filter — back to the full out-of-range fleet view).
@@ -360,7 +379,8 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             device_type: d.device_type,
             firmware_version: d.firmware_version,
             region: d.region,
-            rate_pct: d.avg_oor_rate_pct,
+            deviceError: d.device_error_mae,   // in-incident MAE — the ranking signal
+            rate_pct: d.avg_oor_rate_pct,      // OOR rate — secondary (physiology-dominated)
             oorEvents: d.total_oor_events,
             days_tracked: d.days_tracked
           }));
@@ -498,9 +518,10 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
               </svg>
             </button>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <Wrench className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
+              <Link to="/" title="Glucosphere home — fleet control tower" aria-label="Home"
+                className="w-10 h-10 rounded-lg border border-cyan-500/40 flex items-center justify-center shrink-0 hover:bg-cyan-500/10">
+                <Wrench className="w-5 h-5 text-cyan-400" strokeWidth={2.5} />
+              </Link>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
                   Device Support Dashboard
@@ -524,11 +545,17 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
         </div>
       </header>
 
-      <main className="max-w-[88rem] mx-auto px-6 py-8">
+      {/* pb-32: breathing room below the last section — the focused-device row was
+          pinned to the viewport bottom under the Ask FAB */}
+      <main className="max-w-[88rem] mx-auto px-6 pt-8 pb-32">
         {/* Population Overview */}
         <section className="mb-8">
           <div className="flex items-center gap-3 mb-1">
-            <BrandMark className="w-5 h-5 text-amber-400" />
+            <span className="relative w-6 h-5 shrink-0" aria-hidden="true">
+              {/* "two spanners" — the device-fleet sibling of Coach's two-person Users icon */}
+              <Wrench className="w-4 h-4 text-cyan-400 absolute left-0 top-0" />
+              <Wrench className="w-4 h-4 text-cyan-400/70 absolute left-2 top-1" />
+            </span>
             <h2 className="text-lg font-semibold text-slate-300" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>
               Population Overview
             </h2>
@@ -680,7 +707,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
             <div className="col-span-5 bg-slate-900/50 border border-slate-800 rounded-lg p-6 flex flex-col">
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-slate-300 mb-1">Device Pattern Alerts</h3>
-                <p className="text-xs text-slate-500 font-mono">Detected device performance patterns</p>
+                <p className="text-xs text-slate-500 font-mono">Ranked by device error (in-incident MAE) — the fault signal, not raw out-of-range rate</p>
               </div>
               
               {alertsLoading ? (
@@ -693,19 +720,19 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 </div>
               ) : (
                 (() => {
-                  // Compact ranked list (no bars) — complements the heatmap matrix instead
-                  // of echoing its colored bars. Top out-of-range patterns by reading volume.
-                  // Two-line rows so device·firmware (line 1) and region·tracking (line 2)
-                  // aren't truncated. The severity dot is sized + coloured by out-of-range
-                  // rate (bigger/redder = worse), scaled across the shown alerts so it reads
-                  // at a glance — orange→rose ramp (no green: even the lowest shown rate is high).
-                  const rates = alerts.map(a => a.rate_pct);
-                  const lo = Math.min(...rates), hi = Math.max(...rates);
+                  // Ranked by DEVICE ERROR (in-incident MAE), not OOR rate — the fault
+                  // signal: faulted rollouts hit ~40 mg/dL, clean firmware sits near 0.
+                  // The dot is sized + coloured by that error, scaled across the shown
+                  // rows (bigger/redder = larger device error). Two-line rows keep
+                  // device·firmware and region·tracking from truncating.
+                  const errs = alerts.map(a => a.deviceError || 0);
+                  const lo = Math.min(...errs), hi = Math.max(...errs);
                   const lerp = (a, b, t) => Math.round(a + (b - a) * t);
-                  const dotStyle = (r) => {
-                    const t = hi > lo ? (r - lo) / (hi - lo) : 1;       // 0..1 across shown alerts
+                  const dotStyle = (e) => {
+                    const t = hi > lo ? (e - lo) / (hi - lo) : 1;       // 0..1 across shown rows
                     const px = 8 + t * 6;                                // 8..14px
-                    return { width: `${px}px`, height: `${px}px`, backgroundColor: `rgb(${lerp(251, 244, t)} ${lerp(146, 63, t)} ${lerp(60, 94, t)})` };
+                    // emerald (clean ~0) → rose (high error)
+                    return { width: `${px}px`, height: `${px}px`, backgroundColor: `rgb(${lerp(52, 244, t)} ${lerp(211, 63, t)} ${lerp(153, 94, t)})` };
                   };
                   return (
                     <div className="flex-1 flex flex-col">
@@ -714,30 +741,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         <span className="w-4 shrink-0" />
                         <span className="w-4 shrink-0" />
                         <span className="flex-1 min-w-0">device · firmware · region</span>
-                        <span className="shrink-0 w-16 text-right text-amber-400/80">OOR reads</span>
-                        <span className="shrink-0 w-12 text-right">rate</span>
+                        <span className="shrink-0 w-20 text-right text-rose-400/80">device err</span>
+                        <span className="shrink-0 w-12 text-right">OOR%</span>
                       </div>
                       <ol className="flex-1 flex flex-col justify-between divide-y divide-slate-800/70">
-                        {[...alerts].sort((a, b) => b.oorEvents - a.oorEvents).map((alert, idx) => (
+                        {[...alerts].sort((a, b) => (b.deviceError || 0) - (a.deviceError || 0)).map((alert, idx) => (
                           <li key={idx} className="flex items-center gap-3 py-2.5">
                             <span className="text-xs font-mono text-slate-600 w-4 text-right shrink-0">{idx + 1}</span>
                             <span className="w-4 flex justify-center shrink-0">
-                              <span className="rounded-full" style={dotStyle(alert.rate_pct)} title={`out-of-range rate ${alert.rate_pct}%`} />
+                              <span className="rounded-full" style={dotStyle(alert.deviceError || 0)} title={`device error ${alert.deviceError} mg/dL (in-incident)`} />
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-mono text-slate-200 truncate">{alert.device_type} {alert.firmware_version}</div>
                               <div className="text-[11px] font-mono text-slate-500 truncate">{alert.region} · {alert.days_tracked}d tracked</div>
                             </div>
-                            <span className="text-sm font-mono text-amber-400 shrink-0 w-16 text-right tabular-nums">{alert.oorEvents.toLocaleString()}</span>
+                            <span className="text-sm font-mono text-rose-400 shrink-0 w-20 text-right tabular-nums">{alert.deviceError != null ? `${alert.deviceError}` : '—'}<span className="text-[10px] text-slate-600"> mg/dL</span></span>
                             <span className="text-xs font-mono text-slate-500 shrink-0 w-12 text-right tabular-nums">{alert.rate_pct}%</span>
                           </li>
                         ))}
                       </ol>
                       {/* key — one line per item */}
                       <div className="mt-3 pt-2 border-t border-slate-800/70 text-[10px] font-mono text-slate-500 leading-relaxed space-y-0.5">
-                        <div><span className="text-amber-400/80">OOR reads</span> = count of out-of-range device readings</div>
-                        <div><span className="text-slate-300">rate</span> = share of that group's readings out of range</div>
-                        <div>● dot — bigger / redder = higher out-of-range rate</div>
+                        <div><span className="text-rose-400/80">device err</span> = mean |observed − true| mg/dL over in-incident readings — the fault magnitude (clean ≈ 0)</div>
+                        <div><span className="text-slate-300">OOR%</span> = out-of-range rate — shown for context; ~36–40% on every cohort (physiology), so it can't rank the fault</div>
+                        <div>● dot — bigger / redder = larger device error</div>
                       </div>
                     </div>
                   );
@@ -777,6 +804,38 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                 )}
               </span>
               <button onClick={clearFocus} className="text-xs font-mono text-slate-400 hover:text-slate-200 shrink-0">clear ✕</button>
+            </div>
+          )}
+          {/* Layered time context — "then / recent / now" — so the focus view never
+              contradicts the alert or watchlist that sent the visitor here. */}
+          {focusDevice && focusRow && focusCtx && (
+            <div className="mb-4 px-3 py-2.5 rounded-lg border border-slate-700 bg-slate-900/50 text-[11px] font-mono space-y-1">
+              {focusCtx.snap && (
+                <p className="text-slate-400">
+                  <span className="text-slate-300">🕰 Fault window</span> (peak, {focusCtx.snap.time}): device showed{' '}
+                  <span className={focusCtx.snap.direction === 'positive' ? 'text-rose-300' : 'text-sky-300'}>{focusCtx.snap.observed}</span> vs true{' '}
+                  <span className="text-slate-200">{focusCtx.snap.trueGlucose}</span> mg/dL — {focusCtx.snap.direction === 'positive' ? '↑ over-read by' : '↓ under-read by'} ~{Math.abs(focusCtx.snap.observed - focusCtx.snap.trueGlucose)}
+                </p>
+              )}
+              {focusCtx.recent && (
+                <p className="text-slate-400">
+                  <span className="text-slate-300">⏱ Last 3h</span>: {(focusCtx.recent.veryLow || focusCtx.recent.veryHigh)
+                    ? <><span className="text-sky-300">{focusCtx.recent.veryLow} very-low</span> · <span className="text-rose-300">{focusCtx.recent.veryHigh} very-high</span> readings (range {focusCtx.recent.min}–{focusCtx.recent.max} mg/dL)</>
+                    : <>no danger-band readings{focusCtx.recent.min != null ? ` (range ${focusCtx.recent.min}–${focusCtx.recent.max} mg/dL)` : ''}</>}
+                </p>
+              )}
+              <p className="text-slate-500">
+                <span className="text-slate-400">📍 Now</span>: the latest reading below{focusCtx.snap ? ' — in-range here means the fix landed for this device' : ''}.
+              </p>
+              {/* the return edge of the triage loop: investigate here (incl. Deeper
+                  Analysis), then circle back to the alert to record the resolution */}
+              {lakebaseConfigured && focusRow?.patient_id && (
+                <button
+                  onClick={() => navigate(`/triage?q=${encodeURIComponent(focusRow.patient_id)}&alert=1`)}
+                  className="mt-1 text-[11px] font-mono px-2 py-1 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10"
+                  title="Opens Triage's live view focused on this patient — the ⚑ chip there takes you to their alert for resolution"
+                >⚑ work this device's alert in Triage →</button>
+              )}
             </div>
           )}
           <div className="flex items-center justify-between mb-6">
@@ -854,6 +913,14 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                         >
                           {device.patient}
                         </button>
+                        {/* → this patient's alert in the triage queue (flag-gated) */}
+                        {lakebaseConfigured && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/triage?q=${encodeURIComponent(device.patient)}&alert=1`); }}
+                            className="ml-2 text-[10px] font-mono px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400/80 hover:bg-cyan-500/10"
+                            title={`Find ${device.patient} in the Alert Triage queue`}
+                          >⚑ triage</button>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-300">{device.model}</td>
                       <td className="px-4 py-3 text-sm font-mono text-slate-400">{device.firmware}</td>
@@ -902,27 +969,30 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                       <tr className="border-b border-slate-800 bg-slate-900">
                         <td colSpan="9" className="px-4 py-4">
                           <div className="grid grid-cols-2 gap-6">
-                            {/* Reading Details */}
+                            {/* Reading Details — ONE band → ONE color, used by the value,
+                                the Range Status text, and the action banner below (a mixed
+                                amber value + white status + rose banner read as three
+                                different severities for the same reading. */}
+                            {(() => { const v = device.glucose_value;
+                              const band = (v < 54 || v > 250) ? 'critical' : (v < 70 || v > 180) ? 'warn' : 'ok';
+                              const bandText = band === 'critical' ? 'text-rose-400' : band === 'warn' ? 'text-amber-400' : 'text-emerald-400';
+                              return (
                             <div>
                               <h4 className="text-sm font-medium text-slate-300 mb-3">Reading Details</h4>
                               <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Glucose Value:</span>
-                                  <span className={`font-mono font-bold ${
-                                    (device.glucose_value < 54 || device.glucose_value > 250) ? 'text-rose-400'
-                                      : (device.glucose_value < 70 || device.glucose_value > 180) ? 'text-amber-400'
-                                      : 'text-emerald-400'
-                                  }`}>
-                                    {Math.round(device.glucose_value)} mg/dL
+                                  <span className={`font-mono font-bold ${bandText}`}>
+                                    {Math.round(v)} mg/dL
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-slate-500">Range Status:</span>
-                                  <span className="text-slate-300">
-                                    {device.glucose_value < 54 ? 'Very Low (<54)' :
-                                     device.glucose_value < 70 ? 'Low (54–69)' :
-                                     device.glucose_value > 250 ? 'Very High (>250)' :
-                                     device.glucose_value > 180 ? 'High (181–250)' :
+                                  <span className={bandText}>
+                                    {v < 54 ? 'Very Low (<54)' :
+                                     v < 70 ? 'Low (54–69)' :
+                                     v > 250 ? 'Very High (>250)' :
+                                     v > 180 ? 'High (181–250)' :
                                      'In range (70–180)'}
                                   </span>
                                 </div>
@@ -936,9 +1006,13 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               </div>
                               
-                              {(device.glucose_value < 70 || device.glucose_value > 180) ? (
+                              {band === 'critical' ? (
                                 <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/20 rounded text-xs text-rose-300">
-                                  ⚠️ <strong>Action Required:</strong> This reading is outside normal range. Consider patient notification and clinical review.
+                                  ⚠️ <strong>Action Required:</strong> This reading is in a danger band (&lt;54 / &gt;250). Consider patient notification and clinical review.
+                                </div>
+                              ) : band === 'warn' ? (
+                                <div className="mt-4 p-3 bg-amber-500/5 border border-amber-500/20 rounded text-xs text-amber-300">
+                                  ⚠️ <strong>Monitor:</strong> This reading is outside the 70–180 target band. Keep watching; escalate if it trends toward the danger bands.
                                 </div>
                               ) : (
                                 <div className="mt-4 p-3 bg-emerald-500/5 border border-emerald-500/20 rounded text-xs text-emerald-300">
@@ -946,6 +1020,7 @@ Focus on DEVICE technical issues, not patient clinical care. Provide actionable 
                                 </div>
                               )}
                             </div>
+                              ); })()}
                             
                             {/* Device Analysis — FM (fleet-grounded), device-technical focus (not patient clinical care) */}
                             <div>

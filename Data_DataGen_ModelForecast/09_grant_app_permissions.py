@@ -177,6 +177,8 @@ sql_grants = [
     f"GRANT USE CATALOG ON CATALOG {CATALOG_NAME} TO `{sp_app_id}`",
     f"GRANT USE SCHEMA ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     f"GRANT SELECT ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
+    # Archive-on-reset (triage): the app CREATEs + owns triage_session_archive
+    f"GRANT CREATE TABLE ON SCHEMA {CATALOG_NAME}.{SCHEMA_NAME} TO `{sp_app_id}`",
     # READ VOLUME on pipeline_data — required for the Flask /uc-assets/ route in
     # App/databricks/app.py to fetch notebook-generated PNGs live from UC Volume
     # at runtime. Without this grant, the App gets 403 PERMISSION_DENIED when

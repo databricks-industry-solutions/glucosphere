@@ -79,8 +79,7 @@ delay multiplies and the chain blows past the **~300s Databricks Apps gateway ti
 `504 upstream request timeout`. The direct router makes one call (or two for routing), so it
 stays fast even under load — matching Databricks' own guidance that deterministic
 chains/routers have "typically lower latency (fewer LLM calls for orchestration)." The CGM-data
-(Genie) mode is unchanged and always calls Genie directly. Full root-cause analysis:
-[`ref_notes/2026-05-31_mas-latency-troubleshooting.md`](../ref_notes/2026-05-31_mas-latency-troubleshooting.md).
+(Genie) mode is unchanged and always calls Genie directly.
 
 ```mermaid
 %%{init: {'theme': 'neutral'}}%%
@@ -178,6 +177,38 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 
 ## Key Features
 
+The app's information architecture follows the demo's operational story — **detect →
+diagnose → assess → act** — with one surface per move, so navigation mirrors how a fleet
+operator would actually work an incident:
+
+| Move | Surface | Question it answers |
+|---|---|---|
+| **① Detect** | Landing (control tower) · Device Support (firmware × day heatmap) | *Is something wrong, and where?* |
+| **② Diagnose** | Firmware Lifecycle | *Which firmware, which direction, how bad?* |
+| **③ Assess** | Population Risk | *Who got pushed into danger — what's the blast radius?* |
+| **→ Act** | Diabetes Coach (per-patient) · Alert Triage (fleet queue, Lakebase-backed; shown only when the deploy target configures Lakebase) | *Intervene: outreach one patient / work the alert queue* |
+
+New views slot into this spine as their own page rather than growing an existing one —
+cross-page deep-links (e.g. Population Risk → "send to triage", Firmware → "flag for
+rollback") carry the operator between moves.
+
+### Self-guided tour
+
+First-time visitors get an offer to take a **built-in guided tour** (no external library —
+`App/src/components/GuidedTour.jsx` + `App/src/tour/steps.js`); it's relaunchable anytime
+from the nav rail. Two variants from the chooser:
+
+- **Quick overview** — the Detect → Diagnose → Assess (→ Act) story in ~9 spotlight steps.
+- **Interactive walkthrough** — every panel, with **"⏸ Try it yourself — I'll wait here"**
+  pauses on hands-on steps: the overlay steps aside so the page is fully clickable and an
+  amber **▶ Resume tour** pill stays on screen to return to the same step. It also opens
+  and drives the assistant (Genie tab, Fast ⇄ MAS engine switch) mid-tour.
+
+Both variants end on **The Full Loop** page (`/full-loop`) and adapt to the deploy target:
+the Alert-Triage stops appear only when Lakebase is configured (step counts adjust). Each
+card carries a **step scrubber slider** — drag to jump to any step; clicking outside the
+card never ends the tour (Skip/Done are the explicit exits).
+
 ### Landing Page
 - **Active Patients**: Real-time count from gold table
 - **Devices Online**: Devices with recent readings
@@ -191,12 +222,57 @@ This builds the production frontend, then bundle-deploys the Flask backend + sta
 - **AI Troubleshooting**: switchable assistant (fast router by default; Multi-Agent Supervisor on toggle) for device analysis
 
 ### Firmware Lifecycle
-- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~3-hour fault isn't diluted by a whole-day average
+- **MAE timeline**: per-model device error (mean |observed − true|) across the baseline → transient-fault → fix sequence, scoped to the in-incident window so a ~12-hour fault isn't diluted by a whole-day average
 - **Calibration drift panel**: per-firmware over-/under-read direction and magnitude, with a deep-link to the affected cohort on Population Risk
 
 ### Population Risk
 - **Cohort exposure → fault classification**: each cohort's device-reported %hypo/%hyper bars sit above an aligned 3×3 confusion matrix (Under-read · Baseline-control · Over-read), normalizable by share-of-all (default) or per-true-band — separating what the device *reported* from what was *truly* happening during the fault window
 - **Affected-patient roster**: the worst-N firmware-recall-cohort patients ranked by clinical burden (filterable by region / device model), each deep-linking to the Diabetes Coach
+
+### Alert Triage (Lakebase — flag-gated)
+- **Live alert queue** (`/triage`): the affected cohort as actionable alerts — **acknowledge / assign /
+  resolve** (resolution-outcome menu incl. "not a device issue" and EMS escalation), free-text **notes**,
+  **fingerstick follow-up** requests, and **bulk actions** over the filtered set (e.g. one "firmware rolled
+  back" resolves a whole cohort) — every action appends an **audit row** (the recall's compliance trail)
+- **Scenario vantages**: full week / Day-2 rollout / Day-5 hotfix fault / **last-3h live-risk view**
+  (readings-only detection — no incident labels, the production-realistic path)
+- Backed by **Lakebase** (managed Postgres, Autoscaling): the dashboards read the lakehouse; the queue is
+  the app's **transactional write path**. Enabled per deploy target via the `lakebase_project_id` bundle
+  variable (see `DEPLOY.md`); targets without it render the pre-Lakebase UI unchanged
+
+**Operational notes (Lakebase):**
+- **Division of labor** — the **Lakebase project is created once, outside the bundle** (one CLI command;
+  see `DEPLOY.md` — keeping a stateful DB out of `bundle destroy`'s blast radius avoids both data loss
+  and the soft-delete id-tombstone that blocks a same-id redeploy); the **Asset Bundle wires the app to
+  it by name** (the app's `postgres` resource binding, which auto-creates the app service principal's PG
+  role and injects `PGHOST`/`PGUSER`/`PGDATABASE`); the **app bootstraps its own schema at runtime**
+  (`App/databricks/lakebase.py`, idempotent on first DB touch). The schema can't move to deploy time:
+  its objects must be **owned by the app SP's role**, an identity only the app runs as.
+- **Tables live in the app-owned `triage` schema** (`triage.alerts`, `triage.alert_audit`) — not `public`
+  (PG 15+ denies CREATE there). The bootstrap GRANTs **read/write** (`SELECT/INSERT/UPDATE/DELETE/
+  TRUNCATE` + sequence usage) to other database roles — `PUBLIC` here reaches only the roles provisioned
+  on this Lakebase project (the operator + app SPs). Deliberately wider than read-only: every app
+  recreate **rotates the app SP**, and the rotated SP doesn't own objects its predecessor created —
+  read-only grants left a rebuilt app with `permission denied for schema triage`. Demo-grade posture
+  (alert rows are disposable demo state).
+- **Auth**: no password is stored or injected — the app mints short-lived OAuth tokens
+  (`POST /api/2.0/postgres/credentials`) as the PG password, refreshed ~50 min.
+- **Archive-on-reset**: ⟲ Reset demo snapshots the session (alerts ⋈ audit) to the Delta table
+  `<catalog>.<schema>.triage_session_archive` before truncating Postgres — sessions stay
+  queryable in UC (the reset notice deep-links the table + offers a `reset_id`-scoped query);
+  rolling 30-day retention; archive failure aborts the reset. Needs the app SP's
+  `CREATE TABLE` on the schema (granted by `scripts/grant_app_sp.py` / the `09` task).
+  **Drop-safe**: `DROP TABLE …triage_session_archive` is fine — the next reset recreates it
+  (`CREATE TABLE IF NOT EXISTS`, app-SP-owned); dropped history is gone (managed-table
+  `UNDROP` applies within the retention window).
+- The Lakebase **Data API does not need enabling** — the app speaks the native Postgres wire protocol
+  (`psycopg`).
+- **Drift warning**: `bundle deploy` does **not** recreate an externally-deleted project (the deployment
+  state isn't refreshed against the workspace). Lakebase deletion is soft — restore with
+  `POST /api/2.0/postgres/projects/<project-id>/undelete` (settings, roles, and storage survive), then
+  restart the app. Failure signature while the project is gone: queue actions return
+  `404 …/postgres/credentials`. `scripts/smoke_test.py` check 9 catches both this and any
+  app↔schema permission break (it probes `/api/alerts` end-to-end).
 
 ### Assistant (fast router · MAS toggle)
 - Chat interface for device troubleshooting (`/api/assist`)
@@ -268,44 +344,12 @@ uv run python scripts/grant_viewers.py --principal <user|group|sp-app-id> \
 See `scripts/render_app_yaml.py` (the `discover_*` helpers) for the by-name lookups, and
 `App/databricks/app.py` `GET /api/config` for how each field is assembled.
 
-## Dependencies used and their corresponding license information
+## Dependencies & licenses
 
-### Frontend (`package.json`)
+Full dependency + license inventory — frontend (`package.json`), backend
+(`requirements.txt`, incl. the **LGPL-3.0 psycopg** driver for Lakebase), and the
+platform services consumed at runtime — lives in [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
-| Dependency | Where used | Why it's used | License |
-| --- | --- | --- | --- |
-| [**react**](https://github.com/facebook/react) | `App/src/*.jsx` | UI framework | MIT |
-| [**react-dom**](https://github.com/facebook/react) | `App/src/main.jsx` | React renderer for browser DOM | MIT |
-| [**react-router-dom**](https://github.com/remix-run/react-router) | `App/src/App.jsx`, `App/src/pages/*` | Client-side routing | MIT |
-| [**lucide-react**](https://github.com/lucide-icons/lucide) | Icons across pages | Icon set | ISC |
-| [**react-markdown**](https://github.com/remarkjs/react-markdown) | MetricsExplained + MAS reply rendering | Markdown → React component | MIT |
-| [**vite**](https://github.com/vitejs/vite) | Build tool (`npm run build`) | Frontend bundler | MIT |
-| [**@vitejs/plugin-react**](https://github.com/vitejs/vite-plugin-react) | `vite.config.js` | React fast-refresh + JSX support | MIT |
-| [**tailwindcss**](https://github.com/tailwindlabs/tailwindcss) | `tailwind.config.js` + all components | Utility-first CSS | MIT |
-| [**postcss**](https://github.com/postcss/postcss) | `postcss.config.js` | CSS transform pipeline (Tailwind processor) | MIT |
-| [**autoprefixer**](https://github.com/postcss/autoprefixer) | `postcss.config.js` | Vendor-prefix automation | MIT |
-
-### Backend (`App/databricks/requirements.txt`)
-
-| Dependency | Where used | Why it's used | License |
-| --- | --- | --- | --- |
-| [**flask**](https://github.com/pallets/flask) | `App/databricks/app.py` | HTTP server framework (routes for `/api/sql/query`, `/api/config`, `/api/assist`, `/api/genie/query`, `/uc-assets/`) | BSD-3-Clause |
-| [**requests**](https://github.com/psf/requests) | `App/databricks/app.py` | Outbound HTTP to Databricks Statement Execution API, KA/MAS serving endpoints, UC Files API | Apache-2.0 |
-
-**Note on package URLs.** GitHub source repos linked on names above. If your Databricks workspace or corporate network blocks direct PyPI / npm egress, see the [note on package URLs and network reachability](../Data_DataGen_ModelForecast/README.md#note-on-package-urls-and-network-reachability) under the Data_DataGen dep table for context and Databricks egress-policy pointers.
-
-Python runtime is provided by the Databricks Apps platform — no local Python pin in `App/`. (Repo-root `scripts/` use Python 3.11 via `uv`; see [`DEPLOY.md`](../DEPLOY.md).)
-
-### Platform services (consumed at runtime, not bundled deps)
-
-| Service | Where used | Why it's used |
-| --- | --- | --- |
-| **Databricks Statement Execution API** | `App/databricks/app.py` `/api/sql/query` | Routes SQL queries to the bundle-managed serverless warehouse |
-| **Foundation model** (`databricks-claude-sonnet-4-6`) | `app.py` `/api/assist` (engine=direct) | Device reasoning / Device Analysis — the default fast router's reasoning path |
-| **Knowledge Assistant (KA) serving endpoint** | `app.py` `/api/assist` (called directly by the router for clinical Qs; or via MAS) | RAG over WHO clinical-guidelines PDF |
-| **Genie space** | `app.py` `/api/genie/query` (CGM-data mode, direct) and via the router/MAS | NL-to-SQL over gold device tables |
-| **Multi-Agent Supervisor (MAS) serving endpoint** | `app.py` `/api/assist` (engine=mas — the 🤖 toggle, not default) | Agentic multi-agent orchestration (Beta; slower) |
-| **Databricks Apps Platform** | Deployment target | Hosts Flask + React static build |
 
 ## License + support
 

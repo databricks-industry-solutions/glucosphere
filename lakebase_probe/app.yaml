@@ -1,0 +1,8 @@
+command: ["python", "app.py"]
+env:
+  - name: LAKEBASE_ENDPOINT
+    value: "projects/<your-test-project-id>/branches/production/endpoints/primary"
+  - name: LAKEBASE_HOST
+    value: "<endpoint-host-from: databricks postgres get-endpoint …/endpoints/primary>"
+  - name: LAKEBASE_DB
+    value: "databricks_postgres"

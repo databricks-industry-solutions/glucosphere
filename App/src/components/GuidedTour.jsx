@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TOUR_STEPS, TOUR_STEPS_FULL, TOUR_STEPS_INTERACTIVE } from '../tour/steps';
+import { useLakebaseConfigured } from '../hooks/useLakebase';
+import { useFalseLowExemplar } from '../hooks/useExemplars';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
-// step's target element, and renders a Next/Back/Done card.
+// step's target element, and renders a Next/Back/Done card with a step
+// scrubber (drag to jump to any step).
 export default function GuidedTour() {
   const [active, setActive] = useState(false);
   const [variant, setVariant] = useState(null); // null → show Quick/Full chooser; 'quick' | 'full' once picked
@@ -34,9 +37,30 @@ export default function GuidedTour() {
     return () => window.removeEventListener('glucosphere:assistant-state', onState);
   }, []);
 
-  const steps = variant === 'full' ? TOUR_STEPS_FULL
-    : variant === 'interactive' ? TOUR_STEPS_INTERACTIVE
-    : TOUR_STEPS;
+  // Lakebase-gated stops (requiresLakebase) are filtered out on deploys without
+  // the binding — their /triage target shows a "not enabled" panel there, so
+  // there'd be nothing to spotlight. The chooser counts use the same arrays.
+  const lakebaseConfigured = useLakebaseConfigured();
+  // The per-patient step's false-low example is discovered from the data (not a
+  // hardcoded id) — fill its {{falseLow*}} tokens from /api/config so the copy is
+  // correct on any dataset. Concrete fallbacks keep the sentence reading well
+  // before config resolves / if it can't.
+  const falseLow = useFalseLowExemplar();
+  const fillExemplar = (text) => {
+    if (!text) return text;
+    const e = falseLow || {};
+    return text
+      .replace(/\{\{falseLowId\}\}/g, e.patient_id || 'PSEUDO_0000257')
+      .replace(/\{\{falseLowDisplayed\}\}/g, e.displayed != null ? String(e.displayed) : '40')
+      .replace(/\{\{falseLowTrue\}\}/g, e.true_val != null ? String(e.true_val) : '87');
+  };
+  const gate = (arr) => arr.filter(s => !s.requiresLakebase || lakebaseConfigured);
+  const quickSteps = gate(TOUR_STEPS);
+  const fullSteps = gate(TOUR_STEPS_FULL);
+  const interactiveSteps = gate(TOUR_STEPS_INTERACTIVE);
+  const steps = variant === 'full' ? fullSteps
+    : variant === 'interactive' ? interactiveSteps
+    : quickSteps;
   const step = variant ? steps[i] : null;
 
   // Ensure we're on the right route for this step.
@@ -105,6 +129,19 @@ export default function GuidedTour() {
     if (!rect || !cardRef.current) { setCardStyle(null); return; }
     const card = cardRef.current.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight, M = 16, GAP = 14;
+    // Assistant steps: the slide-over panel owns the RIGHT side. The step is ABOUT
+    // the assistant, so dock the card right BESIDE the panel (just left of its edge)
+    // rather than stranding it on the far-left of the screen. Narrow viewports run
+    // the panel full-width (sm:w-[440px] → w-full below the sm breakpoint), leaving
+    // no room beside it → fall back to hard-left there.
+    if (step?.openAssistant) {
+      const PANEL = 440; // assistant slide-over width — keep in sync with GlobalAssistant's sm:w-[440px]
+      const top = Math.max(M, Math.min(rect.top, vh - card.height - M));
+      const beside = vw - PANEL - GAP - card.width;
+      const left = (vw >= 640 && beside >= M) ? beside : M;
+      setCardStyle({ position: 'fixed', top, left, pointerEvents: 'auto' });
+      return;
+    }
     const clampX = (x) => Math.max(M, Math.min(x, vw - card.width - M));
     const clampY = (y) => Math.max(M, Math.min(y, vh - card.height - M));
     const cx = rect.left + rect.width / 2 - card.width / 2;   // horizontally centered on element
@@ -116,11 +153,10 @@ export default function GuidedTour() {
     else if (rect.left - GAP - card.width >= M)           pos = { top: clampY(cy), left: rect.left - GAP - card.width }; // left
     else {
       // Oversized target (a full-width, taller-than-viewport panel): no room on any
-      // side, so tuck the card into whichever viewport CORNER has more free space —
-      // covering as little of the highlight as possible instead of sitting dead-center.
-      const left = (vw - rect.right) >= rect.left ? vw - card.width - M : M;
-      const top = (vh - rect.bottom) >= rect.top ? vh - card.height - M : M;
-      pos = { top: clampY(top), left: clampX(left) };
+      // side. Tuck the card into the TOP-RIGHT corner so the page title (top-left,
+      // beside the nav rail) stays visible and the card clears the left nav.
+      // (Assistant steps, which own the right side, are handled above.)
+      pos = { top: M, left: vw - card.width - M };
     }
     setCardStyle({ position: 'fixed', ...pos, pointerEvents: 'auto' });
   }, [rect, i]);
@@ -133,26 +169,26 @@ export default function GuidedTour() {
     return (
       <div className="fixed inset-0 z-[110]">
         <div className="absolute inset-0 bg-black/40" onClick={close} />
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-40 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl">
           <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>Take a tour</h3>
           <p className="text-sm text-slate-400 mt-1 leading-relaxed">Pick how much you'd like to see.</p>
           <div className="flex flex-col gap-2 mt-4">
             <button onClick={() => { setVariant('quick'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Quick overview
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS.length} steps · Detect → Diagnose → Assess → platform</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{quickSteps.length} steps · Detect → Diagnose → Assess{lakebaseConfigured ? ' → Act' : ''} → platform</span>
             </button>
             {/* Full walkthrough commented out for now: the Interactive variant is Full + pause-to-try
                 + the metrics/about close, so it subsumes Full. Un-comment to restore the read-only path. */}
             {/* <button onClick={() => { setVariant('full'); setI(0); }}
               className="px-3 py-2.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10 text-left">
               Full walkthrough
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_FULL.length} steps · every panel + AI assistant</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{fullSteps.length} steps · every panel + AI assistant</span>
             </button> */}
             <button onClick={() => { setVariant('interactive'); setI(0); }}
               className="px-3 py-2.5 text-sm text-amber-300 border border-amber-500/50 rounded-lg hover:bg-amber-500/10 text-left">
               Interactive walkthrough
-              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{TOUR_STEPS_INTERACTIVE.length} steps · pause any step to try it, then resume</span>
+              <span className="block text-[11px] text-slate-500 font-mono mt-0.5">{interactiveSteps.length} steps · pause any step to try it, then resume</span>
             </button>
           </div>
           <button onClick={close} className="mt-3 text-xs text-slate-500 hover:text-slate-300">Skip</button>
@@ -196,35 +232,56 @@ export default function GuidedTour() {
 
   return (
     <div className="fixed inset-0 z-[110]" style={{ pointerEvents: 'none' }}>
-      <div className="absolute inset-0 bg-black/40" style={{ pointerEvents: 'auto' }} onClick={close} />
+      {/* Backdrop deliberately does NOT close the tour: a stray click outside the card used
+          to silently end it mid-walkthrough with no way back to the current step.
+          Skip (and Done) are the explicit exits.
+          On assistant steps the slide-over panel IS the subject being toured, so dim only
+          the area LEFT of it (sm:w-[440px]) — a full-screen mask would darken the very
+          thing we're pointing at. Other steps dim the full screen. */}
+      <div className="absolute inset-y-0 left-0 bg-black/40"
+        style={{ right: step?.openAssistant ? 440 : 0, pointerEvents: 'auto' }} />
       {rect && (
         <div className="absolute border-2 border-cyan-400 rounded-lg transition-all"
-          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12, boxShadow: '0 0 0 9999px rgba(2,6,23,0.55)' }} />
+          style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12,
+            // On assistant steps keep just the cyan outline on the tab — no darkening
+            // box-shadow, so the panel body stays fully visible.
+            boxShadow: step?.openAssistant ? 'none' : '0 0 0 9999px rgba(2,6,23,0.55)' }} />
       )}
       <div ref={cardRef}
         className="fixed w-[92%] max-w-md bg-slate-900 border border-cyan-500/50 rounded-xl p-5 shadow-2xl transition-all"
         style={cardStyle || { left: '50%', transform: 'translateX(-50%)', bottom: 40, pointerEvents: 'auto' }}>
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {steps.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
-        <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
+        <p className="text-sm text-slate-400 mt-1 leading-relaxed">{fillExemplar(step.body)}</p>
         {/* Pause only where there's something to do: toggle steps (step.interactive → "Try it
             yourself"), assistant-explore steps (step.openAssistant) and read/deep-link pages
             (step.explore) → "Explore". Pure-narrative steps and the FAB step — where the next steps
             auto-open the assistant — get a plain Next, no redundant pause. */}
         {variant === 'interactive' && (step.interactive || step.openAssistant || step.explore) && (
-          <button onClick={() => { setPaused(true); setJustResumed(false); }}
-            className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
-            ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
-          </button>
+          <>
+            <button onClick={() => { setPaused(true); setJustResumed(false); }}
+              className="mt-3 w-full px-3 py-2 text-sm text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/10">
+              ⏸ {step.interactive ? "Try it yourself — I'll wait here" : "Explore — I'll wait here"}
+            </button>
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-snug">
+              While you explore, an amber <span className="text-amber-300">▶ Resume tour</span> pill stays
+              on screen — click it to come back to this step.
+            </p>
+          </>
         )}
-        <div className="flex justify-between items-center mt-4">
+        {/* Step scrubber: drag to jump to any step (fast-forward back after a wrong turn —
+            e.g. an accidental Skip and restart — without clicking Next n times). */}
+        <input type="range" min={1} max={steps.length} value={i + 1} aria-label="Jump to tour step"
+          onChange={(e) => { setI(Number(e.target.value) - 1); setJustResumed(false); }}
+          className="w-full mt-4 h-1 accent-cyan-400 cursor-pointer" />
+        <div className="flex justify-between items-center mt-2">
           <button onClick={close} className="text-xs text-slate-500 hover:text-slate-300">Skip</button>
           <div className="flex gap-2">
             {i > 0 && <button onClick={() => { setI(i - 1); setJustResumed(false); }} className="px-3 py-1.5 text-sm text-slate-300 border border-slate-700 rounded-lg hover:bg-slate-800">Back</button>}
             {i < steps.length - 1
               ? <button onClick={() => { setI(i + 1); setJustResumed(false); }}
                   className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${justResumed ? 'bg-cyan-500 text-slate-950 font-semibold border border-cyan-400 ring-2 ring-cyan-400/50' : 'text-cyan-300 border border-cyan-500/50 hover:bg-cyan-500/10'}`}>Next</button>
-              : <button onClick={() => { close(); navigate('/'); }} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
+              : <button onClick={close} className="px-3 py-1.5 text-sm text-cyan-300 border border-cyan-500/50 rounded-lg hover:bg-cyan-500/10">Done</button>}
           </div>
         </div>
       </div>
