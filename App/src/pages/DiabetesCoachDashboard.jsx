@@ -370,7 +370,7 @@ export default function DiabetesCoachDashboard() {
                 value={searchText}
                 onChange={(e) => handleSearch(e.target.value)}
                 onFocus={() => setSearchOpen(true)}
-                placeholder="Search patient ID (e.g. PSEUDO_0000355) — simulated cohort, no real PHI"
+                placeholder="Search patient ID (e.g. PSEUDO_0000257) — simulated cohort, no real PHI"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
               {searchOpen && patientOptions.length > 0 && (
@@ -415,6 +415,39 @@ export default function DiabetesCoachDashboard() {
                   true glucose reached <span className="font-mono text-rose-300">~{Math.round(incident.trueMax)} mg/dL</span> but the device displayed
                   <span className="font-mono"> ~{Math.round(incident.obsAtPeak ?? incident.trueMax - incident.biasGap)} mg/dL</span> — hyperglycemia severity was <span className="text-rose-300">under-stated</span>.
                   Verify true status before acting on this device's readings.
+                </p>
+              </div>
+            </div>
+          )}
+          {/* ⚠ Masked-hypo alert — device OVER-read while the patient's TRUE glucose was
+              hypo, so the displayed value hid a real low. The deadly missed-low failure. */}
+          {incident?.maskedHypo && (
+            <div className="col-span-12 flex items-start gap-3 bg-rose-500/10 border border-rose-500/40 rounded-lg p-4">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-rose-300">⚠ Masked severity — device over-read, hiding a real hypo</p>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  During the incident true glucose dropped to <span className="font-mono text-rose-300">~{Math.round(incident.trueMin)} mg/dL</span> (a
+                  dangerous low) while this <span className="text-rose-300">over-reading</span> device displayed
+                  <span className="font-mono"> ~{Math.round(incident.obsAtTrough)} mg/dL</span> (looks safe) — {incident.maskedHypoPts} hypo readings hidden.
+                  A missed severe low is the most time-critical failure; verify with a fingerstick before trusting this device.
+                </p>
+              </div>
+            </div>
+          )}
+          {/* ⚠ False-low alert — device DISPLAYED a hypo that wasn't real (under-read
+              while TRUE glucose was in range). The danger is over-treatment: carbs /
+              glucose given for a false low push an actually-fine patient HIGH. */}
+          {incident?.falseHypo && (
+            <div className="col-span-12 flex items-start gap-3 bg-rose-500/10 border border-rose-500/40 rounded-lg p-4">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-rose-300">⚠ False low — device displayed a hypo that wasn't real</p>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  During the incident this device <span className="text-rose-300">displayed a low of ~{Math.round(incident.obsMin)} mg/dL</span> while
+                  true glucose was actually <span className="font-mono text-emerald-300">~{Math.round(incident.trueAtObsMin)} mg/dL</span> (in range) —
+                  {incident.falseHypoPts} false hypo readings. Acting on a false low (fast carbs / glucose / reduced insulin)
+                  would drive an already-fine patient <span className="text-rose-300">into hyperglycemia</span>. Verify with a fingerstick before treating.
                 </p>
               </div>
             </div>

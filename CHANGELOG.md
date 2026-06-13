@@ -304,6 +304,28 @@ classes; both are now fixed at the source:
   old app SP's role makes the control plane reassign its objects to the project owner, who can
   then re-grant or `DROP SCHEMA triage CASCADE` (alerts are reseedable demo state).
 
+### Changed — Diabetes Coach: honest device-distortion banners (clinical honesty)
+- The Coach's single under-read "masked severity" alert is now **three** symmetric
+  device-distortion banners, so the per-patient view honestly names *every* way the
+  calibration fault could mislead a clinician — not just the one direction
+  (`App/src/pages/DiabetesCoachDashboard.jsx`, `…/DiabetesCoachDashboard/queries.js`):
+  - **Masked high** (under-read hid a real hyper — device under-reported danger; a
+    dangerously-high patient looks fine). Threshold raised from true-max > 180 → **> 200**
+    so a marginal 181 no longer trips it and competes with a co-occurring false-low story.
+  - **Masked low** (over-read hid a real hypo — the **deadly missed low**: device shows safe
+    while the patient is genuinely < 70). The Day 2 / FW 4.0 over-read direction.
+  - **False low** (under-read **displayed** a low that wasn't real — true ≥ 70): a false
+    alarm whose treatment (fast carbs / glucose / reduced insulin) would drive an
+    already-fine patient **into hyperglycemia**. The Day 5 / FW 4.0.3 under-read direction.
+  - Each banner gates on sustained evidence (≥ 3 qualifying points) so a single borderline
+    blip doesn't fire it; `incidentQ` extended to return the true/observed troughs + peaks
+    and the per-direction point counts that drive them.
+- **Featured false-low exemplar → `PSEUDO_0000257`** (placeholder + tour step ③,
+  `App/src/tour/steps.js`): a Day-5 under-read patient whose device displayed ~40 mg/dL while
+  true glucose was ~87 (in range) across ~100 readings, with only ~5% genuine hypo elsewhere —
+  so the fabricated low stands out as the device's fault rather than competing with the
+  patient's own lows (an earlier candidate ran ~17% true hypo, muddying the story).
+
 ## [2026-06-11]
 
 Device-error realism overhaul: the calibration fault is now a **12-hour, device-model-gated, two-pulse** event (was a 3-hour flat-σ fleet-wide bump), so the demo shows two distinct buggy periods with a genuinely flat control cohort and gradual device recovery — while the firmware × day heatmap stays complete. App prose reconciled to the new duration.

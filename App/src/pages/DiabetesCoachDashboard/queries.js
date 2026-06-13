@@ -352,7 +352,19 @@ export async function getPatientDetail(patientId) {
       ROUND(MAX(glucose_true), 0) as true_max,
       ROUND(AVG(glucose_observed), 0) as obs_mean,
       ROUND(AVG(glucose_true - glucose_observed), 0) as bias_gap,
-      ROUND(MAX_BY(glucose_observed, glucose_true), 0) as obs_at_peak
+      ROUND(MAX_BY(glucose_observed, glucose_true), 0) as obs_at_peak,
+      -- FALSE-HYPO case (under-read device displaying a low that isn't real):
+      -- the device's own trough + what TRUE glucose actually was there. A false
+      -- low alarm risks over-treatment (carbs/glucose) that drives a fine patient HIGH.
+      ROUND(MIN(glucose_observed), 0) as obs_min,
+      ROUND(MIN_BY(glucose_true, glucose_observed), 0) as true_at_obs_min,
+      COUNT(CASE WHEN glucose_observed < 70 AND glucose_true >= 70 THEN 1 END) as false_hypo_pts,
+      -- MASKED-HYPO case (over-read device hiding a real low): TRUE glucose's trough
+      -- + what the device displayed there. The deadly missed low — device shows safe
+      -- while the patient is genuinely hypo.
+      ROUND(MIN(glucose_true), 0) as true_min,
+      ROUND(MIN_BY(glucose_observed, glucose_true), 0) as obs_at_trough,
+      COUNT(CASE WHEN glucose_true < 70 AND glucose_observed >= 70 THEN 1 END) as masked_hypo_pts
     FROM ${inc}
     WHERE patient_id = '${id}' AND time >= incident_start_time AND time < incident_end_time
     GROUP BY incident_direction LIMIT 1`;
@@ -418,8 +430,14 @@ export async function getPatientDetail(patientId) {
         delta30m: num(fcv[4]),
       } : null,
       // Device-fault incident: bias direction + true-vs-observed during the incident.
-      // maskedSeverity = under-read device whose TRUE glucose was hyper (>180) → the
-      // device under-reported a dangerously-high patient.
+      // Three dangerous severity-distortions the device can produce:
+      //   maskedSeverity (under-read) = TRUE glucose was hyper (>180) but the device
+      //                    under-reported it → a dangerously-high patient looks fine.
+      //   maskedHypo (over-read) = TRUE glucose was hypo (<70) but the device read
+      //                    higher → the deadly MISSED LOW (device shows safe).
+      //   falseHypo (under-read) = the device DISPLAYED a low (<70) that wasn't real
+      //                    (true ≥70) → a false alarm; acting on it (carbs/glucose)
+      //                    drives a fine patient HIGH (iatrogenic hyper).
       incident: incv ? (() => {
         const direction = incv[0]?.string_value ?? incv[0];
         const trueMean = num(incv[1]);
@@ -427,7 +445,26 @@ export async function getPatientDetail(patientId) {
         const obsMean = num(incv[3]);
         const biasGap = num(incv[4]);
         const obsAtPeak = num(incv[5]); // device reading at the true-glucose peak — the honest "what it displayed" for masked-severity (obsMean averages the whole window and understates it)
-        return { direction, trueMean, trueMax, obsMean, biasGap, obsAtPeak, maskedSeverity: direction === 'negative' && trueMax != null && trueMax > 180 };
+        const obsMin = num(incv[6]);          // device's lowest displayed reading in the window
+        const trueAtObsMin = num(incv[7]);    // what TRUE glucose actually was at that displayed low
+        const falseHypoPts = num(incv[8]) || 0;
+        const trueMin = num(incv[9]);         // TRUE glucose's trough in the window
+        const obsAtTrough = num(incv[10]);    // what the device displayed at the true low
+        const maskedHypoPts = num(incv[11]) || 0;
+        return {
+          direction, trueMean, trueMax, obsMean, biasGap, obsAtPeak,
+          obsMin, trueAtObsMin, falseHypoPts, trueMin, obsAtTrough, maskedHypoPts,
+          // >200 (not just >180): a "masked dangerous high" should be a real hyper,
+          // not a 1-over-the-line 181 — that overstates severity and competes with a
+          // co-occurring false-low story (median masked-hyper true is ~230).
+          maskedSeverity: direction === 'negative' && trueMax != null && trueMax > 200,
+          // over-read hid a real low: true went hypo while the device read ≥70 (safe)
+          maskedHypo: direction === 'positive' && trueMin != null && trueMin < 70
+                      && obsAtTrough != null && obsAtTrough >= 70 && maskedHypoPts >= 3,
+          // ≥3 false-low points so a single borderline blip doesn't trip it
+          falseHypo: direction === 'negative' && obsMin != null && obsMin < 70
+                     && trueAtObsMin != null && trueAtObsMin >= 70 && falseHypoPts >= 3,
+        };
       })() : null,
       series,
       incidentWindow,
