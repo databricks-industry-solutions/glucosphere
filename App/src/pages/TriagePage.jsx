@@ -358,6 +358,13 @@ SELECT a.patient_id, a.status, a.assigned_to, u.action, u.actor, u.detail, u.at
 FROM triage.alerts a JOIN triage.alert_audit u USING (alert_id)
 ORDER BY u.at DESC LIMIT 20;`;
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [archiveSqlCopied, setArchiveSqlCopied] = useState(false);
+  const copyArchiveSql = (n) => {
+    const sql = `-- the session you just reset, as archived in UC (Delta)\nSELECT patient_id, status, assigned_to, action, actor, detail, action_at\nFROM ${n.archive_table}\nWHERE reset_id = '${n.reset_id}'\nORDER BY action_at DESC;\n-- all sessions: GROUP BY reset_id, or drop the WHERE`;
+    navigator.clipboard?.writeText(sql).then(() => {
+      setArchiveSqlCopied(true); setTimeout(() => setArchiveSqlCopied(false), 2000);
+    }).catch(() => {});
+  };
   const [verifyOpen, setVerifyOpen] = useState(false);
   // In-page raw-rows peek: the same join the SQL-editor path runs, rendered under
   // the queue and refreshed with every queue load — click Ack, watch the row land.
@@ -742,6 +749,12 @@ ORDER BY u.at DESC LIMIT 20;`;
                     title="Open the archive table in Unity Catalog — every reset appends this session's audit trail (rolling 30-day retention)">
                     {notice.archive_table}
                   </a>{' '}({notice.archived} audit rows · reset_id {notice.reset_id}) — queryable from the lakehouse
+                  {' · '}
+                  <button onClick={() => copyArchiveSql(notice)}
+                    title="Copies a SELECT scoped to this reset_id — paste into any SQL editor / notebook on the lakehouse"
+                    className="underline decoration-dotted hover:text-emerald-200">
+                    {archiveSqlCopied ? '✓ copied' : 'copy archive query'}
+                  </button>
                   <button onClick={() => setNotice('')} className="text-slate-500 hover:text-slate-300 ml-2">✕</button>
                 </p>
               )}
