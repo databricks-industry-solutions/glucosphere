@@ -5,7 +5,7 @@ import { useGoBack } from '../hooks/useGoBack';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchAlerts, alertAction, seedAlerts, resetAlerts, bulkAlerts, fetchRawRows } from '../api/triage';
-import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot } from '../api/databricksSQL';
+import { getAllDeviceModels, getLiveRiskWatchlist, getPatientIncidentSnapshot, getPatientRecent3h } from '../api/databricksSQL';
 import { getConfig } from '../api/config';
 
 // → ACT — the fleet-level act surface: a live alert queue with ack / assign /
@@ -437,10 +437,33 @@ ORDER BY u.at DESC LIMIT 20;`;
   const watchFiltered = (watchlist || []).filter(w =>
     (modelFilter === 'all' || w.deviceModel === modelFilter) &&
     (!q || w.patientId.toLowerCase().includes(q)));
+  // The watchlist is the TOP-100 by danger-reading count — a searched patient
+  // with only a few danger readings (or none) misses the cut and the view looked
+  // "stuck" empty (booth catch 2026-06-12, PSEUDO_0000940 with 3 very-highs).
+  // Fetch that patient's last-3h summary directly and synthesize their row.
+  const [extraWatchRow, setExtraWatchRow] = useState(null);
+  useEffect(() => {
+    const pid = q.toUpperCase();
+    if (scenario !== 'last3h' || !q || watchlist === null || !/^PSEUDO_\d+$/.test(pid)) { setExtraWatchRow(null); return; }
+    if ((watchlist || []).some(w => w.patientId.toLowerCase().includes(q))) { setExtraWatchRow(null); return; }
+    let stale = false;
+    getPatientRecent3h(pid).then(r => {
+      if (stale) return;
+      if (!r || !r.readings) { setExtraWatchRow(null); return; }
+      const al = (data.alerts || []).find(a => a.patient_id === pid);
+      setExtraWatchRow({
+        patientId: pid, deviceModel: al?.device_model || '—', firmware: al?.firmware || '—',
+        minGlucose: r.min ?? 0, maxGlucose: r.max ?? 0, veryLow: r.veryLow, veryHigh: r.veryHigh,
+        belowCutoff: true,
+      });
+    }).catch(() => { if (!stale) setExtraWatchRow(null); });
+    return () => { stale = true; };
+  }, [scenario, q, watchlist, data.alerts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const watchRows = extraWatchRow ? [...watchFiltered, extraWatchRow] : watchFiltered;
   // Bridge stat between the two views: how many of the live danger-band patients
   // ALSO sit in the alert queue with an open device alert — separates physiological
   // risk from device-fault fallout at a glance (replaces a dead "n/a" label).
-  const watchIds = new Set(watchFiltered.map(w => w.patientId));
+  const watchIds = new Set(watchRows.map(w => w.patientId));
   const alertPatients = new Set((data.alerts || [])
     .filter(a => a.status === 'open' && watchIds.has(a.patient_id))
     .map(a => a.patient_id));
@@ -544,7 +567,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                     // physiological risk vs device-fault fallout at a glance.
                     <span className="text-slate-400"
                       title="Overlap between the danger-band patients below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
-                      <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchFiltered.length} patients also have open device alerts in the queue
+                      <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchRows.length} patients also have open device alerts in the queue
                     </span>
                   ) : (<>
                   <span className="text-rose-300">{counts.open || 0} open</span>
@@ -643,7 +666,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                     </button>
                   ); })()}
                 <span className="text-slate-500">
-                  {scenario === 'last3h' ? `${watchFiltered.length} patient${watchFiltered.length === 1 ? '' : 's'} in the danger bands` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
+                  {scenario === 'last3h' ? `${watchRows.length} patient${watchRows.length === 1 ? '' : 's'} in the danger bands${extraWatchRow ? ' (1 fetched below the top-100 cutoff)' : ''}` : `${filtered.length} matching${filtered.length > VISIBLE_CAP ? ` · showing first ${VISIBLE_CAP} — refine to narrow` : ''}`}
                 </span>
               </div>
 
@@ -742,7 +765,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                       </tr>
                     </thead>
                     <tbody>
-                      {watchFiltered
+                      {watchRows
                         .map(w => (
                           <tr key={w.patientId} className="border-t border-slate-800 hover:bg-slate-900/40">
                             <td className="p-2 font-mono text-xs"><Link to={`/diabetes-coach?patient=${encodeURIComponent(w.patientId)}`} className="text-cyan-300 hover:text-cyan-200 hover:underline">{w.patientId}</Link></td>
