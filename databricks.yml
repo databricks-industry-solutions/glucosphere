@@ -193,6 +193,28 @@ targets:
   dais:
     mode: development
 
+  # DAIS 2026 booth — Lakebase-enabled variant. Deployed as a SEPARATE app
+  # (`glucosphere-dais-lakebase`) so the plain `dais` app (`glucosphere-dais`)
+  # stays as a known-good backup. Adds the App's postgres binding + an explicit
+  # lakebase_project_id; otherwise identical to `dais` (reuses the booth warehouse
+  # via BUNDLE_VAR_existing_warehouse_id — no `sql_warehouses` block). Coords in
+  # `.env.bundle.dais_lakebase`. The Lakebase project is created ONCE outside the
+  # bundle (DEPLOY.md "Lakebase one-time setup") before deploying this target.
+  dais_lakebase:
+    mode: development
+    variables:
+      # Explicit (not the ${app_basename}-oltp-${bundle.target} convention) — the
+      # target name has an underscore, invalid in a Postgres project id
+      # (lowercase / digits / hyphens only).
+      lakebase_project_id: glucosphere-oltp
+    resources:
+      apps:
+        glucosphere_app:
+          name: ${var.app_name}
+          # Same Lakebase binding as gsphere (the &glucosphere_lakebase_binding
+          # anchor); ${var.lakebase_project_id} resolves per-target.
+          resources: *glucosphere_lakebase_binding
+
   # ─── Adding a new live target ─────────────────────────────────────────
   # Append a stanza like the two above (`name:\n    mode: development`).
   # The target's `.env.bundle.<target>` provides workspace host (via
