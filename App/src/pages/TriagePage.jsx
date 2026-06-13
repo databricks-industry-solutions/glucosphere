@@ -571,7 +571,7 @@ ORDER BY u.at DESC LIMIT 20;`;
                   </>)}
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={onReset} disabled={busy || loading || isWatch}
+                  <button onClick={onReset} disabled={busy || loading}
                     title="Clears the Postgres tables too: TRUNCATE triage.alerts + triage.alert_audit, then reseeds 600 open alerts from the gold layer — your acks/notes are gone from the database (verify via 🛢). Lets the next booth visitor triage from scratch."
                     className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-colors disabled:opacity-40 ${resetArmed ? 'border-rose-500/60 text-rose-300 bg-rose-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-300'}`}>
                     {resetArmed ? 'Confirm reset?' : '⟲ Reset demo'}
