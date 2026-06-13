@@ -208,9 +208,14 @@ export default function TriagePage() {
   // sessionStorage; explicit URL params (deep-links) take precedence, and a
   // queue-targeting deep-link (?q/?fault/?model/?fw) overrides a remembered live
   // view (those links point at queue rows). Fresh tab = fresh defaults.
-  const persisted = (() => {
-    try { return JSON.parse(sessionStorage.getItem('triageView')) || {}; } catch { return {}; }
-  })();
+  // (2026-06-12, reverted same day: cross-mount view persistence confused bare
+  // visits — "Open queue →" landed on the previous session's live view instead
+  // of the queue. Context now travels via URL params on every deep-link button,
+  // so a paramless /triage means fresh intent → clean defaults.)
+  // const persisted = (() => {
+  //   try { return JSON.parse(sessionStorage.getItem('triageView')) || {}; } catch { return {}; }
+  // })();
+  const persisted = {};
   const hasQueueParams = ['q', 'fault', 'model', 'fw'].some((k) => searchParams.get(k));
   const [filter, setFilter] = useState(persisted.filter || 'open');  // status tab — client-side (we fetch all statuses once)
   // Deep-links carry their context: Population Risk passes ?model=, Firmware
@@ -232,12 +237,7 @@ export default function TriagePage() {
       : (persisted.scenario || 'week'));
   const [watchlist, setWatchlist] = useState(null);       // last3h scenario rows
   const [sortBy, setSortBy] = useState(persisted.sortBy || 'severity');  // severity | patient | updated
-  // Persist on every view-state change (cheap; per-tab).
-  useEffect(() => {
-    try {
-      sessionStorage.setItem('triageView', JSON.stringify({ scenario, filter, faultFilter, modelFilter, fwFilter, search, sortBy }));
-    } catch { /* private mode — page just won't remember */ }
-  }, [scenario, filter, faultFilter, modelFilter, fwFilter, search, sortBy]);
+  // (Persist-on-change retired with the hydrate above — see the revert note.)
   const [allModels, setAllModels] = useState([]);         // registry SSOT — incl. clean controls
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -370,16 +370,9 @@ ORDER BY u.at DESC LIMIT 20;`;
   // Device-Support and returns via their ⚑ buttons — a state-only breadcrumb
   // unmounted with the page and the return landed cold on the week default
   // (booth catch 2026-06-12). sessionStorage = per-tab, survives navigation.
-  const [jumpCtx, setJumpCtxState] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('triageJumpCtx')) || null; } catch { return null; }
-  }); // { patient, search, modelFilter }
-  const setJumpCtx = (ctx) => {
-    setJumpCtxState(ctx);
-    try {
-      if (ctx) sessionStorage.setItem('triageJumpCtx', JSON.stringify(ctx));
-      else sessionStorage.removeItem('triageJumpCtx');
-    } catch { /* private-mode etc. — banner just won't survive navigation */ }
-  };
+  // In-page state only (storage-backed survival retired with view persistence —
+  // the watch→queue ⚑ jump that sets this never unmounts the page).
+  const [jumpCtx, setJumpCtx] = useState(null); // { patient, search, modelFilter }
   const [raw, setRaw] = useState(null);
   useEffect(() => {
     if (rawOpen) fetchRawRows().then(setRaw).catch(() => setRaw({ error: true }));
