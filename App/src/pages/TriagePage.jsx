@@ -573,15 +573,18 @@ ORDER BY u.at DESC LIMIT 20;`;
                     // were useful"), plus the bridge stat: danger-band patients ∩ open
                     // device alerts — physiology vs device-fault fallout at a glance.
                     <>
+                      <span className="text-slate-500" title="Whole queue — regardless of filters">queue:</span>
                       <span className="text-rose-300" title="Whole queue — regardless of filters">{counts.open || 0} open</span>
                       <span className="text-slate-600">·</span>
                       <span className="text-amber-300">{counts.acked || 0} acked</span>
                       <span className="text-slate-600">·</span>
                       <span className="text-emerald-300">{counts.resolved || 0} resolved</span>
-                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-600">·</span>
                       <span className="text-slate-400"
-                        title="Overlap between the danger-band patients below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
-                        <span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of these {watchRows.length} patients also have open device alerts in the queue
+                        title="Overlap between the danger-band patients listed below and open device alerts in the queue — a high overlap says the clinical risk is device-fault fallout, not physiology.">
+                        {watchAlertOverlap === watchRows.length && watchRows.length === 1
+                          ? <>the patient below <span className="text-rose-300 font-semibold">has an open device alert</span> (⚑)</>
+                          : <><span className="text-rose-300 font-semibold">{watchAlertOverlap}</span> of the {watchRows.length} patients below {watchAlertOverlap === 1 ? 'has' : 'have'} an open device alert (⚑)</>}
                       </span>
                     </>
                   ) : (<>

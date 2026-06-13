@@ -1054,7 +1054,13 @@ def serve_spa(path):
     # Otherwise serve index.html for SPA routing
     index_path = os.path.join(DIST_DIR, 'index.html')
     print(f"[DEBUG] Serving index.html for path: {path}")
-    return send_from_directory(DIST_DIR, 'index.html')
+    resp = send_from_directory(DIST_DIR, 'index.html')
+    # The SPA shell must never be cached: stale index.html pins users to old
+    # content-hashed bundles across deploys (booth kept seeing previous builds
+    # until a hard refresh — 2026-06-12). The hashed assets themselves stay
+    # long-cacheable; only this entry document is volatile.
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
