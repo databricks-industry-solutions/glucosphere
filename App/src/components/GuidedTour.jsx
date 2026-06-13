@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from
 import { useNavigate, useLocation } from 'react-router-dom';
 import { TOUR_STEPS, TOUR_STEPS_FULL, TOUR_STEPS_INTERACTIVE } from '../tour/steps';
 import { useLakebaseConfigured } from '../hooks/useLakebase';
+import { useFalseLowExemplar } from '../hooks/useExemplars';
 
 // Lightweight coachmark tour (no external dep). Listens for the
 // 'glucosphere:start-tour' window event, navigates per step, spotlights the
@@ -40,6 +41,19 @@ export default function GuidedTour() {
   // the binding — their /triage target shows a "not enabled" panel there, so
   // there'd be nothing to spotlight. The chooser counts use the same arrays.
   const lakebaseConfigured = useLakebaseConfigured();
+  // The per-patient step's false-low example is discovered from the data (not a
+  // hardcoded id) — fill its {{falseLow*}} tokens from /api/config so the copy is
+  // correct on any dataset. Concrete fallbacks keep the sentence reading well
+  // before config resolves / if it can't.
+  const falseLow = useFalseLowExemplar();
+  const fillExemplar = (text) => {
+    if (!text) return text;
+    const e = falseLow || {};
+    return text
+      .replace(/\{\{falseLowId\}\}/g, e.patient_id || 'PSEUDO_0000257')
+      .replace(/\{\{falseLowDisplayed\}\}/g, e.displayed != null ? String(e.displayed) : '40')
+      .replace(/\{\{falseLowTrue\}\}/g, e.true_val != null ? String(e.true_val) : '87');
+  };
   const gate = (arr) => arr.filter(s => !s.requiresLakebase || lakebaseConfigured);
   const quickSteps = gate(TOUR_STEPS);
   const fullSteps = gate(TOUR_STEPS_FULL);
@@ -226,7 +240,7 @@ export default function GuidedTour() {
         style={cardStyle || { left: '50%', transform: 'translateX(-50%)', bottom: 40, pointerEvents: 'auto' }}>
         <p className="text-xs text-cyan-400 font-mono mb-1">Step {i + 1} of {steps.length}</p>
         <h3 className="text-base font-semibold text-slate-100" style={{ fontFamily: '"Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif' }}>{step.title}</h3>
-        <p className="text-sm text-slate-400 mt-1 leading-relaxed">{step.body}</p>
+        <p className="text-sm text-slate-400 mt-1 leading-relaxed">{fillExemplar(step.body)}</p>
         {/* Pause only where there's something to do: toggle steps (step.interactive → "Try it
             yourself"), assistant-explore steps (step.openAssistant) and read/deep-link pages
             (step.explore) → "Explore". Pure-narrative steps and the FAB step — where the next steps

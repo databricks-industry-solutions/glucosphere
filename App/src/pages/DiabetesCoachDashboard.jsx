@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { HeartHandshake, Search, TrendingUp, TrendingDown, AlertCircle, Users, Loader2, ChevronRight, Wrench, User } from 'lucide-react';
 import { getPopulationMetrics, getInsulinMetrics, getPatientList, getPatientDetail } from './DiabetesCoachDashboard/queries';
 import { getFirmwareLifecycle } from '../api/databricksSQL';
+import { useFalseLowExemplar } from '../hooks/useExemplars';
 
 export default function DiabetesCoachDashboard() {
   const navigate = useNavigate();
@@ -13,6 +14,8 @@ export default function DiabetesCoachDashboard() {
   const goBack = () => (location.key === 'default' ? navigate('/') : navigate(-1));
 
   // Clinical metrics state (population-level — already live)
+  // Data-discovered false-low example (search placeholder hint) — see useExemplars.
+  const falseLowEx = useFalseLowExemplar();
   const [populationMetrics, setPopulationMetrics] = useState(null);
   const [insulinMetrics, setInsulinMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -370,7 +373,7 @@ export default function DiabetesCoachDashboard() {
                 value={searchText}
                 onChange={(e) => handleSearch(e.target.value)}
                 onFocus={() => setSearchOpen(true)}
-                placeholder="Search patient ID (e.g. PSEUDO_0000257) — simulated cohort, no real PHI"
+                placeholder={`Search patient ID (e.g. ${falseLowEx?.patient_id || 'PSEUDO_0000257'}) — simulated cohort, no real PHI`}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-12 pr-4 py-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
               />
               {searchOpen && patientOptions.length > 0 && (

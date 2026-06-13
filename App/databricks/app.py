@@ -672,12 +672,79 @@ def _get_baseline_provenance():
     _baseline_provenance_cache['fetched_at'] = now
     return fallback
 
+
+_tour_exemplars_cache = {'value': None, 'fetched_at': 0, 'ttl': 300}  # 5-min TTL — exemplars are data-stable
+
+def _get_tour_exemplars():
+    """Pick the per-patient tour's *false-low* exemplar straight from the incident
+    data, so the Coach search placeholder + tour step are correct on ANY dataset
+    (prod / sandbox / DAIS) — not a hardcoded patient id that only holds while the
+    data-gen seed is unchanged.
+
+    The "good teaching exemplar" judgment is encoded as the ranking, not a person:
+    an under-read (negative) device that DISPLAYED a sustained, dramatic low
+    (< 55 mg/dL) while true glucose stayed clearly in range (>= 85) and was NOT
+    also masking a real high (true_max < 195, so it fires the false-low banner
+    ONLY). Prefer the most sustained false alarm; break ties toward the patient
+    with the fewest *genuine* lows elsewhere (rlo) so the fabricated low stands
+    out rather than a frequently-low patient's real lows. Mirrors
+    _get_baseline_provenance: Statement Execution + TTL cache + graceful fallback
+    (a sane default keeps the tour copy concrete if the query can't run)."""
+    now = _time.time()
+    c = _tour_exemplars_cache
+    if c['value'] and now < c['fetched_at'] + c['ttl']:
+        return c['value']
+    fallback = {'false_low': {'patient_id': 'PSEUDO_0000257', 'displayed': 40, 'true_val': 87}}
+    DATABRICKS_HOST, DATABRICKS_TOKEN = get_auth()
+    warehouse_id = os.environ.get('WAREHOUSE_ID', '').strip()
+    if not DATABRICKS_TOKEN or not warehouse_id:
+        return fallback
+    inc = f"{CATALOG_NAME}.{SCHEMA_NAME}.pseudo_incident_7d_labeled"
+    sql = (
+        "WITH inc AS (SELECT patient_id, MAX(glucose_true) tmax, MIN(glucose_observed) omin, "
+        "MIN_BY(glucose_true, glucose_observed) t_at_omin, "
+        "COUNT(CASE WHEN glucose_observed<70 AND glucose_true>=70 THEN 1 END) flp "
+        f"FROM {inc} WHERE incident_direction='negative' "
+        "AND time>=incident_start_time AND time<incident_end_time GROUP BY patient_id), "
+        "noise AS (SELECT patient_id, COUNT(CASE WHEN glucose_true<70 "
+        "AND (time<incident_start_time OR time>=incident_end_time) THEN 1 END) rlo "
+        f"FROM {inc} WHERE incident_direction='negative' GROUP BY patient_id) "
+        "SELECT i.patient_id, CAST(ROUND(i.omin,0) AS INT), CAST(ROUND(i.t_at_omin,0) AS INT) "
+        "FROM inc i JOIN noise n USING(patient_id) "
+        "WHERE i.omin<55 AND i.t_at_omin>=85 AND i.tmax<195 AND i.flp>=30 AND n.rlo<=150 "
+        "ORDER BY i.flp DESC, n.rlo ASC, i.t_at_omin DESC, i.patient_id ASC LIMIT 1"
+    )
+    try:
+        resp = requests.post(
+            f"{DATABRICKS_HOST}/api/2.0/sql/statements",
+            headers={'Authorization': f'Bearer {DATABRICKS_TOKEN}', 'Content-Type': 'application/json'},
+            json={'warehouse_id': warehouse_id, 'statement': sql, 'wait_timeout': '30s'},
+            timeout=35,
+        )
+        if resp.ok:
+            data = resp.json().get('result', {}).get('data_array', [])
+            if data and len(data[0]) >= 3 and data[0][0]:
+                value = {'false_low': {
+                    'patient_id': data[0][0],
+                    'displayed': int(float(data[0][1])),
+                    'true_val': int(float(data[0][2])),
+                }}
+                c['value'] = value
+                c['fetched_at'] = now
+                return value
+    except Exception as _e:
+        print(f"[EXEMPLARS] query failed, using fallback: {_e}")
+    c['value'] = fallback
+    c['fetched_at'] = now
+    return fallback
+
 @app.route('/api/config')
 def get_config():
     """Expose non-secret config to the frontend. Includes baseline_source provenance
     queried from the data layer (not env), so prose on the Metrics Explained page
     accurately reflects what was last ingested by the pipeline."""
     provenance = _get_baseline_provenance()
+    exemplars = _get_tour_exemplars()
     # workspace_host lets the React UI build runtime links into the deploying
     # workspace (e.g. the Jobs UI from MetricsExplained) without hardcoding a
     # specific tenant in JSX or the committed static bundle. The Databricks
@@ -720,6 +787,10 @@ def get_config():
         'genie_space_id': GENIE_SPACE_ID,
         'baseline_source': provenance['baseline_source'],
         'baseline_source_detail': provenance['source_detail'],
+        # Tour/Coach demo exemplar(s) discovered from the incident data (see
+        # _get_tour_exemplars) so the per-patient tour step + search placeholder
+        # are correct on any dataset, not a hardcoded id.
+        'exemplars': exemplars,
         'workspace_host': raw_host,
         'setup_job_url': setup_job_url,
         'pipeline_url': pipeline_url,
