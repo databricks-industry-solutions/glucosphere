@@ -49,6 +49,19 @@ grouped by date rather than semver tags.
   roadmap" → "**natural next steps**". MARD caption tightened to "the **basis of** the industry
   MARD accuracy metric" (`AboutPage.jsx`) — MARD is the metric derived from the reference checks.
 
+### Changed — README readability + official-doc links; new `dais_lakebase` deploy target
+- **README readability pass**: the Architecture wall split into a lead + KA/MAS/Genie bullets;
+  the "glucosphere concept" run-on split into two sentences; the "How the two parts work
+  together" understatement corrected (the app **uses** Genie + the Multi-Agent Supervisor —
+  was "can hook into…"). Embedded sourced **official Databricks doc links** (Apps, Lakebase,
+  Genie, Lakeflow Declarative Pipelines, Unity Catalog, Model Serving, MLflow, Agent Bricks,
+  Asset Bundles), and each repo part now points to its **own** `DEPENDENCIES.md` inline.
+- **New `dais_lakebase` bundle target** (`databricks.yml`): a DAIS-booth Lakebase variant
+  deployed as a **separate** app (`glucosphere-dais-lakebase`) on its **own isolated schema**
+  (`glucosphere_lakebase`) with its own data + UC lineage and its own Lakebase project
+  (`glucosphere-oltp`) — so the plain `dais` app (`glucosphere-dais`) stays a known-good backup.
+  Mirrors `gsphere`'s app + `*glucosphere_lakebase_binding`; reuses the booth warehouse/agents.
+
 ---
 
 ## [2026-06-12]
